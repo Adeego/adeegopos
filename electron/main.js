@@ -1,7 +1,12 @@
-const { app, BrowserWindow, protocol } = require("electron");
+const { app, BrowserWindow, protocol, ipcMain } = require("electron");
 const path = require("path");
+const { initializeRealm } = require('./database/realmConfig')
+const setupIpcHandlers = require('./ipcHandlers');
 
 let serve;
+let realm
+let mainWindow;
+
 if (app.isPackaged) {
   (async () => {
     const { default: serveFunc } = await import("electron-serve");
@@ -16,7 +21,7 @@ if (app.isPackaged) {
 }
 
 const createWindow = () => {
-  const win = new BrowserWindow({
+  mainWindow = new BrowserWindow({
     width: 1200,
     height: 700,
     webPreferences: {
@@ -25,19 +30,21 @@ const createWindow = () => {
   });
 
   if (app.isPackaged) {
-    serve(win).then(() => {
-      win.loadURL("app://-");
+    serve(mainWindow).then(() => {
+      mainWindow.loadURL("app://-");
     }).catch(console.error);
   } else {
-    win.loadURL("http://localhost:3000");
-    win.webContents.openDevTools();
-    win.webContents.on("did-fail-load", (e, code, desc) => {
-      win.webContents.reloadIgnoringCache();
+    mainWindow.loadURL("http://localhost:3333");
+    mainWindow.webContents.openDevTools();
+    mainWindow.webContents.on("did-fail-load", () => {
+      mainWindow.webContents.reloadIgnoringCache();
     });
-  }
+  }  
 }
 
-app.on("ready", () => {
+app.on("ready", async () => {
+  const realm = await initializeRealm();
+  setupIpcHandlers(ipcMain, realm);
   createWindow();
 });
 
@@ -45,4 +52,16 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") {
     app.quit();
   }
+});
+
+app.on('before-quit', async (event) => {
+  event.preventDefault(); // Prevent the app from quitting immediately
+  
+  if (realm && !realm.isClosed) {
+    console.log("Closing Realm...");
+    realm.close();
+  }
+  
+  console.log("Realm closed. Quitting app...");
+  app.exit(0); // Force quit the app
 });

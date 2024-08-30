@@ -1,4 +1,5 @@
 "use client";
+import ProductTable from "@/components/productComps/productTable";
 
 import { MoreHorizontal } from "lucide-react";
 
@@ -28,53 +29,16 @@ import {
   TableRow,
 } from "@/components/ui/table";
 
-// Sample data for convenience store products
-const products = [
-  {
-    name: "Apple",
-    status: "Active",
-    price: "$0.99",
-    totalSales: 200,
-    createdAt: "2024-06-01 09:00 AM",
-    margin: "20%",
-  },
-  {
-    name: "Banana",
-    status: "Active",
-    price: "$0.79",
-    totalSales: 150,
-    createdAt: "2024-06-02 10:30 AM",
-    margin: "25%",
-  },
-  {
-    name: "Orange Juice",
-    status: "Draft",
-    price: "$2.99",
-    totalSales: 75,
-    createdAt: "2024-06-03 11:45 AM",
-    margin: "15%",
-  },
-  {
-    name: "Chocolate Bar",
-    status: "Active",
-    price: "$1.50",
-    totalSales: 300,
-    createdAt: "2024-06-04 01:20 PM",
-    margin: "30%",
-  },
-  {
-    name: "Pack of Water Bottles",
-    status: "Active",
-    price: "$5.99",
-    totalSales: 100,
-    createdAt: "2024-06-05 03:10 PM",
-    margin: "10%",
-  },
-];
-
 export default function Product() {
   return (
-    <Card>
+    <div>
+      <ProductTable />
+    </div>
+  );
+}
+
+
+{/* <Card>
       <CardHeader>
         <CardTitle className="text-left">Products</CardTitle>
         <CardDescription className="text-left">
@@ -133,6 +97,4 @@ export default function Product() {
           Showing <strong>1-5</strong> of <strong>{products.length}</strong> products
         </div>
       </CardFooter>
-    </Card>
-  );
-}
+    </Card> */}

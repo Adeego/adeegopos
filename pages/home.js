@@ -1,111 +1,147 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 
 export default function Home() {
-  const [customers, setCustomers] = useState([]);
-  const [newCustomer, setNewCustomer] = useState({
-    name: '',
-    phoneNumber: '',
-    address: '',
-    balance: 0,
-    credit: false
-  });
+  const [newCustomer, setNewCustomer] = useState(null);
+  const [name, setName] = useState('');
+  const [phoneNumber, setPhoneNumber] = useState(0);
+  const [address, setAddress] = useState('');
+  const [balance, setBalance] = useState(0);
+  const [credit, setCredit] = useState(false);
+  const [disciplinary, setDisciplinary] = useState('Neutral');
 
-  useEffect(() => {
-    fetchCustomers();
-  }, []);
+  const handleInputChange = (e) => {
+    const { name, value, type, checked } = e.target;
+    if (type === 'checkbox') {
+      setCredit(checked);
+    } else {
+      switch (name) {
+        case 'name':
+          setName(value);
+          break;
+        case 'phoneNumber':
+          setPhoneNumber(value);
+          break;
+        case 'address':
+          setAddress(value);
+          break;
+        case 'balance':
+          setBalance(value);
+          break;
+        case 'disciplinary':
+          setDisciplinary(value);
+          break;
+        default:
+          break;
+      }
+    }
+  };
 
-  async function fetchCustomers() {
-    const response = await fetch('/api/customers');
-    const data = await response.json();
-    setCustomers(data);
-  }
-
-  async function createCustomer(e) {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    await fetch('/api/customers', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(newCustomer),
-    });
-    setNewCustomer({
-      name: '',
-      phoneNumber: '',
-      address: '',
-      balance: 0,
-      credit: false
-    });
-    fetchCustomers();
-  }
+    const customerData = {
+      name: name,
+      phoneNumber: parseInt(phoneNumber),
+      address: address,
+      balance: parseInt(balance),
+      credit: credit,
+      disciplinery: disciplinary
+    }
+    console.log(customerData)
+    try {
+      const result = await window.electronAPI.realmOperation('createCustomer', customerData);
+      if (result.success) {
+        alert('Customer created successfully!');
+        setNewCustomer(result.customer);
+        // Clear the input fields
+        setName('');
+        setPhoneNumber(0);
+        setAddress('');
+        setBalance(0);
+        setCredit(false);
+        setDisciplinary('Neutral');
+      } else {
+        console.error('Error creating customer:', result.error);
+      }
+    } catch (error) {
+      console.error('Error creating customer:', error);
+      alert('Failed to create customer. Please try again.');
+    }
+  };
 
-  async function updateCustomer(id, updatedData) {
-    await fetch('/api/customers', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ _id: id, ...updatedData }),
-    });
-    fetchCustomers();
-  }
-
-  async function deleteCustomer(id) {
-    await fetch('/api/customers', {
-      method: 'DELETE',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ _id: id }),
-    });
-    fetchCustomers();
-  }
+  console.log(newCustomer)
 
   return (
     <div>
-      <h1>Customer Manager</h1>
-      <form onSubmit={createCustomer}>
-        <input
-          type="text"
-          value={newCustomer.name}
-          onChange={(e) => setNewCustomer({...newCustomer, name: e.target.value})}
-          placeholder="Name"
-          required
-        />
-        <input
-          type="tel"
-          value={newCustomer.phoneNumber}
-          onChange={(e) => setNewCustomer({...newCustomer, phoneNumber: e.target.value})}
-          placeholder="Phone Number"
-          required
-        />
-        <input
-          type="text"
-          value={newCustomer.address}
-          onChange={(e) => setNewCustomer({...newCustomer, address: e.target.value})}
-          placeholder="Address"
-          required
-        />
-        <input
-          type="number"
-          value={newCustomer.balance}
-          onChange={(e) => setNewCustomer({...newCustomer, balance: parseInt(e.target.value)})}
-          placeholder="Balance"
-          required
-        />
-        <label>
+      <h1>Create New Customer</h1>
+      <form onSubmit={handleSubmit}>
+        <div>
+          <label htmlFor="name">Name:</label>
+          <input
+            type="text"
+            id="name"
+            name="name"
+            value={name}
+            onChange={handleInputChange}
+            required
+          />
+        </div>
+        <div>
+          <label htmlFor="phoneNumber">Phone:</label>
+          <input
+            type="number"
+            id="phoneNumber"
+            name="phoneNumber"
+            value={phoneNumber}
+            onChange={handleInputChange}
+            required
+          />
+        </div>
+        <div>
+          <label htmlFor="address">Address:</label>
+          <input
+            type="text"
+            id="address"
+            name="address"
+            value={address}
+            onChange={handleInputChange}
+            required
+          />
+        </div>
+        <div>
+          <label htmlFor="balance">Balance:</label>
+          <input
+            type="number"
+            id="balance"
+            name="balance"
+            value={balance}
+            onChange={handleInputChange}
+          />
+        </div>
+        <div>
+          <label htmlFor="credit">Credit:</label>
           <input
             type="checkbox"
-            checked={newCustomer.credit}
-            onChange={(e) => setNewCustomer({...newCustomer, credit: e.target.checked})}
+            id="credit"
+            name="credit"
+            checked={credit}
+            onChange={handleInputChange}
           />
-          Credit
-        </label>
-        <button type="submit">Add Customer</button>
+        </div>
+        <div>
+          <label htmlFor="disciplinary">Disciplinary Status:</label>
+          <select
+            id="disciplinary"
+            name="disciplinary"
+            value={disciplinary}
+            onChange={handleInputChange}
+          >
+            <option value="Neutral">Neutral</option>
+            <option value="Good">Good</option>
+            <option value="Bad">Bad</option>
+          </select>
+        </div>
+        <button type="submit">Create Customer</button>
       </form>
-      <ul>
-        {customers.map((customer) => (
-          <li key={customer._id}>
-            {customer.name} - {customer.phoneNumber} - Balance: {customer.balance} - Credit: {customer.credit ? 'Yes' : 'No'}
-            <button onClick={() => updateCustomer(customer._id, { ...customer, balance: customer.balance + 100 })}>Add $100</button>
-            <button onClick={() => deleteCustomer(customer._id)}>Delete</button>
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }

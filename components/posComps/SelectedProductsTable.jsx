@@ -1,38 +1,57 @@
+// components/posComps/SelectedProductsTable.jsx
 import React from 'react';
 import {
-    Table,
+  Table,
   TableBody,
   TableCaption,
   TableCell,
   TableHead,
   TableHeader,
   TableRow,
-} from '../ui/table'
+} from '../ui/table';
+import { Trash } from 'lucide-react';
+import { Input } from '../ui/input';
 
-function SelectedProductsTable() {
+function SelectedProductsTable({ selectedProducts, handleProductRemove, handleQuantityChange }) {
   return (
-    <div>
-        <Table>
-          <TableCaption>A list of your recent invoices.</TableCaption>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-[100px]">Invoice</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead>Method</TableHead>
-              <TableHead className="text-right">Amount</TableHead>
+    <div >
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Product</TableHead>
+            <TableHead>Variant</TableHead>
+            <TableHead>Quantity</TableHead>
+            <TableHead>Unit Price</TableHead>
+            <TableHead>Total</TableHead>
+            <TableHead className="text-right">Remove</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {selectedProducts.map((variant) => (
+            <TableRow key={variant._id}>
+              <TableCell>{variant.product.name}</TableCell>
+              <TableCell>{variant.name}</TableCell>
+              <TableCell>
+                <Input
+                  type="number"
+                  value={variant.quantity}
+                  onChange={(e) => handleQuantityChange(variant._id, parseInt(e.target.value, 10))}
+                  className="w-16"
+                />
+              </TableCell>
+              <TableCell>{variant.unitPrice.toFixed(2)}</TableCell>
+              <TableCell>KES {(variant.unitPrice * variant.quantity).toFixed(2)}</TableCell>
+              <TableCell className="text-right">
+                <button onClick={() => handleProductRemove(variant._id)}>
+                  <Trash className="h-4 w-4" />
+                </button>
+              </TableCell>
             </TableRow>
-          </TableHeader>
-          <TableBody>
-            <TableRow>
-              <TableCell className="font-medium">INV001</TableCell>
-              <TableCell>Paid</TableCell>
-              <TableCell>Credit Card</TableCell>
-              <TableCell className="text-right">$250.00</TableCell>
-            </TableRow>
-          </TableBody>
-        </Table>
+          ))}
+        </TableBody>
+      </Table>
     </div>
-  )
+  );
 }
 
-export default SelectedProductsTable
+export default SelectedProductsTable;

@@ -6,7 +6,7 @@ export default function App({ Component, pageProps }) {
   return (
     <div className="flex">
       <Sidebar />
-      <div className="p-6 flex-1">
+      <div className="p-4 flex-1 bg-muted/50">
         <Component {...pageProps} />
       </div>
     </div>
