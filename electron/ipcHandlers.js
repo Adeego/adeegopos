@@ -47,6 +47,20 @@ function setupIpcHandlers(ipcMain, realm) {
         return customerService.getCustomerSales(realm, ...args).map(sale => sale.toJSON());
       case 'getSaleProducts':
         return saleService.getSaleProducts(realm, ...args).map(product => product.toJSON());
+      case 'getSalesByPaymentMethod':
+        return saleService.getSalesByPaymentMethod(realm, args[0], args[1]);
+      case 'getTotalSales':
+        return saleService.getTotalSales(realm, args[0], args[1]);
+      case 'getAverageTransactionValue':
+        return saleService.getAverageTransactionValue(realm, args[0], args[1]);
+      case 'getSalesByCategory':
+        return saleService.getSalesByCategory(realm, args[0], args[1]);
+      case 'getTopSellingItems':
+        return saleService.getTopSellingItems(realm, args[0], args[1], args[2]);
+      case 'getGrossProfitMargin':
+        return saleService.getGrossProfitMargin(realm, args[0], args[1]);
+      case 'getTotalSalesRevenueAndProfit':
+        return saleService.getTotalSalesRevenueAndProfit(realm, args[0], args[1])
       // Add other operations as needed
       default:
         throw new Error(`Unknown operation: ${operation}`);

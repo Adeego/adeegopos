@@ -1,7 +1,10 @@
 import React from 'react'
+import SalesReport from '@/components/reportComps/salesReport'
 
 export default function Report() {
   return (
-    <div>Report</div>
+    <div>
+      <SalesReport />
+    </div>
   )
 }
