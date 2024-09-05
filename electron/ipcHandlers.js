@@ -32,7 +32,7 @@ function setupIpcHandlers(ipcMain, realm) {
       case 'getAllProducts':
         return productService.getAllProducts(realm);
       case 'getSaleItemsByProductId':
-        return productService.getSaleItemsByProductId(realm, args[0]);
+        return productService.getSaleItemsByProductId(realm, args[0], args[1], args[2]);
       case 'getProductById':
         return productService.getProductById(realm, args[0]);
       case 'updateProduct':

@@ -17,7 +17,7 @@ import {
 import Link from 'next/link';
 import { FilePenLine, Trash2, SquarePlus } from 'lucide-react';
 
-export default function ViewProduct({ product, fetchSelectedProduct, saleItems }) {
+export default function ViewProduct({ product, fetchSelectedProduct, saleItems, fetchProductSales }) {
 
   return (
     <div className="flex flex-col lg:flex-row gap-8">

@@ -16,15 +16,21 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 
-export default function ProductSales({saleItems}) {
+export default function ProductSales({saleItems, onDateRangeChange}) {
     const [date, setDate] = useState({
-        from: new Date(),
-        to: addDays(new Date(), 20),
+        from: new Date(new Date().setDate(new Date().getDate() - 30)), // Default to last 30 days
+        to: new Date(),
     });
 
     function formatDate(date) {
-      return date.toDateString(); // You can use other methods like toLocaleString() if needed
+      return date.toDateString();
     }
+
+    useEffect(() => {
+        if (date.from && date.to) {
+            onDateRangeChange(date.from, date.to);
+        }
+    }, [date]);
 
     console.log(saleItems);
 

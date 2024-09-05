@@ -72,12 +72,18 @@ function searchProducts(realm, searchTerm) {
 }
 
 // Get all saleItems related to a specific prodcut
-function getSaleItemsByProductId(realm, productId) {
+function getSaleItemsByProductId(realm, productId, startDate, endDate) {
   try {
     const saleItems = realm.objects('SaleItem');
     
     // Filter SaleItems where the productVariant's product matches the given productId
-    const filteredSaleItems = saleItems.filtered('productVariant.product._id == $0', productId);
+    // and the createdAt date is within the specified range
+    const filteredSaleItems = saleItems.filtered(
+      'productVariant.product._id == $0 AND createdAt >= $1 AND createdAt <= $2', 
+      productId, 
+      new Date(startDate), 
+      new Date(endDate)
+    );
     
     return { 
       success: true, 

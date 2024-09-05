@@ -26,9 +26,9 @@ export default function ProductDetails() {
         }
     }
 
-    const fetchProductSales = async () => {
+    const fetchProductSales = async (startDate, endDate) => {
       try {
-        const result = await window.electronAPI.realmOperation('getSaleItemsByProductId', id);
+        const result = await window.electronAPI.realmOperation('getSaleItemsByProductId', id, startDate, endDate);
         if (result.success) {
           setSaleItems(result.saleItems);
         } else {
@@ -41,7 +41,12 @@ export default function ProductDetails() {
 
   return (
     <div className=''>
-        {product && <ViewProduct product={product} fetchSelectedProduct={fetchSelectedProduct} saleItems={saleItems} />}
+        {product && <ViewProduct 
+          product={product} 
+          fetchSelectedProduct={fetchSelectedProduct} 
+          saleItems={saleItems} 
+          fetchProductSales={fetchProductSales}
+        />}
     </div>
   )
 }
