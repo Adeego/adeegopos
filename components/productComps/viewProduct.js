@@ -109,7 +109,7 @@ export default function ViewProduct({ product, fetchSelectedProduct, saleItems, 
         </Card>
       </div>
       <div className="w-full lg:w-2/3">
-        <ProductSales saleItems={saleItems || []} />
+        <ProductSales saleItems={saleItems || []} onDateRangeChange={fetchProductSales} />
       </div>
     </div>
   );

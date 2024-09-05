@@ -16,7 +16,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 
-export default function ProductSales({saleItems, onDateRangeChange}) {
+export default function ProductSales({saleItems, onDateRangeChange = () => {}}) {
     const [date, setDate] = useState({
         from: new Date(new Date().setDate(new Date().getDate() - 30)), // Default to last 30 days
         to: new Date(),
@@ -30,7 +30,7 @@ export default function ProductSales({saleItems, onDateRangeChange}) {
         if (date.from && date.to) {
             onDateRangeChange(date.from, date.to);
         }
-    }, [date]);
+    }, [date, onDateRangeChange]);
 
     console.log(saleItems);
 

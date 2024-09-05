@@ -26,7 +26,7 @@ export default function ProductDetails() {
         }
     }
 
-    const fetchProductSales = async (startDate, endDate) => {
+    const fetchProductSales = async (startDate = new Date(new Date().setDate(new Date().getDate() - 30)), endDate = new Date()) => {
       try {
         const result = await window.electronAPI.realmOperation('getSaleItemsByProductId', id, startDate, endDate);
         if (result.success) {
