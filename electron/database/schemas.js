@@ -88,7 +88,22 @@ const SaleSchema = {
   },
   primaryKey: '_id',
 };
+const WholeSalerSchema = {
+  name: 'WholeSaler',
+  properties: {
+    _id: 'string',
+    name: 'string',
+    phone: 'string',
+    location: 'string',
+    subscription: 'string',
+    planManager: 'string',
+    // Add other necessary fields here
+  },
+  primaryKey: '_id',
+};
+
 module.exports = {
+  WholeSalerSchema,
   CustomerSchema,
   ProductSchema,
   ProductVariantSchema,
