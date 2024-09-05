@@ -129,4 +129,5 @@ module.exports = {
   SupplierSchema,
   SaleItemSchema,
   SaleSchema,
+  StaffSchema
 };
