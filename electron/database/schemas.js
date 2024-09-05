@@ -96,7 +96,10 @@ const WholeSalerSchema = {
     phone: 'string',
     location: 'string',
     subscription: 'string',
-    planManager: 'string',
+    plan: 'string',
+    Manager: 'string',
+    createdAt: 'date',
+    updatedAt: 'date',
     // Add other necessary fields here
   },
   primaryKey: '_id',
