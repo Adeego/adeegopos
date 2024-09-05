@@ -6,7 +6,7 @@ import { Separator } from '@/components/ui/separator'
 
 export default function SalesReport() {
   return (
-    <Card className="h-[580px] w-[600px]">
+    <Card className="h-[620px] w-[600px]">
       <CardHeader className="h-[50px] bg-gray-100">
         <CardTitle>Sales</CardTitle>
       </CardHeader>

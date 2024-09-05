@@ -16,8 +16,6 @@ export default function TotalSalesChart() {
     grossProfit: 0
   });
 
-  console.log(salesData)
-
   useEffect(() => {
     const fetchSalesData = async () => {
       try {
