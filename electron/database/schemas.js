@@ -72,6 +72,22 @@ const SaleItemSchema = {
   primaryKey: '_id',
 };
 
+const StaffSchema = {
+  name: 'Staff',
+  properties: {
+    _id: 'string',
+    name: 'string',
+    phone: 'string',
+    role: 'string',
+    salary: 'double',
+    passcode: 'string',
+    sales: 'Sale[]', // One-to-many relationship with Sales
+    createdAt: 'date',
+    updatedAt: 'date',
+  },
+  primaryKey: '_id',
+};
+
 const SaleSchema = {
   name: 'Sale',
   properties: {

@@ -1,6 +1,7 @@
 const customerService = require('./services/customerService')
 const productService = require('./services/productService')
 const wholeSalerService = require('./services/wholeSalerService')
+const staffService = require('./services/staffService')
 const saleService = require('./services/saleService')
 const supplierService = require('./services/supplierService')
 
@@ -70,6 +71,16 @@ function setupIpcHandlers(ipcMain, realm) {
         return wholeSalerService.getWholeSalerById(realm, args[0]);
       case 'getAllWholeSalers':
         return wholeSalerService.getAllWholeSalers(realm);
+      case 'createStaff':
+        return staffService.createStaff(realm, args[0]);
+      case 'updateStaff':
+        return staffService.updateStaff(realm, args[0]);
+      case 'deleteStaff':
+        return staffService.deleteStaff(realm, args[0]);
+      case 'getStaffById':
+        return staffService.getStaffById(realm, args[0]);
+      case 'getAllStaff':
+        return staffService.getAllStaff(realm);
       case 'getTotalSalesRevenueAndProfit':
         return saleService.getTotalSalesRevenueAndProfit(realm, args[0], args[1])
       // Add other operations as needed
