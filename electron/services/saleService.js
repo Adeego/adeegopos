@@ -262,6 +262,31 @@ function getTopCustomers(realm, startDate, endDate, limit = 10) {
   }
 }
 
+// Function to get all sales between two dates
+function getAllSalesBetweenDates(realm, startDate, endDate) {
+  try {
+    const sales = realm.objects('Sale')
+      .filtered('createdAt >= $0 && createdAt <= $1', new Date(startDate), new Date(endDate))
+      .sorted('createdAt', true);
+
+    const serializedSales = sales.map(sale => ({
+      _id: sale._id,
+      customerName: sale.customer.name,
+      totalAmount: sale.totalAmount,
+      totalItems: sale.totalItems,
+      paymentMethod: sale.paymentMethod,
+      type: sale.type,
+      paid: sale.paid,
+      createdAt: sale.createdAt,
+    }));
+
+    return { success: true, data: serializedSales };
+  } catch (error) {
+    console.error('Error getting sales between dates:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 module.exports = {
     createSale,
     getSaleProducts,
@@ -273,4 +298,5 @@ module.exports = {
     getGrossProfitMargin,
     getTotalSalesRevenueAndProfit,
     getTopCustomers,
+    getAllSalesBetweenDates,
 };
