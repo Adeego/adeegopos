@@ -87,6 +87,8 @@ function setupIpcHandlers(ipcMain, realm) {
         return saleService.getTopCustomers(realm, args[0], args[1], args[2]);
       case 'getAllSalesBetweenDates':
         return saleService.getAllSalesBetweenDates(realm, args[0], args[1]);
+      case 'getSaleById':
+        return saleService.getSaleById(realm, args[0]);
       // Add other operations as needed
       default:
         throw new Error(`Unknown operation: ${operation}`);

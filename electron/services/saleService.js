@@ -287,6 +287,41 @@ function getAllSalesBetweenDates(realm, startDate, endDate) {
   }
 }
 
+// Function to get a specific sale by ID
+function getSaleById(realm, saleId) {
+  try {
+    const sale = realm.objectForPrimaryKey('Sale', saleId);
+    if (!sale) {
+      return { success: false, error: 'Sale not found' };
+    }
+    
+    const serializedSale = {
+      _id: sale._id,
+      customerName: sale.customer.name,
+      totalAmount: sale.totalAmount,
+      totalItems: sale.totalItems,
+      paymentMethod: sale.paymentMethod,
+      type: sale.type,
+      paid: sale.paid,
+      createdAt: sale.createdAt,
+      items: sale.items.map(item => ({
+        _id: item._id,
+        productName: item.productVariant.product.name,
+        variantName: item.productVariant.name,
+        quantity: item.quantity,
+        unitPrice: item.unitPrice,
+        subtotal: item.subtotal,
+        discount: item.discount,
+      }))
+    };
+
+    return { success: true, data: serializedSale };
+  } catch (error) {
+    console.error('Error getting sale by ID:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 module.exports = {
     createSale,
     getSaleProducts,
@@ -299,4 +334,5 @@ module.exports = {
     getTotalSalesRevenueAndProfit,
     getTopCustomers,
     getAllSalesBetweenDates,
+    getSaleById,
 };
