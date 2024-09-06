@@ -2,20 +2,31 @@ import React, { useState, useEffect } from 'react';
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import Link from 'next/link';
 
 export default function SalesHistory() {
   const [sales, setSales] = useState([]);
+  const [filteredSales, setFilteredSales] = useState([]);
   const [startDate, setStartDate] = useState(() => {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     return thirtyDaysAgo.toISOString().split('T')[0];
   });
   const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [paymentMethod, setPaymentMethod] = useState('');
+  const [category, setCategory] = useState('');
+  const [minAmount, setMinAmount] = useState('');
+  const [maxAmount, setMaxAmount] = useState('');
 
   useEffect(() => {
     fetchSales();
   }, []);
+
+  useEffect(() => {
+    filterSales();
+  }, [sales, paymentMethod, category, minAmount, maxAmount]);
 
   const fetchSales = async () => {
     const result = await window.electronAPI.realmOperation('getAllSalesBetweenDates', startDate, endDate);
@@ -28,6 +39,28 @@ export default function SalesHistory() {
 
   const handleDateChange = (e, setter) => {
     setter(e.target.value);
+  };
+
+  const filterSales = () => {
+    let filtered = sales;
+
+    if (paymentMethod) {
+      filtered = filtered.filter(sale => sale.paymentMethod === paymentMethod);
+    }
+
+    if (category) {
+      filtered = filtered.filter(sale => sale.items.some(item => item.category === category));
+    }
+
+    if (minAmount) {
+      filtered = filtered.filter(sale => sale.totalAmount >= parseFloat(minAmount));
+    }
+
+    if (maxAmount) {
+      filtered = filtered.filter(sale => sale.totalAmount <= parseFloat(maxAmount));
+    }
+
+    setFilteredSales(filtered);
   };
 
   return (
@@ -47,6 +80,53 @@ export default function SalesHistory() {
           placeholder="End Date"
         />
         <Button onClick={fetchSales}>Fetch Sales</Button>
+        <Sheet>
+          <SheetTrigger asChild>
+            <Button variant="outline">Filters</Button>
+          </SheetTrigger>
+          <SheetContent>
+            <SheetHeader>
+              <SheetTitle>Filter Sales</SheetTitle>
+              <SheetDescription>Apply filters to the sales data</SheetDescription>
+            </SheetHeader>
+            <div className="grid gap-4 py-4">
+              <Select onValueChange={setPaymentMethod}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Payment Method" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All</SelectItem>
+                  <SelectItem value="CASH">Cash</SelectItem>
+                  <SelectItem value="CREDIT">Credit</SelectItem>
+                  <SelectItem value="MPESA">M-Pesa</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select onValueChange={setCategory}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All</SelectItem>
+                  <SelectItem value="Electronics">Electronics</SelectItem>
+                  <SelectItem value="Clothing">Clothing</SelectItem>
+                  <SelectItem value="Food">Food</SelectItem>
+                </SelectContent>
+              </Select>
+              <Input
+                type="number"
+                placeholder="Min Amount"
+                value={minAmount}
+                onChange={(e) => setMinAmount(e.target.value)}
+              />
+              <Input
+                type="number"
+                placeholder="Max Amount"
+                value={maxAmount}
+                onChange={(e) => setMaxAmount(e.target.value)}
+              />
+            </div>
+          </SheetContent>
+        </Sheet>
       </div>
       <Table>
         <TableCaption>A list of your recent sales.</TableCaption>
@@ -63,7 +143,7 @@ export default function SalesHistory() {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {sales.map((sale) => (
+          {filteredSales.map((sale) => (
             <TableRow key={sale._id}>
               <TableCell>{new Date(sale.createdAt).toLocaleDateString()}</TableCell>
               <TableCell>{sale.customerName}</TableCell>
