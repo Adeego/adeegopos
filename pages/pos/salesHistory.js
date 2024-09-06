@@ -95,23 +95,23 @@ export default function SalesHistory() {
                   <SelectValue placeholder="Payment Method" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All</SelectItem>
+                  <SelectItem value="ALL">All</SelectItem>
                   <SelectItem value="CASH">Cash</SelectItem>
                   <SelectItem value="CREDIT">Credit</SelectItem>
                   <SelectItem value="MPESA">M-Pesa</SelectItem>
                 </SelectContent>
               </Select>
-              <Select onValueChange={setCategory}>
+              {/* <Select onValueChange={setCategory}>
                 <SelectTrigger>
                   <SelectValue placeholder="Category" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All</SelectItem>
-                  <SelectItem value="Electronics">Electronics</SelectItem>
-                  <SelectItem value="Clothing">Clothing</SelectItem>
+                  <SelectItem value="ALL">All</SelectItem>
+                  <SelectItem value="DAIRY">Electronics</SelectItem>
+                  <SelectItem value="DRY FOODS">Clothing</SelectItem>
                   <SelectItem value="Food">Food</SelectItem>
                 </SelectContent>
-              </Select>
+              </Select> */}
               <Input
                 type="number"
                 placeholder="Min Amount"
