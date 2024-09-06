@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import Link from 'next/link';
 
 export default function SalesHistory() {
   const [sales, setSales] = useState([]);
@@ -58,6 +59,7 @@ export default function SalesHistory() {
             <TableHead>Payment Method</TableHead>
             <TableHead>Type</TableHead>
             <TableHead>Paid</TableHead>
+            <TableHead>Actions</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -70,6 +72,11 @@ export default function SalesHistory() {
               <TableCell>{sale.paymentMethod}</TableCell>
               <TableCell>{sale.type}</TableCell>
               <TableCell>{sale.paid ? 'Yes' : 'No'}</TableCell>
+              <TableCell>
+                <Link href={`/pos/${sale._id}`} passHref>
+                  <Button variant="outline" size="sm">View Details</Button>
+                </Link>
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>
