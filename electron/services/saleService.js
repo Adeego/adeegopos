@@ -232,6 +232,35 @@ function getTotalSalesRevenueAndProfit(realm, startDate, endDate) {
   }
 }
 
+// Function to get top customers for a given time period
+function getTopCustomers(realm, startDate, endDate, limit = 10) {
+  try {
+    const sales = realm.objects('Sale').filtered('createdAt >= $0 && createdAt <= $1', new Date(startDate), new Date(endDate));
+    const customerSales = {};
+
+    sales.forEach(sale => {
+      const customerId = sale.customer._id;
+      if (!customerSales[customerId]) {
+        customerSales[customerId] = { 
+          customerName: sale.customer.name, 
+          totalSales: 0,
+          totalAmount: 0
+        };
+      }
+      customerSales[customerId].totalSales++;
+      customerSales[customerId].totalAmount += sale.totalAmount;
+    });
+
+    const sortedCustomers = Object.values(customerSales)
+      .sort((a, b) => b.totalAmount - a.totalAmount)
+      .slice(0, limit);
+
+    return { success: true, data: sortedCustomers };
+  } catch (error) {
+    console.error('Error getting top customers:', error);
+    return { success: false, error: error.message };
+  }
+}
 
 module.exports = {
     createSale,

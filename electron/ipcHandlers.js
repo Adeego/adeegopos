@@ -82,7 +82,9 @@ function setupIpcHandlers(ipcMain, realm) {
       case 'getAllStaff':
         return staffService.getAllStaff(realm);
       case 'getTotalSalesRevenueAndProfit':
-        return saleService.getTotalSalesRevenueAndProfit(realm, args[0], args[1])
+        return saleService.getTotalSalesRevenueAndProfit(realm, args[0], args[1]);
+      case 'getTopCustomers':
+        return saleService.getTopCustomers(realm, args[0], args[1], args[2]);
       // Add other operations as needed
       default:
         throw new Error(`Unknown operation: ${operation}`);
