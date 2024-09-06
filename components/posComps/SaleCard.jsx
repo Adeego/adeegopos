@@ -16,6 +16,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Separator } from "@/components/ui/separator";
+import { Button } from '../ui/button';
+import Link from 'next/link';
 
 function SaleCard() {
   const [selectedProducts, setSelectedProducts] = useState([]);
@@ -159,9 +161,17 @@ function SaleCard() {
   return (
     <div className="h-screen">
       <Card className="h-full">
-        <CardHeader>
-          <CardTitle className="text-left">New Sale</CardTitle>
-          <CardDescription className="text-left">Fill all the required fields</CardDescription>
+        <CardHeader className="flex flex-row justify-between">
+          <div>
+            <CardTitle className="text-left">New Sale</CardTitle>
+            <CardDescription className="text-left">Fill all the required fields</CardDescription>
+          </div>
+          <div>
+            <Button >
+              <Link href={'pos/salesHistory'}>Sales History</Link>
+            </Button>
+          </div>
+          
         </CardHeader>
         <CardContent className="h-1/2">
           <div className="flex h-full">

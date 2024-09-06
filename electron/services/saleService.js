@@ -272,4 +272,5 @@ module.exports = {
     getTopSellingItems,
     getGrossProfitMargin,
     getTotalSalesRevenueAndProfit,
+    getTopCustomers,
 };
