@@ -72,22 +72,6 @@ const SaleItemSchema = {
   primaryKey: '_id',
 };
 
-const StaffSchema = {
-  name: 'Staff',
-  properties: {
-    _id: 'string',
-    name: 'string',
-    phone: 'string',
-    role: 'string',
-    salary: 'double',
-    passcode: 'string',
-    sales: 'Sale[]', // One-to-many relationship with Sales
-    createdAt: 'date',
-    updatedAt: 'date',
-  },
-  primaryKey: '_id',
-};
-
 const SaleSchema = {
   name: 'Sale',
   properties: {
@@ -104,6 +88,7 @@ const SaleSchema = {
   },
   primaryKey: '_id',
 };
+
 const WholeSalerSchema = {
   name: 'WholeSaler',
   properties: {
@@ -117,6 +102,22 @@ const WholeSalerSchema = {
     createdAt: 'date',
     updatedAt: 'date',
     // Add other necessary fields here
+  },
+  primaryKey: '_id',
+};
+
+const StaffSchema = {
+  name: 'Staff',
+  properties: {
+    _id: 'string',
+    name: 'string',
+    phone: 'string',
+    role: 'string',
+    salary: 'double',
+    passcode: 'string',
+    sales: 'Sale[]', // One-to-many relationship with Sales
+    createdAt: 'date',
+    updatedAt: 'date',
   },
   primaryKey: '_id',
 };
