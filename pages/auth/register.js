@@ -6,6 +6,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import useWsinfoStore from '@/stores/wsinfo';
+import { SubsPlan } from '@/components/subs-plan';
+import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 
 export default function Register() {
   const router = useRouter();
@@ -46,8 +48,6 @@ export default function Register() {
 
   const handleRegister = async () => {
     try {
-      const startDate = new Date().toISOString();
-      const endDate = new Date().toISOString();
       const wholesalerResult = await window.electronAPI.realmOperation('createWholeSaler', {
         ...wholesalerData,
         _id: new Date().toISOString(),
@@ -113,29 +113,20 @@ export default function Register() {
         <Button type="submit">Register</Button>
       </form>
 
-      <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Choose a Subscription Plan</DialogTitle>
-            <DialogDescription>
-              Select a plan that best suits your business needs.
-            </DialogDescription>
-          </DialogHeader>
-          <Select onValueChange={handlePlanSelect}>
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select a plan" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="basic">Basic Plan</SelectItem>
-              <SelectItem value="pro">Pro Plan</SelectItem>
-              <SelectItem value="enterprise">Enterprise Plan</SelectItem>
-            </SelectContent>
-          </Select>
-          <DialogFooter>
+      <Sheet open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+      <SheetContent side="bottom" className="max-w-4xl">
+          <SheetHeader>
+            <SheetTitle>Choose a Subscription Plan</SheetTitle>
+            <SheetDescription>
+              Select the plan that best fits your business needs.
+            </SheetDescription>
+          </SheetHeader>
+          <SubsPlan />
+          {/* <SheetFooter>
             <Button onClick={handleRegister}>Complete Registration</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+          </SheetFooter> */}
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
