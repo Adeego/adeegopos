@@ -1,33 +1,37 @@
 import "@/styles/globals.css";
 import Sidebar from "@/components/sidebar";
 import useStaffStore from "@/stores/staffStore";
+import useWsinfoStore from "@/stores/wsinfo";
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 
 export default function App({ Component, pageProps }) {
   const staff = useStaffStore((state) => state.staff);
+  const wsinfo = useWsinfoStore((state) => state.wsinfo);
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     const checkAuth = async () => {
-    if (staff._id === null && router.pathname !== '/auth/login') {
+      if (wsinfo._id === null && router.pathname !== '/auth/wsSignin') {
+        await router.replace('/auth/wsSignin');
+      } else if (staff._id === null && router.pathname !== '/auth/login' && router.pathname !== '/auth/wsSignin') {
         await router.replace('/auth/login');
-    } else if (staff._id !== null && router.pathname === '/auth/login') {
+      } else if (staff._id !== null && (router.pathname === '/auth/login' || router.pathname === '/auth/wsSignin')) {
         await router.replace('/');
-    }
+      }
       setIsLoading(false);
     };
 
     checkAuth();
-  }, [staff, router]);
+  }, [staff, wsinfo, router]);
 
   if (isLoading) {
     return <div>Loading...</div>; // You can replace this with a proper loading component
   }
 
-  if (!staff._id && router.pathname !== '/auth/login') {
-    return null; // Don't render anything if not authenticated and not on login page
+  if ((!wsinfo._id && router.pathname !== '/auth/wsSignin') || (!staff._id && router.pathname !== '/auth/login' && router.pathname !== '/auth/wsSignin')) {
+    return null; // Don't render anything if not authenticated and not on login or wsSignin page
   }
 
   return (
