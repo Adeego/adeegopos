@@ -6,11 +6,10 @@ const useStaffStore = create(
     (set) => ({
       staff: {
         _id: null,
-        name: '',
-        position: '',
-        email: '',
+        firstName: '',
+        lastName: '',
         phone: '',
-        hireDate: null,
+        role: '',
         salary: null,
         createdAt: null,
         updatedAt: null
@@ -20,11 +19,10 @@ const useStaffStore = create(
       deleteStaff: () => set({
         staff: {
           _id: null,
-          name: '',
-          position: '',
-          email: '',
+          firstName: '',
+          lastName: '',
           phone: '',
-          hireDate: null,
+          role: '',
           salary: null,
           createdAt: null,
           updatedAt: null
