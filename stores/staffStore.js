@@ -27,7 +27,11 @@ const useStaffStore = create(
           createdAt: null,
           updatedAt: null
         }
-      })
+      }),
+      isAuthenticated: () => {
+        const state = useStaffStore.getState();
+        return state.staff._id !== null;
+      }
     }),
     {
       name: 'staff-storage',

@@ -7,13 +7,17 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle } from "lucide-react"
+import useStaffStore from "@/stores/staffStore"
+import { useRouter } from 'next/router'
 
 export default function Login() {
   const [phoneNumber, setPhoneNumber] = useState('')
   const [passcode, setPasscode] = useState('')
   const [error, setError] = useState('')
+  const addStaff = useStaffStore((state) => state.addStaff)
+  const router = useRouter()
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
 
@@ -22,10 +26,18 @@ export default function Login() {
       return
     }
 
-    // Here you would typically call your authentication function
-    console.log('Logging in with:', { phoneNumber, passcode })
-    // For demonstration, we'll just show a success message
-    alert('Login successful!')
+    try {
+      const response = await window.electronAPI.send('sign-in-staff', phoneNumber, passcode)
+      if (response.success) {
+        addStaff(response.staff)
+        router.push('/')
+      } else {
+        setError(response.error || 'Invalid credentials')
+      }
+    } catch (error) {
+      setError('An error occurred during sign-in')
+      console.error('Sign-in error:', error)
+    }
   }
 
   return (

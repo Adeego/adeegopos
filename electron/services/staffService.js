@@ -59,10 +59,25 @@ function getAllStaff(realm) {
   }
 }
 
+function signInStaff(realm, phoneNumber, passcode) {
+  try {
+    const staff = realm.objects('Staff').filtered('phone == $0 AND passcode == $1', phoneNumber, passcode)[0];
+    if (staff) {
+      return { success: true, staff: staff.toJSON() };
+    } else {
+      return { success: false, error: 'Invalid credentials' };
+    }
+  } catch (error) {
+    console.error('Error signing in staff:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 module.exports = {
   createStaff,
   updateStaff,
   deleteStaff,
   getStaffById,
   getAllStaff,
+  signInStaff,
 };

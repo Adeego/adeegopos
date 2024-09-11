@@ -6,6 +6,10 @@ const saleService = require('./services/saleService')
 const supplierService = require('./services/supplierService')
 
 function setupIpcHandlers(ipcMain, realm) {
+  // Add this new IPC handler for staff sign-in
+  ipcMain.handle('sign-in-staff', async (event, phoneNumber, passcode) => {
+    return staffService.signInStaff(realm, phoneNumber, passcode);
+  });
     // Added new IPC handler for customer search
   ipcMain.handle('search-customers', async (event, name) => {
     return customerService.searchCustomers(realm, name);
