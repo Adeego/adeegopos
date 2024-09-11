@@ -4,7 +4,54 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { CalendarIcon } from "@radix-ui/react-icons";
+import { addDays, format } from "date-fns";
+import { cn } from "@/lib/utils";
 import Link from 'next/link';
+
+function DatePickerWithPresets({ date, setDate }) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          className={cn(
+            "w-[240px] justify-start text-left font-normal",
+            !date && "text-muted-foreground"
+          )}
+        >
+          <CalendarIcon className="mr-2 h-4 w-4" />
+          {date ? format(date, "PPP") : <span>Pick a date</span>}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="flex w-auto flex-col space-y-2 p-2"
+      >
+        <Select
+          onValueChange={(value) =>
+            setDate(addDays(new Date(), parseInt(value)))
+          }
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Select" />
+          </SelectTrigger>
+          <SelectContent position="popper">
+            <SelectItem value="0">Today</SelectItem>
+            <SelectItem value="1">Tomorrow</SelectItem>
+            <SelectItem value="3">In 3 days</SelectItem>
+            <SelectItem value="7">In a week</SelectItem>
+          </SelectContent>
+        </Select>
+        <div className="rounded-md border">
+          <Calendar mode="single" selected={date} onSelect={setDate} />
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 export default function SalesHistory() {
   const [sales, setSales] = useState([]);
@@ -12,9 +59,9 @@ export default function SalesHistory() {
   const [startDate, setStartDate] = useState(() => {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    return thirtyDaysAgo.toISOString().split('T')[0];
+    return thirtyDaysAgo;
   });
-  const [endDate, setEndDate] = useState(() => new Date().toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState(() => new Date());
   const [paymentMethod, setPaymentMethod] = useState('');
   const [category, setCategory] = useState('');
   const [minAmount, setMinAmount] = useState('');
@@ -29,16 +76,12 @@ export default function SalesHistory() {
   }, [sales, paymentMethod, category, minAmount, maxAmount]);
 
   const fetchSales = async () => {
-    const result = await window.electronAPI.realmOperation('getAllSalesBetweenDates', startDate, endDate);
+    const result = await window.electronAPI.realmOperation('getAllSalesBetweenDates', format(startDate, 'yyyy-MM-dd'), format(endDate, 'yyyy-MM-dd'));
     if (result.success) {
       setSales(result.data);
     } else {
       console.error('Failed to fetch sales');
     }
-  };
-
-  const handleDateChange = (e, setter) => {
-    setter(e.target.value);
   };
 
   const filterSales = () => {
@@ -67,18 +110,8 @@ export default function SalesHistory() {
     <div className="container mx-auto p-4">
       <h1 className="text-2xl font-bold mb-4">Sales History</h1>
       <div className="flex gap-4 mb-4">
-        <Input
-          type="date"
-          value={startDate}
-          onChange={(e) => handleDateChange(e, setStartDate)}
-          placeholder="Start Date"
-        />
-        <Input
-          type="date"
-          value={endDate}
-          onChange={(e) => handleDateChange(e, setEndDate)}
-          placeholder="End Date"
-        />
+        <DatePickerWithPresets date={startDate} setDate={setStartDate} />
+        <DatePickerWithPresets date={endDate} setDate={setEndDate} />
         <Button onClick={fetchSales}>Fetch Sales</Button>
         <Sheet>
           <SheetTrigger asChild>

@@ -1,5 +1,24 @@
 const migrationFunction = (oldRealm, newRealm) => {
-  if (oldRealm.schemaVersion < 7) {
+  if (oldRealm.schemaVersion < 8) {
+    // const oldObjects = oldRealm.objects('WholeSaler');
+    // const newObjects = newRealm.objects('WholeSaler');
+
+    // // Loop through all objects and migrate/update as needed
+    // for (let i = 0; i < oldObjects.length; i++) {
+    //   const oldObject = oldObjects[i];
+    //   const newObject = newObjects[i];
+
+    //   // Migrate existing properties
+    //   newObject._id = oldObject._id;
+    //   newObject.name = oldObject.name;
+    //   newObject.phone = oldObject.phone;
+    //   newObject.location = oldObject.location;
+    //   newObject.subscription = oldObject.subscription;
+    //   newObject.plan = oldObject.plan;
+    //   newObject.ends = oldObject.ends;
+    //   newObject.createdAt = oldObject.createdAt;
+    //   newObject.updatedAt = oldObject.updatedAt;
+    // }
     // Migration from initial schema (version 0) to version 1
     // const oldCustomers = oldRealm.objects('Customer');
     // const oldProducts = oldRealm.objects('Product');

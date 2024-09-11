@@ -96,12 +96,11 @@ const WholeSalerSchema = {
     name: 'string',
     phone: 'string',
     location: 'string',
-    subscription: 'string',
+    subscription: 'int',
     plan: 'string',
-    Manager: 'string',
+    ends: 'date',
     createdAt: 'date',
     updatedAt: 'date',
-    // Add other necessary fields here
   },
   primaryKey: '_id',
 };
@@ -110,7 +109,8 @@ const StaffSchema = {
   name: 'Staff',
   properties: {
     _id: 'string',
-    name: 'string',
+    firstName: 'string',
+    lastName: 'string',
     phone: 'string',
     role: 'string',
     salary: 'double',

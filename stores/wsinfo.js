@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 
 const useWsinfoStore = create(
   persist(
@@ -11,15 +11,17 @@ const useWsinfoStore = create(
         location: '',
         subscription: '',
         plan: '',
-        Manager: ''
+        ends: null,
+        createdAt: null,
+        updatedAt: null
       },
       addWsinfo: (wsinfoData) => set({ wsinfo: wsinfoData }),
       updateWsinfo: (updatedData) => set((state) => ({ wsinfo: { ...state.wsinfo, ...updatedData } })),
-      deleteWsinfo: () => set({ wsinfo: { _id: null, name: '', phone: '', location: '', subscription: '', plan: '', Manager: '' } })
+      deleteWsinfo: () => set({ wsinfo: { _id: null, name: '', phone: '', location: '', subscription: '', plan: '', ends: null, createdAt: null, updatedAt: null } })
     }),
     {
       name: 'wsinfo-storage',
-      getStorage: () => localStorage,
+      storage: createJSONStorage(() => localStorage),
     }
   )
 );

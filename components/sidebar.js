@@ -18,6 +18,8 @@ import {
   ShoppingCart,
   UsersRound,
   ChevronRight,
+  LogIn,
+  BriefcaseBusiness,
 } from "lucide-react";
 
 // Note: You'll need to implement or import these UI components
@@ -54,6 +56,12 @@ const links = [
     pageLink: "/auth/register",
   },
   {
+    label: "Staff",
+    icon: <BriefcaseBusiness className="h-[18px] w-[18px]" strokeWidth={2} />,
+    pageLink: "/staff",
+  },
+  //<BriefcaseBusiness />
+  {
     label: "Products",
     icon: <ShoppingBag className="h-[18px] w-[18px]" strokeWidth={2} />,
     pageLink: "/product",
@@ -82,6 +90,11 @@ const links = [
     label: "Report",
     icon: <ChartLine className="h-[18px] w-[18px]" strokeWidth={2} />,
     pageLink: "/report",
+  },
+  {
+    label: "Signup",
+    icon: <LogIn className="h-[18px] w-[18px]" strokeWidth={2} />,
+    pageLink: "/auth/subsPlan",
   },
 ];
 
