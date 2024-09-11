@@ -29,7 +29,7 @@ export default function Login() {
   }
 
   return (
-    <Card className="w-[350px] mx-auto">
+    <Card className="w-[350px] mx-auto mt-36">
       <CardHeader>
         <CardTitle>Login</CardTitle>
         <CardDescription>Enter your phone number and passcode to login.</CardDescription>

@@ -1,4 +1,3 @@
-// import Realm from "realm";
 import "@/styles/globals.css";
 import Sidebar from "@/components/sidebar";
 

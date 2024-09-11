@@ -94,7 +94,7 @@ const links = [
   {
     label: "Signup",
     icon: <LogIn className="h-[18px] w-[18px]" strokeWidth={2} />,
-    pageLink: "/auth/subsPlan",
+    pageLink: "/auth/login",
   },
 ];
 
