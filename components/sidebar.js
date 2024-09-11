@@ -20,6 +20,7 @@ import {
   ChevronRight,
   LogIn,
   BriefcaseBusiness,
+  Settings,
 } from "lucide-react";
 
 // Note: You'll need to implement or import these UI components
@@ -113,97 +114,118 @@ const Sidebar = () => {
   return (
     <>
       <div
-        className={` ${
+        className={`${
           isSideBarEnlarged ? "lg:w-44 xl:w-52" : "w-14"
-        }  h-screen b-black shrink-0 relative z-20 hidden md:flex transition-all duration-200`}
+        } h-screen b-black shrink-0 relative z-20 hidden md:flex transition-all duration-200`}
       >
         <div
           className={`${
             isSideBarEnlarged ? "lg:w-44 xl:w-52" : "w-14"
-          } md:flex md:flex-col items-center lg:items-start border-r border-neutral-200  bg-white h-screen fixed  top-0 left-0 transition-all duration-200`}
+          } md:flex md:flex-col items-center lg:items-start border-r border-neutral-200 bg-white h-screen fixed top-0 left-0 transition-all duration-200 flex flex-col justify-between`}
         >
-          <div className="h-14 flex items-center justify-center lg:justify-start border-b w-full lg:p-3 lg:flex gap-2">
-            <div className="rounded-[0.3rem] overflow-hidden h-9 aspect-square shrink-0">
-              {/* Add your logo here */}
+          <div className="flex flex-col w-full">
+            <div className="h-14 flex items-center justify-center lg:justify-start border-b w-full lg:p-3 lg:flex gap-2">
+              <div className="rounded-[0.3rem] overflow-hidden h-9 aspect-square shrink-0">
+                {/* Add your logo here */}
+              </div>
+              {isSideBarEnlarged && (
+                <p className="font-bold text-emerald-600 hidden lg:block">Adeego</p>
+              )}
             </div>
-            {isSideBarEnlarged && (
-              <p className="font-bold text-emerald-600 hidden lg:block">Adeego</p>
-            )}
-          </div>
-          <div
-            className={`w-full  hidden lg:flex md:flex ${
+            <div className={`w-full hidden lg:flex md:flex ${
               isSideBarEnlarged ? "px-3 justify-start" : "px-0 justify-center"
-            } my-4`}
-          >
-            <button
-              onClick={toggleSideBarState}
-              className="grid place-items-center h-10 aspect-square border border-neutral-200 rounded-[0.4rem] hover:border-neutral-500"
-            >
-              <PanelLeft
-                className="select-none pointer-events-none"
-                size={16}
-              />
-            </button>
-          </div>
-          <div
-            className={`flex flex-col gap-4 md:gap-2 w-full  items-left ${
+            } my-4`}>
+              <button
+                onClick={toggleSideBarState}
+                className="grid place-items-center h-10 aspect-square border border-neutral-200 rounded-[0.4rem] hover:border-neutral-500"
+              >
+                <PanelLeft
+                  className="select-none pointer-events-none"
+                  size={16}
+                />
+              </button>
+            </div>
+            <div className={`flex flex-col gap-4 md:gap-2 w-full items-left ${
               isSideBarEnlarged ? "px-1 lg:px-3" : "pl-3"
-            } mt-4 lg:mt-0 transition-all duration-200`}
-          >
-            {links.map((link, i) => {
-              return (
-                <TooltipProvider delayDuration={100} key={i}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Link
-                        className={`${
-                          pathname === link.pageLink
-                            ? "bg-neutral-200"
-                            : "bg-white"
-                        } ${
-                          isSideBarEnlarged ? "" : "max-w-fit w-10 lg:!w-12"
-                        } !cursor-pointer rounded-[0.4rem] m-aut w-full hover:bg-neutral-200/50`}
-                        href={link.pageLink}
-                      >
-                        <div
-                          className={` h-10 md:h-9 shrink-0 aspect-square xl:aspect-auto grid place-items-center lg:flex items-center gap-2 lg:gap-3   px-2 rounded-[0.3rem] transition group/link`}
+            } mt-4 lg:mt-0 transition-all duration-200`}>
+              {links.map((link, i) => {
+                return (
+                  <TooltipProvider delayDuration={100} key={i}>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Link
+                          className={`${
+                            pathname === link.pageLink
+                              ? "bg-neutral-200"
+                              : "bg-white"
+                          } ${
+                            isSideBarEnlarged ? "" : "max-w-fit w-10 lg:!w-12"
+                          } !cursor-pointer rounded-[0.4rem] m-aut w-full hover:bg-neutral-200/50`}
+                          href={link.pageLink}
                         >
                           <div
-                            className={`${
-                              pathname === link.pageLink
-                                ? "text-black"
-                                : "text-neutral-500 lg:text-neutral-500"
-                            } group-hover/link:text-neutral-700 transition`}
+                            className={` h-10 md:h-9 shrink-0 aspect-square xl:aspect-auto grid place-items-center lg:flex items-center gap-2 lg:gap-3   px-2 rounded-[0.3rem] transition group/link`}
                           >
-                            {link.icon}
-                          </div>
-                          {isSideBarEnlarged && (
                             <div
                               className={`${
                                 pathname === link.pageLink
                                   ? "text-black"
-                                  : "text-neutral-400 lg:text-neutral-500"
-                              } group-hover/link:text-neutral-700 transition hidden lg:block text-sm`}
+                                  : "text-neutral-500 lg:text-neutral-500"
+                              } group-hover/link:text-neutral-700 transition`}
                             >
-                              {link.label}
+                              {link.icon}
                             </div>
-                          )}
-                        </div>
-                      </Link>
-                    </TooltipTrigger>
-                    <TooltipContent
-                      side="right"
-                      className={`bg-white rounded-[0.3rem] text-xs ${
-                        isSideBarEnlarged ? "lg:hidden" : ""
-                      } `}
-                    >
-                      <p>{link.label}</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              );
-            })}
+                            {isSideBarEnlarged && (
+                              <div
+                                className={`${
+                                  pathname === link.pageLink
+                                    ? "text-black"
+                                    : "text-neutral-400 lg:text-neutral-500"
+                                } group-hover/link:text-neutral-700 transition hidden lg:block text-sm`}
+                              >
+                                {link.label}
+                              </div>
+                            )}
+                          </div>
+                        </Link>
+                      </TooltipTrigger>
+                      <TooltipContent
+                        side="right"
+                        className={`bg-white rounded-[0.3rem] text-xs ${
+                          isSideBarEnlarged ? "lg:hidden" : ""
+                        } `}
+                      >
+                        <p>{link.label}</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                );
+              })}
+            </div>
           </div>
+          
+          <div 
+  className={`flex flex-col gap-4 md:gap-2 w-full items-center ${
+    isSideBarEnlarged ? "px-1 lg:px-3" : "pl-3"
+  } mb-4 transition-all duration-200 justify-center`}
+>
+  <Link href={'/auth/logout'} className={`${
+      pathname === ('/auth/logout')
+        ? "bg-neutral-200"
+        : "bg-white"
+    } ${
+      isSideBarEnlarged ? "" : "max-w-fit w-10 lg:!w-12"
+    } !cursor-pointer rounded-[0.4rem] flex flex-row items-center w-full hover:bg-neutral-200/50`} >
+    <div className="rounded-[0.3rem] overflow-hidden h-9 aspect-square shrink-0 flex items-center justify-center">
+      <Settings className="h-[18px] w-[18px]" strokeWidth={2} />
+    </div>
+    {isSideBarEnlarged && (
+      <p className="text-sm text-neutral-500 hidden lg:block">Settings</p>
+    )}
+  </Link>
+</div>
+
+
         </div>
       </div>
     </>
