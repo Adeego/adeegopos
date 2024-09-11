@@ -1,11 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { MoreHorizontal, Search, ChevronDown, ChevronUp } from "lucide-react";
+import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import AddStaff from '@/components/staff/addStaff';
 import AddStaff from '@/components/staff/addStaff';
 
 export default function Staff() {
@@ -58,7 +58,7 @@ export default function Staff() {
               Manage your staff members.
             </CardDescription>
           </div>
-          
+          <AddStaff fetchStaff={fetchStaff} />
         </div>
       </CardHeader>
       <CardContent>
