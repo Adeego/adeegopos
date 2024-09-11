@@ -20,14 +20,14 @@ export default function Login() {
   const handleSubmit = async (e) => {
     e.preventDefault()
     setError('')
-
+  
     if (!phoneNumber || !passcode) {
       setError('Please enter both phone number and passcode.')
       return
     }
-
+  
     try {
-      const response = await window.electronAPI.send('sign-in-staff', phoneNumber, passcode)
+      const response = await window.electronAPI.signInStaff(phoneNumber, passcode)
       if (response.success) {
         addStaff(response.staff)
         router.push('/')
@@ -38,7 +38,7 @@ export default function Login() {
       setError('An error occurred during sign-in')
       console.error('Sign-in error:', error)
     }
-  }
+  }  
 
   return (
     <Card className="w-[350px] mx-auto mt-36">

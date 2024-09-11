@@ -17,7 +17,7 @@ export default function ProductTable() {
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [searchTerm, setSearchTerm] = useState('');
-  const [expandedProducts, setExpandedProducts] = useState({});
+  // const [expandedProducts, setExpandedProducts] = useState({});
 
   useEffect(() => {
     fetchProducts();
@@ -45,12 +45,12 @@ export default function ProductTable() {
     }
   };
 
-  const toggleProductExpansion = (productId) => {
-    setExpandedProducts(prev => ({
-      ...prev,
-      [productId]: !prev[productId]
-    }));
-  };
+  // const toggleProductExpansion = (productId) => {
+  //   setExpandedProducts(prev => ({
+  //     ...prev,
+  //     [productId]: !prev[productId]
+  //   }));
+  // };
 
   const indexOfLastProduct = currentPage * rowsPerPage;
   const indexOfFirstProduct = indexOfLastProduct - rowsPerPage;

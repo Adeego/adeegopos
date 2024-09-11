@@ -20,12 +20,12 @@ export default function Staff() {
 
   useEffect(() => {
     const filtered = staff.filter(s =>
-      s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.phone.includes(searchTerm)
+      (s.name && s.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (s.phone && s.phone.includes(searchTerm))
     );
     setFilteredStaff(filtered);
     setCurrentPage(1);
-  }, [staff, searchTerm]);
+  }, [staff, searchTerm]);  
 
   const fetchStaff = async () => {
     try {
@@ -57,7 +57,7 @@ export default function Staff() {
               Manage your staff members.
             </CardDescription>
           </div>
-          {/* Add staff button can be added here */}
+          
         </div>
       </CardHeader>
       <CardContent>
@@ -87,19 +87,19 @@ export default function Staff() {
           <Table>
             <TableHeader>
               <TableRow className="text-base">
-                <TableHead className="text-left">Name</TableHead>
+                <TableHead className="text-left">Full Name</TableHead>
                 <TableHead className="text-left">Phone</TableHead>
                 <TableHead className="hidden md:table-cell text-left">Role</TableHead>
-                <TableHead className="hidden md:table-cell text-left">Status</TableHead>
+                <TableHead className="hidden md:table-cell text-left">Salary</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {currentStaff.map((s) => (
                 <TableRow key={s._id} className="text-base">
-                  <TableCell className="text-left font-medium">{s.name}</TableCell>
+                  <TableCell className="text-left font-medium">{s.firstName} {s.lastName}</TableCell>
                   <TableCell className="text-left">{s.phone}</TableCell>
                   <TableCell className="hidden md:table-cell text-left">{s.role}</TableCell>
-                  <TableCell className="hidden md:table-cell text-left">{s.status}</TableCell>
+                  <TableCell className="hidden md:table-cell text-left">{s.salary}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

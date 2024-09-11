@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
     },
 
     // Added this new method for Realm operations
+    signInStaff: (phoneNumber, passcode) => ipcRenderer.invoke('sign-in-staff', phoneNumber, passcode),
     searchCustomers: (name) => ipcRenderer.invoke('search-customers', name),
     searchProducts: (searchTerm) => ipcRenderer.invoke('search-products', searchTerm),
     realmOperation: (operation, ...args) => ipcRenderer.invoke('realm-operation', operation, ...args)
