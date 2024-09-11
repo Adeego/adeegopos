@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import AddStaff from '@/components/staff/addStaff';
+import { useRouter } from 'next/router';
 
 export default function Staff() {
   const [staff, setStaff] = useState([]);
@@ -13,6 +14,7 @@ export default function Staff() {
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [searchTerm, setSearchTerm] = useState('');
+  const router = useRouter();
 
   useEffect(() => {
     fetchStaff();
@@ -100,6 +102,9 @@ export default function Staff() {
                   <TableCell className="text-left">{s.phone}</TableCell>
                   <TableCell className="hidden md:table-cell text-left">{s.role}</TableCell>
                   <TableCell className="hidden md:table-cell text-left">KES {s.salary}</TableCell>
+                  <TableCell className="text-right">
+                    <Button onClick={() => router.push(`/staff/${s._id}`)}>View</Button>
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>
