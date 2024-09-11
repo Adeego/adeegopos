@@ -6,7 +6,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import AddStaff from '@/components/staff/addStaff';
-import AddStaff from '@/components/staff/addStaff';
 
 export default function Staff() {
   const [staff, setStaff] = useState([]);
@@ -100,7 +99,7 @@ export default function Staff() {
                   <TableCell className="text-left font-medium">{s.firstName} {s.lastName}</TableCell>
                   <TableCell className="text-left">{s.phone}</TableCell>
                   <TableCell className="hidden md:table-cell text-left">{s.role}</TableCell>
-                  <TableCell className="hidden md:table-cell text-left">{s.salary}</TableCell>
+                  <TableCell className="hidden md:table-cell text-left">KES {s.salary}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
