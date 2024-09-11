@@ -5,11 +5,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { toast } from 'react-hot-toast';
+import { useToast } from '@/components/ui/use-toast';
 
 export default function StaffDetail() {
   const router = useRouter();
   const { id } = router.query;
+  const {toast} = useToast();
   const [staff, setStaff] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
 
@@ -26,11 +27,16 @@ export default function StaffDetail() {
         setStaff(result.staff);
       } else {
         console.error('Failed to fetch staff details:', result.error);
-        toast.error('Failed to fetch staff details');
+        toast.error('');
+        toast({
+          description: 'Failed to fetch staff details'
+        });
       }
     } catch (error) {
       console.error('Error fetching staff details:', error);
-      toast.error('Error fetching staff details');
+      toast({
+        description: 'Error fetching staff details'
+      });
     }
   };
 
@@ -45,17 +51,27 @@ export default function StaffDetail() {
 
   const handleSave = async () => {
     try {
-      const result = await window.electronAPI.realmOperation('updateStaff', staff);
+      const result = await window.electronAPI.realmOperation('updateStaff', {
+        ...staff,
+        salary: parseFloat(staff.salary),
+        updatedAt: new Date().toISOString(),
+      });
       if (result.success) {
         setIsEditing(false);
-        toast.success('Staff details updated successfully');
+        toast({
+          description: 'Staff details updated successfully'
+        });
       } else {
         console.error('Failed to update staff:', result.error);
-        toast.error('Failed to update staff details');
+        toast({
+          description: 'Failed to update staff details'
+        });
       }
     } catch (error) {
       console.error('Error updating staff:', error);
-      toast.error('Error updating staff details');
+      toast({
+        description: 'Error updating staff details'
+      });
     }
   };
 
@@ -64,15 +80,21 @@ export default function StaffDetail() {
       try {
         const result = await window.electronAPI.realmOperation('deleteStaff', id);
         if (result.success) {
-          toast.success('Staff member deleted successfully');
+          toast({
+            description: 'Staff member deleted successfully'
+          });
           router.push('/staff');
         } else {
           console.error('Failed to delete staff:', result.error);
-          toast.error('Failed to delete staff member');
+          toast({
+            description: 'Failed to delete staff member'
+          });
         }
       } catch (error) {
         console.error('Error deleting staff:', error);
-        toast.error('Error deleting staff member');
+        toast({
+          description: 'Error deleting staff member', error
+        });
       }
     }
   };
@@ -113,10 +135,14 @@ export default function StaffDetail() {
                       <SelectValue placeholder="Select a role" />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="Admin">Admin</SelectItem>
                       <SelectItem value="Manager">Manager</SelectItem>
                       <SelectItem value="Cashier">Cashier</SelectItem>
-                      <SelectItem value="Sales Associate">Sales Associate</SelectItem>
-                      <SelectItem value="Stock Clerk">Stock Clerk</SelectItem>
+                      <SelectItem value="Accountant">Accountant</SelectItem>
+                      <SelectItem value="Senior">Senior</SelectItem>
+                      <SelectItem value="Junior">Junior</SelectItem>
+                      <SelectItem value="Delivery">Delivery</SelectItem>
+                      <SelectItem value="Hand Man">Hand Man</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

@@ -26,7 +26,7 @@ export default function Register() {
     firstName: '',
     lastName: '',
     phone: '',
-    role: 'admin',
+    role: 'Admin',
     passcode: ''
   });
   const addWsinfo = useWsinfoStore((state) => state.addWsinfo);
