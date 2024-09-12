@@ -1,3 +1,4 @@
+const { net } = require('electron');
 const customerService = require('./services/customerService')
 const productService = require('./services/productService')
 const wholeSalerService = require('./services/wholeSalerService')
@@ -5,7 +6,26 @@ const staffService = require('./services/staffService')
 const saleService = require('./services/saleService')
 const supplierService = require('./services/supplierService')
 
+function checkNetworkConnection() {
+  return new Promise((resolve) => {
+    const request = net.request('https://www.google.com');
+    request.on('response', () => {
+      resolve(true);
+    });
+    request.on('error', () => {
+      resolve(false);
+    });
+    request.end();
+  });
+}
+
 function setupIpcHandlers(ipcMain, realm) {
+  ipcMain.handle('get-online-status', async () => {
+    const result = await checkNetworkConnection();
+    console.log(result)
+    return result
+  });
+
   // Add this new IPC handler for staff sign-in
   ipcMain.handle('sign-in-staff', async (event, phoneNumber, passcode) => {
     return staffService.signInStaff(realm, phoneNumber, passcode);

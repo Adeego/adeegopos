@@ -177,8 +177,8 @@ export default function StaffDetail() {
           <div className="w-full flex justify-between">
             {isEditing ? (
               <>
-                <Button onClick={handleSave}>Save</Button>
                 <Button variant="outline" onClick={() => setIsEditing(false)}>Cancel</Button>
+                <Button onClick={handleSave}>Save</Button>
               </>
             ) : (
               <>

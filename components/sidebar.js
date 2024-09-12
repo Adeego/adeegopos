@@ -2,6 +2,7 @@ import React, { useState } from "react";
 // import { Link, useLocation } from "react-router-dom";
 import Link from "next/link";
 import { usePathname } from 'next/navigation'
+import WsDropdownMenu from "./wholesalerComps/wsDropdownMenu";
 
 // Icons
 import {
@@ -54,7 +55,7 @@ const links = [
   {
     label: "Home",
     icon: <Home className="h-[18px] w-[18px]" strokeWidth={2} />,
-    pageLink: "/auth/register",
+    pageLink: "/adeegoPos/termsConditions",
   },
   {
     label: "Staff",
@@ -116,12 +117,12 @@ const Sidebar = () => {
       <div
         className={`${
           isSideBarEnlarged ? "lg:w-44 xl:w-52" : "w-14"
-        } h-screen b-black shrink-0 relative z-20 hidden md:flex transition-all duration-200`}
+        } h-screen b-black shrink-0 relative z-20 hidden md:flex transition-all duration-100`}
       >
         <div
           className={`${
             isSideBarEnlarged ? "lg:w-44 xl:w-52" : "w-14"
-          } md:flex md:flex-col items-center lg:items-start border-r border-neutral-200 bg-white h-screen fixed top-0 left-0 transition-all duration-200 flex flex-col justify-between`}
+          } md:flex md:flex-col items-center lg:items-start border-r border-neutral-200 bg-white h-screen fixed top-0 left-0 transition-all duration-100 flex flex-col justify-between`}
         >
           <div className="flex flex-col w-full">
             <div className="h-14 flex items-center justify-center lg:justify-start border-b w-full lg:p-3 lg:flex gap-2">
@@ -147,7 +148,7 @@ const Sidebar = () => {
             </div>
             <div className={`flex flex-col gap-4 md:gap-2 w-full items-left ${
               isSideBarEnlarged ? "px-1 lg:px-3" : "pl-3"
-            } mt-4 lg:mt-0 transition-all duration-200`}>
+            } mt-4 lg:mt-0 transition-all duration-100`}>
               {links.map((link, i) => {
                 return (
                   <TooltipProvider delayDuration={100} key={i}>
@@ -205,27 +206,15 @@ const Sidebar = () => {
           </div>
           
           <div 
-  className={`flex flex-col gap-4 md:gap-2 w-full items-center ${
-    isSideBarEnlarged ? "px-1 lg:px-3" : "pl-3"
-  } mb-4 transition-all duration-200 justify-center`}
->
-  <Link href={'/auth/logout'} className={`${
-      pathname === ('/auth/logout')
-        ? "bg-neutral-200"
-        : "bg-white"
-    } ${
-      isSideBarEnlarged ? "" : "max-w-fit w-10 lg:!w-12"
-    } !cursor-pointer rounded-[0.4rem] flex flex-row items-center w-full hover:bg-neutral-200/50`} >
-    <div className="rounded-[0.3rem] overflow-hidden h-9 aspect-square shrink-0 flex items-center justify-center">
-      <Settings className="h-[18px] w-[18px]" strokeWidth={2} />
-    </div>
-    {isSideBarEnlarged && (
-      <p className="text-sm text-neutral-500 hidden lg:block">Settings</p>
-    )}
-  </Link>
-</div>
-
-
+            className={`flex flex-col gap-4 md:gap-2 w-full items-center ${
+              isSideBarEnlarged ? "px-1 lg:px-3" : "pl-3"
+            } mb-4 transition-all duration-100 justify-center`}
+          >
+            <WsDropdownMenu 
+              isSideBarEnlarged={isSideBarEnlarged} 
+              icon={<Settings className="h-[18px] w-[18px]" strokeWidth={2} />}
+            />
+          </div>
         </div>
       </div>
     </>

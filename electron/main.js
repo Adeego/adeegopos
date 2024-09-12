@@ -1,4 +1,4 @@
-const { app, BrowserWindow, protocol, ipcMain } = require("electron");
+const { app, BrowserWindow, protocol, ipcMain, net } = require("electron");
 const path = require("path");
 const { initializeRealm } = require('./database/realmConfig')
 const setupIpcHandlers = require('./ipcHandlers');
@@ -39,13 +39,38 @@ const createWindow = () => {
     mainWindow.webContents.on("did-fail-load", () => {
       mainWindow.webContents.reloadIgnoringCache();
     });
+    checkOnlineStatus();
   }  
+}
+
+function checkNetworkConnection() {
+  return new Promise((resolve) => {
+    const request = net.request('https://www.google.com');
+    request.on('response', () => {
+      resolve(true);
+    });
+    request.on('error', () => {
+      resolve(false);
+    });
+    request.end();
+  });
+}
+
+async function checkOnlineStatus() {
+  const online = await checkNetworkConnection();
+  mainWindow.webContents.send('online-status-changed', online);
 }
 
 app.on("ready", async () => {
   const realm = await initializeRealm();
   setupIpcHandlers(ipcMain, realm);
   createWindow();
+
+  setInterval(checkOnlineStatus, 20000);
+
+  // Add these lines to check status on network change
+  require('electron').powerMonitor.on('suspend', checkOnlineStatus);
+  require('electron').powerMonitor.on('resume', checkOnlineStatus);
 });
 
 app.on("window-all-closed", () => {

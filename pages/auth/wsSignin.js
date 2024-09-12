@@ -12,10 +12,16 @@ export default function WsSignin() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     // Here you would typically make an API call to verify the workspace info
+    const result = await window.electronAPI.realmOperation('getAllWholeSalers');
+    if (result.success && result.wholeSalers.length > 0) {
+      addWsinfo(result.wholeSalers[0]); // Store the first wholesaler
+      router.push('/');
+    } else {
+      console.log(result.error || 'Invalid credentials');
+    }
     // For now, we'll just add it to the store
-    addWsinfo({ name, phone, location });
     router.push('/');
-  };
+  };  
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-gray-100">

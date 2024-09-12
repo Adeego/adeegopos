@@ -4,29 +4,76 @@ import useStaffStore from "@/stores/staffStore";
 import useWsinfoStore from "@/stores/wsinfo";
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
+import { useOnlineStatus } from "@/components/adeegoPos/useOnlineStatus";
+import { Badge } from "@/components/ui/badge";
+import { Wifi, WifiOff } from "lucide-react";
 
 export default function App({ Component, pageProps }) {
   const staff = useStaffStore((state) => state.staff);
   const wsinfo = useWsinfoStore((state) => state.wsinfo);
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
+  const [isStaffLoaded, setIsStaffLoaded] = useState(false);
+  const [isWsinfoLoaded, setIsWsinfoLoaded] = useState(false);
+  const [isOnline, setIsOnline] = useState(false);
+
+  useEffect(() => {
+    let removeListener; // Track the listener so that it can be removed
+  
+    if (typeof window !== "undefined" && window.electronAPI) {
+      // Initial check
+      window.electronAPI.getOnlineStatus().then((status) => {
+        console.log("Initial online status:", status);
+        setIsOnline(status);
+      });
+  
+      // Listen for changes
+      removeListener = window.electronAPI.onOnlineStatusChanged((status) => {
+        console.log("Online status changed:", status);
+        setIsOnline(status);
+      });
+    }
+  
+    // Cleanup: Unsubscribe from the listener when the component is unmounted
+    return () => {
+      if (removeListener) {
+        removeListener();
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    if (staff._id !== undefined) {
+      setIsStaffLoaded(true);
+    }
+  }, [staff]);
+
+  useEffect(() => {
+    if (wsinfo._id !== undefined) {
+      setIsWsinfoLoaded(true);
+    }
+  }, [wsinfo]);
 
   useEffect(() => {
     const checkAuth = async () => {
       if (wsinfo._id === null && router.pathname !== '/auth/wsSignin') {
         await router.replace('/auth/wsSignin');
-      } else if (staff._id === null && router.pathname !== '/auth/login' && router.pathname !== '/auth/wsSignin') {
-        await router.replace('/auth/login');
-      } else if (staff._id !== null && (router.pathname === '/auth/login' || router.pathname === '/auth/wsSignin')) {
-        await router.replace('/');
+      } else if (wsinfo._id !== null && (router.pathname === '/auth/login' || router.pathname === '/auth/wsSignin')) {
+        if (staff._id === null && router.pathname !== '/auth/login' && router.pathname !== '/auth/wsSignin') {
+          await router.replace('/auth/login');
+        } else if (staff._id !== null && (router.pathname === '/auth/login' || router.pathname === '/auth/wsSignin')) {
+          await router.replace('/');
+        }
       }
       setIsLoading(false);
     };
 
-    checkAuth();
-  }, [staff, wsinfo, router]);
+    if (isStaffLoaded && isWsinfoLoaded) {
+      checkAuth();
+    }
+  }, [staff, wsinfo, router, isStaffLoaded, isWsinfoLoaded]);
 
-  if (isLoading) {
+  if (!isStaffLoaded || !isWsinfoLoaded || isLoading) {
     return <div>Loading...</div>; // You can replace this with a proper loading component
   }
 
@@ -36,9 +83,20 @@ export default function App({ Component, pageProps }) {
 
   return (
     <div className="flex">
-      {staff._id && <Sidebar />}
+      {staff._id && wsinfo._id && <Sidebar />}
       <div className="p-4 flex-1 bg-muted/50">
         <Component {...pageProps} />
+      </div>
+      <div className="absolute bottom-4 right-4" >
+        {isOnline ? (
+          <Badge variant="secondary">
+            <Wifi size={16} /><p className="ml-1">Online</p>
+          </Badge>
+        ) : (
+          <Badge variant="secondary">
+            <WifiOff size={16} /><p className="ml-1">Offline</p>
+          </Badge>
+        )}
       </div>
     </div>
   );
