@@ -8,7 +8,8 @@ const CustomerSchema = {
     balance: 'int',
     credit: 'bool',
     status: 'string',
-    sales: 'Sale[]' // One-to-many relationship with Sales
+    sales: 'Sale[]', // One-to-many relationship with Sales
+    storeNo: 'string'
   },
   primaryKey: '_id',
 };
@@ -29,6 +30,7 @@ const ProductSchema = {
     createdAt: 'date',
     updatedAt: 'date',
     sku: 'string?', // Stock Keeping Unit
+    storeNo: 'string'
   },
   primaryKey: '_id',
 };
@@ -41,6 +43,7 @@ const ProductVariantSchema = {
     name: 'string', // e.g., '1kg', 'Half bag', 'Full bag'
     conversionFactor: 'double', // How many base units this variant represents
     unitPrice: 'double',
+    storeNo: 'string'
   },
   primaryKey: '_id',
 };
@@ -51,7 +54,8 @@ const SupplierSchema = {
     _id: 'string',
     name: 'string',
     contact: 'string',
-    products: 'Product[]' // One-to-many relationship with Products
+    products: 'Product[]', // One-to-many relationship with Products
+    storeNo: 'string'
   },
   primaryKey: '_id',
 };
@@ -68,6 +72,7 @@ const SaleItemSchema = {
     discount: 'double',
     createdAt: 'date',
     updatedAt: 'date',
+    storeNo: 'string'
   },
   primaryKey: '_id',
 };
@@ -85,6 +90,7 @@ const SaleSchema = {
     paid: 'bool',
     createdAt: 'date',
     updatedAt: 'date',
+    storeNo: 'string'
   },
   primaryKey: '_id',
 };
@@ -101,6 +107,7 @@ const WholeSalerSchema = {
     ends: 'date',
     createdAt: 'date',
     updatedAt: 'date',
+    storeNo: 'string'
   },
   primaryKey: '_id',
 };
@@ -118,6 +125,7 @@ const StaffSchema = {
     sales: 'Sale[]', // One-to-many relationship with Sales
     createdAt: 'date',
     updatedAt: 'date',
+    storeNo: 'string'
   },
   primaryKey: '_id',
 };
