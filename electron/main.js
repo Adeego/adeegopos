@@ -66,7 +66,7 @@ app.on("ready", async () => {
   setupIpcHandlers(ipcMain, realm);
   createWindow();
 
-  setInterval(checkOnlineStatus, 20000);
+  setInterval(checkOnlineStatus, 60000);
 
   // Add these lines to check status on network change
   require('electron').powerMonitor.on('suspend', checkOnlineStatus);

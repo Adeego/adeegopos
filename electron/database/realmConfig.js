@@ -4,7 +4,7 @@ const { app } = require('electron');
 const { CustomerSchema, ProductSchema, ProductVariantSchema, SupplierSchema, SaleSchema, SaleItemSchema, WholeSalerSchema, StaffSchema } = require('./schemas');
 const migrationFunction = require('./migrations');
 
-const schemaVersion = 8;
+const schemaVersion = 9;
 
 async function initializeRealm() {
   try {

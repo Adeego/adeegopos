@@ -23,13 +23,13 @@ export default function App({ Component, pageProps }) {
     if (typeof window !== "undefined" && window.electronAPI) {
       // Initial check
       window.electronAPI.getOnlineStatus().then((status) => {
-        console.log("Initial online status:", status);
+        // console.log("Initial online status:", status);
         setIsOnline(status);
       });
   
       // Listen for changes
       removeListener = window.electronAPI.onOnlineStatusChanged((status) => {
-        console.log("Online status changed:", status);
+        // console.log("Online status changed:", status);
         setIsOnline(status);
       });
     }
@@ -87,7 +87,7 @@ export default function App({ Component, pageProps }) {
       <div className="p-4 flex-1 bg-muted/50">
         <Component {...pageProps} />
       </div>
-      <div className="absolute bottom-4 right-4" >
+      <div className="fixed bottom-4 right-4 z-50">
         {isOnline ? (
           <Badge variant="secondary">
             <Wifi size={16} /><p className="ml-1">Online</p>

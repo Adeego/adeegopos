@@ -22,7 +22,6 @@ function checkNetworkConnection() {
 function setupIpcHandlers(ipcMain, realm) {
   ipcMain.handle('get-online-status', async () => {
     const result = await checkNetworkConnection();
-    console.log(result)
     return result
   });
 
