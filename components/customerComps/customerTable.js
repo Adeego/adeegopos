@@ -25,6 +25,8 @@ export default function CustomerTable() {
   const [searchTerm, setSearchTerm] = useState('');
   // const [isAddingCustomer, setIsAddingCustomer] = useState(false);
 
+  console.log(customers);
+
   // // New customer state
   // const [newCustomer, setNewCustomer] = useState({
   //   _id: uuidv4(),

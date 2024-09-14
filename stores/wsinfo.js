@@ -11,6 +11,7 @@ const useWsinfoStore = create(
         location: '',
         subscription: '',
         plan: '',
+        storeNo: '',
         ends: null,
         createdAt: null,
         updatedAt: null

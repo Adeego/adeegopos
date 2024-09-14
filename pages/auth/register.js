@@ -29,11 +29,14 @@ export default function Register() {
     role: 'Admin',
     passcode: ''
   });
+  const [storeNo, setStoreNo] = useState('');
   const addWsinfo = useWsinfoStore((state) => state.addWsinfo);
 
   const handleWholesalerChange = (e) => {
     setWholesalerData({ ...wholesalerData, [e.target.name]: e.target.value });
   };
+
+  console.log(storeNo)
 
   const handleStaffChange = (e) => {
     setStaffData({ ...staffData, [e.target.name]: e.target.value });
@@ -77,6 +80,7 @@ export default function Register() {
       const wholesalerResult = await window.electronAPI.realmOperation('createWholeSaler', {
         ...wholesalerData,
         _id: uuidv4(),
+        storeNo: storeNo,
         ends: new Date(),
         createdAt: new Date(),
         updatedAt: new Date()
@@ -87,6 +91,7 @@ export default function Register() {
           ...staffData,
           _id: uuidv4(),
           salary: 0,
+          storeNo: storeNo,
           createdAt: new Date(),
           updatedAt: new Date()
         });
@@ -249,8 +254,12 @@ export default function Register() {
                   <Input id="name" name="name" value={wholesalerData.name} onChange={handleWholesalerChange} required placeholder="Enter wholesaler name" />
                 </div>
                 <div className="grid gap-2">
+                  <Label htmlFor="name">Store No</Label>
+                  <Input id="storeNo" name="storeNo" value={storeNo} onChange={(e) => {setStoreNo(e.target.value)}} required placeholder="Add wholesaler store No" />
+                </div>
+                <div className="grid gap-2">
                   <Label htmlFor="phone">Phone</Label>
-                  <Input id="phone" name="phone" value={wholesalerData.phone} onChange={handleWholesalerChange} required placeholder="Enter phone number" />
+                  <Input id="phone" type="number" name="phone" value={wholesalerData.phone} onChange={handleWholesalerChange} required placeholder="Enter phone number" />
                 </div>
                 <div className="grid gap-2">
                   <Label htmlFor="location">Location</Label>

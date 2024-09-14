@@ -51,6 +51,7 @@ export default function App({ Component, pageProps }) {
   useEffect(() => {
     if (wsinfo._id !== undefined) {
       setIsWsinfoLoaded(true);
+      console.log(wsinfo)
     }
   }, [wsinfo]);
 

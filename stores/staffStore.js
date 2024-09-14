@@ -11,6 +11,7 @@ const useStaffStore = create(
         phone: '',
         role: '',
         salary: null,
+        storeNo: '',
         createdAt: null,
         updatedAt: null
       },
