@@ -7,9 +7,11 @@ import { Input } from '@/components/ui/input';
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/components/ui/use-toast";
+import useWsinfoStore from '@/stores/wsinfo';
 
 export default function AddProduct({ fetchProducts }) {
   const [isAddingProduct, setIsAddingProduct] = useState(false);
+  const wsinfo = useWsinfoStore((state) => state.wsinfo);
 
   // Updated product state
   const [newProduct, setNewProduct] = useState({
@@ -58,6 +60,7 @@ export default function AddProduct({ fetchProducts }) {
         ...prev.variants, 
         {
           ...newVariant,
+          storeNo: wsinfo.storeNo,
           conversionFactor: parseFloat(newVariant.conversionFactor),
           unitPrice: parseFloat(newVariant.unitPrice),
         }
@@ -77,12 +80,14 @@ export default function AddProduct({ fetchProducts }) {
     try {
         const productData = {
           ...newProduct,
+          storeNo: wsinfo.storeNo,
           buyPrice: parseFloat(newProduct.buyPrice),
           stock: parseFloat(newProduct.stock),
           restockThreshold: parseInt(newProduct.restockThreshold, 10),
           restockPeriod: parseInt(newProduct.restockPeriod, 10),
           variants: newProduct.variants // Include the variants
         };
+        console.log(productData);
         const result = await window.electronAPI.realmOperation('addNewProduct', productData);
         if (result.success) {
             toast({

@@ -19,6 +19,7 @@ function addNewProduct(realm, productData) {
         restockPeriod: productData.restockPeriod,
         createdAt: productData.createdAt,
         updatedAt: productData.updatedAt,
+        storeNo: productData.storeNo,
         sku: productData.sku,
       });
 
@@ -30,6 +31,7 @@ function addNewProduct(realm, productData) {
           name: variantData.name,
           conversionFactor: variantData.conversionFactor,
           unitPrice: variantData.unitPrice,
+          storeNo: variantData.storeNo,
         });
         newProduct.variants.push(newVariant);
       });

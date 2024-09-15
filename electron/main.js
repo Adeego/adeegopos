@@ -1,6 +1,6 @@
 const { app, BrowserWindow, protocol, ipcMain, net } = require("electron");
 const path = require("path");
-const { initializeRealm } = require('./database/realmConfig')
+const { openRealmWithSync } = require('./realmSync');
 const setupIpcHandlers = require('./ipcHandlers');
 
 let serve;
@@ -62,15 +62,23 @@ async function checkOnlineStatus() {
 }
 
 app.on("ready", async () => {
-  const realm = await initializeRealm();
-  setupIpcHandlers(ipcMain, realm);
-  createWindow();
+  try {
+    // Import schemas dynamically
+    // const { CustomerSchema, ProductSchema, ProductVariantSchema, SupplierSchema, SaleSchema, StaffSchema } = require('./database/schemas');
+    realm = await openRealmWithSync();
+    console.log("Realm opened with sync successfully");
+    setupIpcHandlers(ipcMain, realm);
+    createWindow();
 
-  setInterval(checkOnlineStatus, 60000);
+    setInterval(checkOnlineStatus, 60000);
 
-  // Add these lines to check status on network change
-  require('electron').powerMonitor.on('suspend', checkOnlineStatus);
-  require('electron').powerMonitor.on('resume', checkOnlineStatus);
+    // Add these lines to check status on network change
+    require('electron').powerMonitor.on('suspend', checkOnlineStatus);
+    require('electron').powerMonitor.on('resume', checkOnlineStatus);
+  } catch (error) {
+    console.error("Failed to open Realm with sync:", error);
+    app.quit();
+  }
 });
 
 app.on("window-all-closed", () => {

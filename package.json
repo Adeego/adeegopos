@@ -67,7 +67,7 @@
     "react-dom": "^18",
     "react-hook-form": "^7.52.2",
     "react-router-dom": "^6.26.0",
-    "realm": "^12.12.1",
+    "realm": "^12.2.0",
     "recharts": "^2.12.7",
     "tailwind-merge": "^2.4.0",
     "tailwindcss-animate": "^1.0.7",

@@ -19,6 +19,8 @@ export default function App({ Component, pageProps }) {
 
   useEffect(() => {
     let removeListener; // Track the listener so that it can be removed
+
+    console.log(wsinfo)
   
     if (typeof window !== "undefined" && window.electronAPI) {
       // Initial check

@@ -1,25 +1,47 @@
 const Realm = require('realm');
-const path = require('path');
-const { app } = require('electron');
-const { CustomerSchema, ProductSchema, ProductVariantSchema, SupplierSchema, SaleSchema, SaleItemSchema, WholeSalerSchema, StaffSchema } = require('./schemas');
-const migrationFunction = require('./migrations');
 
-const schemaVersion = 9;
+const APP_ID = 'adeegopos-zhwkaqj';
 
-async function initializeRealm() {
+async function getRealmApp() {
+  let app;
   try {
-    const realm = await Realm.open({
-      schema: [CustomerSchema, ProductSchema, ProductVariantSchema, SupplierSchema, SaleSchema, SaleItemSchema, WholeSalerSchema, StaffSchema],
-      schemaVersion: schemaVersion,
-      path: path.join(app.getPath('userData'), 'myRealm.realm'),
-      migration: migrationFunction,
-    });
-    console.log("Realm initialized successfully");
-    return realm;
+    app = Realm.App.getApp(APP_ID);
   } catch (error) {
-    console.error("Failed to initialize Realm:", error);
-    throw error;
+    app = new Realm.App({ id: APP_ID });
   }
+  return app;
 }
 
-module.exports = { initializeRealm };
+async function authenticateUser() {
+  const app = await getRealmApp();
+  if (!app.currentUser) {
+    // For this example, we'll use anonymous authentication
+    // In a real app, you'd want to use a more secure method
+    await app.logIn(Realm.Credentials.anonymous());
+  }
+  return app.currentUser;
+}
+
+async function openRealmWithSync(schemas) {
+  const user = await authenticateUser();
+  const config = {
+    schema: schemas,
+    sync: {
+      user: user,
+      flexible: true,
+      initialSubscriptions: {
+        update: (subs, realm) => {
+          // Add subscriptions for each object type
+          schemas.forEach(schema => {
+            subs.add(realm.objects(schema.name));
+          });
+        },
+      },
+    },
+  };
+  return Realm.open(config);
+}
+
+module.exports = {
+  openRealmWithSync,
+};

@@ -5,6 +5,22 @@ const wholeSalerService = require('./services/wholeSalerService')
 const staffService = require('./services/staffService')
 const saleService = require('./services/saleService')
 const supplierService = require('./services/supplierService')
+const { getRealmApp } = require('./realmSync');
+
+async function getSyncStatus() {
+  const app = await getRealmApp();
+  if (app.currentUser && app.currentUser.isLoggedIn) {
+    const syncSession = app.currentUser.syncSession;
+    if (syncSession) {
+      return {
+        isSyncing: syncSession.state === 'active',
+        progress: syncSession.progress,
+        error: syncSession.error
+      };
+    }
+  }
+  return { isSyncing: false, error: 'User not logged in or sync session not available' };
+}
 
 function checkNetworkConnection() {
   return new Promise((resolve) => {
@@ -23,6 +39,11 @@ function setupIpcHandlers(ipcMain, realm) {
   ipcMain.handle('get-online-status', async () => {
     const result = await checkNetworkConnection();
     return result
+  });
+
+  // Add this new IPC handler for getting sync status
+  ipcMain.handle('get-sync-status', async () => {
+    return getSyncStatus();
   });
 
   // Add this new IPC handler for staff sign-in
