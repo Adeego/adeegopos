@@ -1,7 +1,12 @@
 // Query all products for a specific supplier
-function getSupplierProducts(realm, supplierId) {
-  const supplier = realm.objectForPrimaryKey('Supplier', supplierId);
-  return supplier.products;
+
+function getSupplierProducts() {
+  return db.allDocs({ include_docs: true })
+    .then(result => ({ success: true, suppliers: result.rows.map(row => row.doc) }))
+    .catch(error => {
+      console.error('Error fetching suppliers:', error);
+      return { success: false, error: error.message };
+    });
 }
 
 module.exports = {

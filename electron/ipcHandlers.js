@@ -5,21 +5,12 @@ const wholeSalerService = require('./services/wholeSalerService')
 const staffService = require('./services/staffService')
 const saleService = require('./services/saleService')
 const supplierService = require('./services/supplierService')
-const { getRealmApp } = require('./realmSync');
+const { openPouchDB } = require('./pouchSync');
 
-async function getSyncStatus() {
-  const app = await getRealmApp();
-  if (app.currentUser && app.currentUser.isLoggedIn) {
-    const syncSession = app.currentUser.syncSession;
-    if (syncSession) {
-      return {
-        isSyncing: syncSession.state === 'active',
-        progress: syncSession.progress,
-        error: syncSession.error
-      };
-    }
-  }
-  return { isSyncing: false, error: 'User not logged in or sync session not available' };
+function getSyncStatus(db) {
+  return db.info()
+    .then(info => ({ isSyncing: true, progress: info.update_seq }))
+    .catch(error => ({ isSyncing: false, error: error.message }));
 }
 
 function checkNetworkConnection() {
@@ -35,7 +26,7 @@ function checkNetworkConnection() {
   });
 }
 
-function setupIpcHandlers(ipcMain, realm) {
+function setupIpcHandlers(ipcMain, db) {
   ipcMain.handle('get-online-status', async () => {
     const result = await checkNetworkConnection();
     return result
@@ -43,96 +34,96 @@ function setupIpcHandlers(ipcMain, realm) {
 
   // Add this new IPC handler for getting sync status
   ipcMain.handle('get-sync-status', async () => {
-    return getSyncStatus();
+    return getSyncStatus(db);
   });
 
   // Add this new IPC handler for staff sign-in
   ipcMain.handle('sign-in-staff', async (event, phoneNumber, passcode) => {
-    return staffService.signInStaff(realm, phoneNumber, passcode);
+    return staffService.signInStaff(db, phoneNumber, passcode);
   });
     // Added new IPC handler for customer search
   ipcMain.handle('search-customers', async (event, name) => {
-    return customerService.searchCustomers(realm, name);
+    return customerService.searchCustomers(db, name);
   });
 
   // Added new IPC handler for product search
   ipcMain.handle('search-products', async (event, searchTerm) => {
-    return productService.searchProducts(realm, searchTerm);
+    return productService.searchProducts(db, searchTerm);
   });
 
   // Set up IPC handlers for Realm operations
   ipcMain.handle('realm-operation', async (event, operation, ...args) => {
     switch (operation) {
       case 'createCustomer':
-      return customerService.createCustomer(realm, args[0]);
+        return customerService.createCustomer(db, args[0]);
       case 'updateCustomer':
-        return customerService.updateCustomer(realm, args[0]);
+        return customerService.updateCustomer(db, args[0]);
       case 'deleteCustomer':
-        return customerService.deleteCustomer(realm, args[0]);
+        return customerService.deleteCustomer(db, args[0]);
       case 'getAllCustomers':
-        return customerService.getAllCustomers(realm);
+        return customerService.getAllCustomers(db);
       case 'getCustomerById':
-        return customerService.getCustomerById(realm, args[0]);
+        return customerService.getCustomerById(db, args[0]);
       case 'getAllProducts':
-        return productService.getAllProducts(realm);
+        return productService.getAllProducts(db);
       case 'getSaleItemsByProductId':
-        return productService.getSaleItemsByProductId(realm, args[0], args[1], args[2]);
+        return productService.getSaleItemsByProductId(db, args[0], args[1], args[2]);
       case 'getProductById':
-        return productService.getProductById(realm, args[0]);
+        return productService.getProductById(db, args[0]);
       case 'updateProduct':
-        return productService.updateProduct(realm, args[0]);
+        return productService.updateProduct(db, args[0]);
       case 'addNewProduct':
-        return productService.addNewProduct(realm, args[0]);
+        return productService.addNewProduct(db, args[0]);
       case 'deleteProduct':
-        return productService.deleteProduct(realm, args[0]);
+        return productService.deleteProduct(db, args[0]);
       case 'createSale':
-        return saleService.createSale(realm, ...args);
+        return saleService.createSale(db, ...args);
       case 'getSupplierProducts':
-        return getSupplierProducts(realm, ...args).map(product => product.toJSON());
+        return getSupplierProducts(db, ...args).map(product => product.toJSON());
       case 'getCustomerSales':
-        return customerService.getCustomerSales(realm, ...args).map(sale => sale.toJSON());
+        return customerService.getCustomerSales(db, ...args).map(sale => sale.toJSON());
       case 'getSaleProducts':
-        return saleService.getSaleProducts(realm, ...args).map(product => product.toJSON());
+        return saleService.getSaleProducts(db, ...args).map(product => product.toJSON());
       case 'getSalesByPaymentMethod':
-        return saleService.getSalesByPaymentMethod(realm, args[0], args[1]);
+        return saleService.getSalesByPaymentMethod(db, args[0], args[1]);
       case 'getTotalSales':
-        return saleService.getTotalSales(realm, args[0], args[1]);
+        return saleService.getTotalSales(db, args[0], args[1]);
       case 'getAverageTransactionValue':
-        return saleService.getAverageTransactionValue(realm, args[0], args[1]);
+        return saleService.getAverageTransactionValue(db, args[0], args[1]);
       case 'getSalesByCategory':
-        return saleService.getSalesByCategory(realm, args[0], args[1]);
+        return saleService.getSalesByCategory(db, args[0], args[1]);
       case 'getTopSellingItems':
-        return saleService.getTopSellingItems(realm, args[0], args[1], args[2]);
+        return saleService.getTopSellingItems(db, args[0], args[1], args[2]);
       case 'getGrossProfitMargin':
-        return saleService.getGrossProfitMargin(realm, args[0], args[1]);
+        return saleService.getGrossProfitMargin(db, args[0], args[1]);
       case 'createWholeSaler':
-        return wholeSalerService.createWholeSaler(realm, args[0]);
+        return wholeSalerService.createWholeSaler(db, args[0]);
       case 'updateWholeSaler':
-        return wholeSalerService.updateWholeSaler(realm, args[0]);
+        return wholeSalerService.updateWholeSaler(db, args[0]);
       case 'deleteWholeSaler':
-        return wholeSalerService.deleteWholeSaler(realm, args[0]);
+        return wholeSalerService.deleteWholeSaler(db, args[0]);
       case 'getWholeSalerById':
-        return wholeSalerService.getWholeSalerById(realm, args[0]);
+        return wholeSalerService.getWholeSalerById(db, args[0]);
       case 'getAllWholeSalers':
-        return wholeSalerService.getAllWholeSalers(realm);
+        return wholeSalerService.getAllWholeSalers(db);
       case 'createStaff':
-        return staffService.createStaff(realm, args[0]);
+        return staffService.createStaff(db, args[0]);
       case 'updateStaff':
-        return staffService.updateStaff(realm, args[0]);
+        return staffService.updateStaff(db, args[0]);
       case 'deleteStaff':
-        return staffService.deleteStaff(realm, args[0]);
+        return staffService.deleteStaff(db, args[0]);
       case 'getStaffById':
-        return staffService.getStaffById(realm, args[0]);
+        return staffService.getStaffById(db, args[0]);
       case 'getAllStaff':
-        return staffService.getAllStaff(realm);
+        return staffService.getAllStaff(db);
       case 'getTotalSalesRevenueAndProfit':
-        return saleService.getTotalSalesRevenueAndProfit(realm, args[0], args[1]);
+        return saleService.getTotalSalesRevenueAndProfit(db, args[0], args[1]);
       case 'getTopCustomers':
-        return saleService.getTopCustomers(realm, args[0], args[1], args[2]);
+        return saleService.getTopCustomers(db, args[0], args[1], args[2]);
       case 'getAllSalesBetweenDates':
-        return saleService.getAllSalesBetweenDates(realm, args[0], args[1]);
+        return saleService.getAllSalesBetweenDates(db, args[0], args[1]);
       case 'getSaleById':
-        return saleService.getSaleById(realm, args[0]);
+        return saleService.getSaleById(db, args[0]);
       // Add other operations as needed
       default:
         throw new Error(`Unknown operation: ${operation}`);

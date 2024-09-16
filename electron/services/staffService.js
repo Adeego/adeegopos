@@ -1,76 +1,66 @@
-function createStaff(realm, staffData) {
-  try {
-    let newStaff;
-    realm.write(() => {
-      newStaff = realm.create('Staff', staffData);
+const PouchDB = require('pouchdb');
+const db = new PouchDB('staff');
+
+function createStaff(staffData) {
+  return db.post(staffData)
+    .then(response => ({ success: true, staff: { ...staffData, _id: response.id, _rev: response.rev } }))
+    .catch(error => {
+      console.error('Error creating staff:', error);
+      return { success: false, error: error.message };
     });
-    return { success: true, staff: newStaff.toJSON() };
-  } catch (error) {
-    console.error('Error creating staff:', error);
-    return { success: false, error: error.message };
-  }
 }
 
-function updateStaff(realm, staffData) {
-  try {
-    let updatedStaff;
-    realm.write(() => {
-      updatedStaff = realm.create('Staff', staffData, 'modified');
+function updateStaff(staffData) {
+  return db.put(staffData)
+    .then(response => ({ success: true, staff: { ...staffData, _rev: response.rev } }))
+    .catch(error => {
+      console.error('Error updating staff:', error);
+      return { success: false, error: error.message };
     });
-    return { success: true, staff: updatedStaff.toJSON() };
-  } catch (error) {
-    console.error('Error updating staff:', error);
-    return { success: false, error: error.message };
-  }
 }
 
-function deleteStaff(realm, staffId) {
-  try {
-    realm.write(() => {
-      const staffToDelete = realm.objectForPrimaryKey('Staff', staffId);
-      if (staffToDelete) {
-        realm.delete(staffToDelete);
+function deleteStaff(staffId, rev) {
+  return db.remove(staffId, rev)
+    .then(() => ({ success: true }))
+    .catch(error => {
+      console.error('Error deleting staff:', error);
+      return { success: false, error: error.message };
+    });
+}
+
+function getStaffById(staffId) {
+  return db.get(staffId)
+    .then(staff => ({ success: true, staff }))
+    .catch(error => {
+      console.error('Error fetching staff:', error);
+      return { success: false, error: error.message };
+    });
+}
+
+function getAllStaff() {
+  return db.allDocs({ include_docs: true })
+    .then(result => ({ success: true, staff: result.rows.map(row => row.doc) }))
+    .catch(error => {
+      console.error('Error fetching all staff:', error);
+      return { success: false, error: error.message };
+    });
+}
+
+function signInStaff(phoneNumber, passcode) {
+  return db.find({
+    selector: { phone: phoneNumber, passcode: passcode }
+  })
+    .then(result => {
+      if (result.docs.length > 0) {
+        return { success: true, staff: result.docs[0] };
+      } else {
+        return { success: false, error: 'Invalid credentials' };
       }
+    })
+    .catch(error => {
+      console.error('Error signing in staff:', error);
+      return { success: false, error: error.message };
     });
-    return { success: true };
-  } catch (error) {
-    console.error('Error deleting staff:', error);
-    return { success: false, error: error.message };
-  }
-}
-
-function getStaffById(realm, staffId) {
-  try {
-    const staff = realm.objectForPrimaryKey('Staff', staffId);
-    return staff ? { success: true, staff: staff.toJSON() } : { success: false, error: 'Staff not found' };
-  } catch (error) {
-    console.error('Error fetching staff:', error);
-    return { success: false, error: error.message };
-  }
-}
-
-function getAllStaff(realm) {
-  try {
-    const staff = realm.objects('Staff');
-    return { success: true, staff: staff.map(s => s.toJSON()) };
-  } catch (error) {
-    console.error('Error fetching all staff:', error);
-    return { success: false, error: error.message };
-  }
-}
-
-function signInStaff(realm, phoneNumber, passcode) {
-  try {
-    const staff = realm.objects('Staff').filtered('phone == $0 AND passcode == $1', phoneNumber, passcode)[0];
-    if (staff) {
-      return { success: true, staff: staff.toJSON() };
-    } else {
-      return { success: false, error: 'Invalid credentials' };
-    }
-  } catch (error) {
-    console.error('Error signing in staff:', error);
-    return { success: false, error: error.message };
-  }
 }
 
 module.exports = {

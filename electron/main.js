@@ -1,6 +1,6 @@
 const { app, BrowserWindow, protocol, ipcMain, net } = require("electron");
 const path = require("path");
-const { openRealmWithSync } = require('./realmSync');
+const { openPouchDB } = require('./pouchSync');
 const setupIpcHandlers = require('./ipcHandlers');
 
 let serve;
@@ -65,7 +65,7 @@ app.on("ready", async () => {
   try {
     // Import schemas dynamically
     // const { CustomerSchema, ProductSchema, ProductVariantSchema, SupplierSchema, SaleSchema, StaffSchema } = require('./database/schemas');
-    realm = await openRealmWithSync();
+    realm = openPouchDB();
     console.log("Realm opened with sync successfully");
     setupIpcHandlers(ipcMain, realm);
     createWindow();
