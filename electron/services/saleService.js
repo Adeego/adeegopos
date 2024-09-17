@@ -1,13 +1,14 @@
  // Create a sale                                                     
- function createSale(db, saleData) {                                  
-   return db.post(saleData)                                           
-     .then(response => ({ success: true, sale: { ...saleData, _id:    
- response.id, _rev: response.rev } }))                                
-     .catch(error => {                                                
-       console.error('Error creating sale:', error);                  
-       return { success: false, error: error.message };               
-     });                                                              
- }                                                                    
+ function createSale(db, saleData) {
+   const sale = {
+     _id: `sale_${saleData._id}`,
+     type: 'sale',
+     ...saleData
+   };
+   return db.put(sale)
+     .then(response => ({ success: true, sale: { _id: response.id, ...sale } }))
+     .catch(error => ({ success: false, error: error.message }));
+ }
                                                                       
  // Query all products in a specific sale                             
  function getSaleProducts(db, saleId) {                               
@@ -277,36 +278,33 @@
  }                                                                    
                                                                       
  // Function to get a specific sale by ID                             
- function getSaleById(db, saleId) {                                   
-   return db.get(saleId)                                              
-     .then(sale => {                                                  
-       const serializedSale = {                                       
-         _id: sale._id,                                               
-         customerName: sale.customer.name,                            
-         totalAmount: sale.totalAmount,                               
-         totalItems: sale.totalItems,                                 
-         paymentMethod: sale.paymentMethod,                           
-         type: sale.type,                                             
-         paid: sale.paid,                                             
-         createdAt: sale.createdAt,                                   
-         items: sale.items.map(item => ({                             
-           _id: item._id,                                             
-           productName: item.productVariant.product.name,             
-           variantName: item.productVariant.name,                     
-           quantity: item.quantity,                                   
-           unitPrice: item.unitPrice,                                 
-           subtotal: item.subtotal,                                   
-           discount: item.discount,                                   
-         }))                                                          
-       };                                                             
-                                                                      
-       return { success: true, data: serializedSale };                
-     })                                                               
-     .catch(error => {                                                
-       console.error('Error getting sale by ID:', error);             
-       return { success: false, error: error.message };               
-     });                                                              
- }                                                                    
+ function getSaleById(db, saleId) {
+   return db.get(`sale_${saleId}`)
+     .then(sale => {
+       const serializedSale = {
+         _id: sale._id,
+         customerName: sale.customer.name,
+         totalAmount: sale.totalAmount,
+         totalItems: sale.totalItems,
+         paymentMethod: sale.paymentMethod,
+         type: sale.type,
+         paid: sale.paid,
+         createdAt: sale.createdAt,
+         items: sale.items.map(item => ({
+           _id: item._id,
+           productName: item.productVariant.product.name,
+           variantName: item.productVariant.name,
+           quantity: item.quantity,
+           unitPrice: item.unitPrice,
+           subtotal: item.subtotal,
+           discount: item.discount,
+         }))
+       };
+
+       return { success: true, data: serializedSale };
+     })
+     .catch(error => ({ success: false, error: error.message }));
+ }
                                                                       
  module.exports = {                                                   
    createSale,                                                        

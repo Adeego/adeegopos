@@ -10,15 +10,16 @@ _id: response.id, _rev: response.rev } }))
 }                                                                    
                                                                      
 // Update a product                                                  
-function updateProduct(db, productData) {                            
-  return db.put(productData)                                         
-    .then(response => ({ success: true, product: { ...productData,   
-_rev: response.rev } }))                                             
-    .catch(error => {                                                
-      console.error('Error updating product:', error);               
-      return { success: false, error: error.message };               
-    });                                                              
-}                                                                    
+function updateProduct(db, productData) {
+  const product = {
+    _id: `product_${productData._id}`,
+    type: 'product',
+    ...productData
+  };
+  return db.put(product)
+    .then(response => ({ success: true, product: { _id: response.id, ...product } }))
+    .catch(error => ({ success: false, error: error.message }));
+}
                                                                      
 // Added a new function for product search                           
 function searchProducts(db, searchTerm) {                            
@@ -48,32 +49,25 @@ function getSaleItemsByProductId(db, productId, startDate, endDate) {
 }                                                                    
                                                                      
 // Delete a product                                                  
-function deleteProduct(db, productId, rev) {                         
-  return db.remove(productId, rev)                                   
-    .then(() => ({ success: true }))                                 
-    .catch(error => {                                                
-      console.error('Error deleting product:', error);               
-      return { success: false, error: error.message };               
-    });                                                              
-}                                                                    
+function deleteProduct(db, productId) {
+  return db.get(`product_${productId}`)
+    .then(doc => db.remove(doc))
+    .then(() => ({ success: true }))
+    .catch(error => ({ success: false, error: error.message }));
+}
                                                                      
-function getAllProducts(db) {                                        
-  return db.allDocs({ include_docs: true })                          
-    .then(result => ({ success: true, products: result.rows.map(row.doc) }))                                                         
-    .catch(error => {                                                
-      console.error('Error fetching products:', error);              
-      return { success: false, error: error.message };               
-    });                                                              
-}                                                                    
+function getAllProducts(db) {
+  return db.find({
+    selector: { type: 'product' }
+  }).then(result => ({ success: true, products: result.docs }))
+    .catch(error => ({ success: false, error: error.message }));
+}
                                                                      
-function getProductById(db, productId) {                             
-  return db.get(productId)                                           
-    .then(product => ({ success: true, product }))                   
-    .catch(error => {                                                
-      console.error('Error fetching product:', error);               
-      return { success: false, error: error.message };               
-    });                                                              
-}                                                                    
+function getProductById(db, productId) {
+  return db.get(`product_${productId}`)
+    .then(product => ({ success: true, product }))
+    .catch(error => ({ success: false, error: error.message }));
+}
                                                                      
 module.exports = {                                                   
   addNewProduct,                                                     

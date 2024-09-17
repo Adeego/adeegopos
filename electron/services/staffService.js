@@ -1,53 +1,44 @@
-function createStaff(db, staffData) {                                
-  return db.post({                                                   
-    _id: staffData._id,                                              
-    ...staffData                                                     
-  })                                                                 
-    .then(response => ({ success: true, staff: { ...staffData, _id:  
-response.id, _rev: response.rev } }))                                
-    .catch(error => {                                                
-      console.error('Error creating staff:', error);                 
-      return { success: false, error: error.message };               
-    });                                                              
-}                                                                    
+function createStaff(db, staffData) {
+  const staff = {
+    _id: `staff_${staffData._id}`,
+    type: 'staff',
+    ...staffData
+  };
+  return db.put(staff)
+    .then(response => ({ success: true, staff: { _id: response.id, ...staff } }))
+    .catch(error => ({ success: false, error: error.message }));
+}
                                                                      
-function updateStaff(db, staffData) {                                
-  return db.put(staffData)                                           
-    .then(response => ({ success: true, staff: { ...staffData, _rev: 
-response.rev } }))                                                   
-    .catch(error => {                                                
-      console.error('Error updating staff:', error);                 
-      return { success: false, error: error.message };               
-    });                                                              
-}                                                                    
+function updateStaff(db, staffData) {
+  const staff = {
+    _id: `staff_${staffData._id}`,
+    type: 'staff',
+    ...staffData
+  };
+  return db.put(staff)
+    .then(response => ({ success: true, staff: { _id: response.id, ...staff } }))
+    .catch(error => ({ success: false, error: error.message }));
+}
                                                                      
-function deleteStaff(db, staffId, rev) {                             
-  return db.remove(staffId, rev)                                     
-    .then(() => ({ success: true }))                                 
-    .catch(error => {                                                
-      console.error('Error deleting staff:', error);                 
-      return { success: false, error: error.message };               
-    });                                                              
-}                                                                    
+function deleteStaff(db, staffId) {
+  return db.get(`staff_${staffId}`)
+    .then(doc => db.remove(doc))
+    .then(() => ({ success: true }))
+    .catch(error => ({ success: false, error: error.message }));
+}
                                                                      
-function getStaffById(db, staffId) {                                 
-  return db.get(staffId)                                             
-    .then(staff => ({ success: true, staff }))                       
-    .catch(error => {                                                
-      console.error('Error fetching staff:', error);                 
-      return { success: false, error: error.message };               
-    });                                                              
-}                                                                    
+function getStaffById(db, staffId) {
+  return db.get(`staff_${staffId}`)
+    .then(staff => ({ success: true, staff }))
+    .catch(error => ({ success: false, error: error.message }));
+}
                                                                      
-function getAllStaff(db) {                                           
-  return db.allDocs({ include_docs: true })                          
-    .then(result => ({ success: true, staff: result.rows.map(row =>  
-row.doc) }))                                                         
-    .catch(error => {                                                
-      console.error('Error fetching all staff:', error);             
-      return { success: false, error: error.message };               
-    });                                                              
-}                                                                    
+function getAllStaff(db) {
+  return db.find({
+    selector: { type: 'staff' }
+  }).then(result => ({ success: true, staff: result.docs }))
+    .catch(error => ({ success: false, error: error.message }));
+}
                                                                      
 function signInStaff(db, phoneNumber, passcode) {                    
   return db.find({                                                   
