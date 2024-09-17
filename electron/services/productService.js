@@ -1,13 +1,13 @@
- // Function to add a new product and its variants                    
- function addNewProduct(db, productData) {                            
-  return db.post(productData)                                        
-    .then(response => ({ success: true, product: { ...productData,   
-_id: response.id, _rev: response.rev } }))                           
-    .catch(error => {                                                
-      console.error('Error adding new product:', error);             
-      return { success: false, error: error.message };               
-    });                                                              
-}                                                                    
+function addNewProduct(db, productData) {
+  const product = {
+    _id: `product_${productData._id}`,
+    type: 'product',
+    ...productData
+  };
+  return db.put(product)
+    .then(response => ({ success: true, product: { _id: response.id, ...product } }))
+    .catch(error => ({ success: false, error: error.message }));
+}
                                                                      
 // Update a product                                                  
 function updateProduct(db, productData) {
