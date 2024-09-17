@@ -3,8 +3,8 @@ PouchDB.plugin(require('pouchdb-find'));
 
 const COUCHDB_URL = 'http://admin:adeego2027@127.0.0.1:5984/wholesalers';
 
-function openPouchDB() {
-  const localDB = new PouchDB('local_db');
+function openPouchDB(storeNo) {
+  const localDB = new PouchDB(`local_db_${storeNo}`);
   const remoteDB = new PouchDB(COUCHDB_URL);
 
   localDB.sync(remoteDB, {

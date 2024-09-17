@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import useWsinfoStore from '@/stores/wsinfo';
+import { setStoreNo } from '@/electron/store';
 import { WifiOffIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -59,6 +60,7 @@ export default function WsSignin() {
       const result = await window.electronAPI.realmOperation('getAllWholeSalers')
       if (result.success && result.wholeSalers.length > 0) {
         addWsinfo(result.wholeSalers[0]) // Store the first wholesaler
+        setStoreNo(result.wholeSalers[0].storeNo);
         router.push('/')
       } else {
         console.log(result.error || 'Invalid credentials')

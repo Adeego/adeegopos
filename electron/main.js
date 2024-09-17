@@ -1,6 +1,7 @@
 const { app, BrowserWindow, protocol, ipcMain, net } = require("electron");
 const path = require("path");
 const { openPouchDB } = require('./pouchSync');
+const { getStoreNo } = require('./store');
 const setupIpcHandlers = require('./ipcHandlers');
 
 let serve;
@@ -73,7 +74,13 @@ app.on("ready", async () => {
   try {
     // Import schemas dynamically
     // const { CustomerSchema, ProductSchema, ProductVariantSchema, SupplierSchema, SaleSchema, StaffSchema } = require('./database/schemas');
-    pouch = openPouchDB();
+    const storeNo = getStoreNo();
+    if (storeNo) {
+      pouch = openPouchDB(storeNo);
+    } else {
+      console.error("storeNo is not set. Please set storeNo before initializing PouchDB.");
+      app.quit();
+    }
     console.log("Realm opened with sync successfully");
     setupIpcHandlers(ipcMain, pouch);
     createWindow();
