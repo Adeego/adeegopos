@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useRouter } from 'next/router';
 import { v4 as uuidv4 } from 'uuid';
 import { setStoreNo } from '@/electron/store';
+import { setStoreNo } from '@/electron/store';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -86,6 +87,7 @@ export default function Register() {
         createdAt: new Date(),
         updatedAt: new Date()
       });
+      setStoreNo(storeNo);
       setStoreNo(storeNo);
 
       if (wholesalerResult.success) {

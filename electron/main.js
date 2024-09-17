@@ -2,6 +2,7 @@ const { app, BrowserWindow, protocol, ipcMain, net } = require("electron");
 const path = require("path");
 const { openPouchDB } = require('./pouchSync');
 const { getStoreNo } = require('./store');
+const { getStoreNo } = require('./store');
 const setupIpcHandlers = require('./ipcHandlers');
 
 let serve;
