@@ -4,7 +4,7 @@ const { openPouchDB } = require('./pouchSync');
 const setupIpcHandlers = require('./ipcHandlers');
 
 let serve;
-let realm
+let pouch
 let mainWindow;
 
 if (app.isPackaged) {
@@ -22,10 +22,19 @@ if (app.isPackaged) {
 
 const createWindow = () => {
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 700,
+    fullscreen: false, // Set to false to enable title bar
+    frame: true, // Show the title bar and window controls
     webPreferences: {
       preload: path.join(__dirname, "preload.js")
+    }
+  });
+
+  // Optionally, you can set the window to be maximized to use all available screen space
+  mainWindow.maximize();
+
+  mainWindow.once('ready-to-show', () => {
+    if (!app.isPackaged) {
+      mainWindow.webContents.openDevTools();
     }
   });
 
@@ -35,7 +44,6 @@ const createWindow = () => {
     }).catch(console.error);
   } else {
     mainWindow.loadURL("http://localhost:3333");
-    mainWindow.webContents.openDevTools();
     mainWindow.webContents.on("did-fail-load", () => {
       mainWindow.webContents.reloadIgnoringCache();
     });
@@ -65,9 +73,9 @@ app.on("ready", async () => {
   try {
     // Import schemas dynamically
     // const { CustomerSchema, ProductSchema, ProductVariantSchema, SupplierSchema, SaleSchema, StaffSchema } = require('./database/schemas');
-    realm = openPouchDB();
+    pouch = openPouchDB();
     console.log("Realm opened with sync successfully");
-    setupIpcHandlers(ipcMain, realm);
+    setupIpcHandlers(ipcMain, pouch);
     createWindow();
 
     setInterval(checkOnlineStatus, 60000);
@@ -90,9 +98,9 @@ app.on("window-all-closed", () => {
 app.on('before-quit', async (event) => {
   event.preventDefault(); // Prevent the app from quitting immediately
   
-  if (realm && !realm.isClosed) {
+  if (pouch && !pouch.isClosed) {
     console.log("Closing Realm...");
-    realm.close();
+    pouch.close();
   }
   
   console.log("Realm closed. Quitting app...");
