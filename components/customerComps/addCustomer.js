@@ -14,7 +14,7 @@ export default function AddCustomer({fetchCustomers}) {
 
   // New customer state
   const [newCustomer, setNewCustomer] = useState({
-    _id: uuidv4(),
+    _id: '',
     name: '',
     phoneNumber: '',
     address: '',
@@ -37,8 +37,11 @@ export default function AddCustomer({fetchCustomers}) {
     try {
         const customerData = {
           ...newCustomer,
-          balance: parseInt(newCustomer.balance)
+          _id: `24091324:${uuidv4()}`,
+          balance: parseInt(newCustomer.balance),
+          storeNo: "24091324"
         };
+        console.log(customerData);
         const result = await window.electronAPI.realmOperation('createCustomer', customerData);
         if (result.success) {
             toast({

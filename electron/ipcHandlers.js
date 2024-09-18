@@ -28,8 +28,7 @@ function checkNetworkConnection() {
 
 function setupIpcHandlers(ipcMain, db) {
   ipcMain.handle('get-online-status', async () => {
-    const result = await checkNetworkConnection();
-    return result
+    return checkNetworkConnection();
   });
 
   // Add this new IPC handler for getting sync status

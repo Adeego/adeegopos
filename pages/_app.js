@@ -2,8 +2,8 @@ import "@/styles/globals.css";
 import Sidebar from "@/components/sidebar";
 import useStaffStore from "@/stores/staffStore";
 import useWsinfoStore from "@/stores/wsinfo";
-import { useEffect, useState } from 'react';
-import { useRouter } from 'next/router';
+import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
 import { useOnlineStatus } from "@/components/adeegoPos/useOnlineStatus";
 import { Badge } from "@/components/ui/badge";
 import { Wifi, WifiOff } from "lucide-react";
@@ -18,31 +18,43 @@ export default function App({ Component, pageProps }) {
   const [isOnline, setIsOnline] = useState(false);
 
   useEffect(() => {
-    let removeListener; // Track the listener so that it can be removed
+    const storeNo = wsinfo.storeNo;
+    if (storeNo) {
+      // Send `storeNo` to Electron's main process
+      window.electronAPI.send("send-storeNo", storeNo);
+    }
+  }, [wsinfo.storeNo]);
 
-    console.log(wsinfo)
+  useEffect(() => {
+    let removeListener;
+  
+    // const checkStatus = async () => {
+    //   if (typeof window !== "undefined" && window.electronAPI) {
+    //     try {
+    //       const status = await window.electronAPI.getOnlineStatus();
+    //       setIsOnline(status);
+    //     } catch (error) {
+    //       console.error("Failed to get online status:", error);
+    //       setIsOnline(false); // Assume offline if there's an error
+    //     }
+    //   }
+    // };
+  
+    // checkStatus(); // Initial check
   
     if (typeof window !== "undefined" && window.electronAPI) {
-      // Initial check
-      window.electronAPI.getOnlineStatus().then((status) => {
-        // console.log("Initial online status:", status);
-        setIsOnline(status);
-      });
-  
-      // Listen for changes
       removeListener = window.electronAPI.onOnlineStatusChanged((status) => {
-        // console.log("Online status changed:", status);
         setIsOnline(status);
       });
     }
   
-    // Cleanup: Unsubscribe from the listener when the component is unmounted
     return () => {
       if (removeListener) {
         removeListener();
       }
     };
   }, []);
+    
 
   useEffect(() => {
     if (staff._id !== undefined) {
@@ -53,19 +65,31 @@ export default function App({ Component, pageProps }) {
   useEffect(() => {
     if (wsinfo._id !== undefined) {
       setIsWsinfoLoaded(true);
-      console.log(wsinfo)
+      console.log(wsinfo);
     }
   }, [wsinfo]);
 
   useEffect(() => {
     const checkAuth = async () => {
-      if (wsinfo._id === null && router.pathname !== '/auth/wsSignin') {
-        await router.replace('/auth/wsSignin');
-      } else if (wsinfo._id !== null && (router.pathname === '/auth/login' || router.pathname === '/auth/wsSignin')) {
-        if (staff._id === null && router.pathname !== '/auth/login' && router.pathname !== '/auth/wsSignin') {
-          await router.replace('/auth/login');
-        } else if (staff._id !== null && (router.pathname === '/auth/login' || router.pathname === '/auth/wsSignin')) {
-          await router.replace('/');
+      if (wsinfo._id === null && router.pathname !== "/auth/wsSignin") {
+        await router.replace("/auth/wsSignin");
+      } else if (
+        wsinfo._id !== null &&
+        (router.pathname === "/auth/login" ||
+          router.pathname === "/auth/wsSignin")
+      ) {
+        if (
+          staff._id === null &&
+          router.pathname !== "/auth/login" &&
+          router.pathname !== "/auth/wsSignin"
+        ) {
+          await router.replace("/auth/login");
+        } else if (
+          staff._id !== null &&
+          (router.pathname === "/auth/login" ||
+            router.pathname === "/auth/wsSignin")
+        ) {
+          await router.replace("/");
         }
       }
       setIsLoading(false);
@@ -80,7 +104,12 @@ export default function App({ Component, pageProps }) {
     return <div>Loading...</div>; // You can replace this with a proper loading component
   }
 
-  if ((!wsinfo._id && router.pathname !== '/auth/wsSignin') || (!staff._id && router.pathname !== '/auth/login' && router.pathname !== '/auth/wsSignin')) {
+  if (
+    (!wsinfo._id && router.pathname !== "/auth/wsSignin") ||
+    (!staff._id &&
+      router.pathname !== "/auth/login" &&
+      router.pathname !== "/auth/wsSignin")
+  ) {
     return null; // Don't render anything if not authenticated and not on login or wsSignin page
   }
 
@@ -93,11 +122,13 @@ export default function App({ Component, pageProps }) {
       <div className="fixed bottom-4 right-4 z-50">
         {isOnline ? (
           <Badge variant="secondary">
-            <Wifi size={16} /><p className="ml-1">Online</p>
+            <Wifi size={16} />
+            <p className="ml-1">Online</p>
           </Badge>
         ) : (
           <Badge variant="secondary">
-            <WifiOff size={16} /><p className="ml-1">Offline</p>
+            <WifiOff size={16} />
+            <p className="ml-1">Offline</p>
           </Badge>
         )}
       </div>
