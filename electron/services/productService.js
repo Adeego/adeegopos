@@ -20,7 +20,7 @@ function addNewProduct(db, productData) {
     restockPeriod: productData.restockPeriod,
     createdAt: productData.createdAt,
     updatedAt: productData.updatedAt,
-    sku: productData.sku,
+    barCode: productData.barCode,
     storeNo: productData.storeNo,
   };
   return db
@@ -97,7 +97,7 @@ function getAllProducts(db) {
 
 function getProductById(db, productId) {
   return db
-    .get(`product_${productId}`)
+    .get(productId)
     .then((product) => ({ success: true, product }))
     .catch((error) => ({ success: false, error: error.message }));
 }
