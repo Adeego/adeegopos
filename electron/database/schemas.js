@@ -85,11 +85,12 @@ const SaleSchema = {
     totalAmount: "double",
     totalItems: "int",
     paymentMethod: "string",
-    type: "string", // New Sale or Return Sale
+    saleType: "string", // New Sale or Return Sale
     paid: "bool",
     createdAt: "date",
     updatedAt: "date",
     storeNo: "string",
+    state: "string"
   },
   primaryKey: "_id",
 };

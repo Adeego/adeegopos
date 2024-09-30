@@ -7,8 +7,12 @@ export default function CustomerDetail() {
   const router = useRouter()
   const {id} = router.query
 
+  console.log(id)
+
   useEffect(() => {
-    fetchSelectedCustomer();
+    if (id) {
+      fetchSelectedCustomer();
+    }
   }, [id]);
 
   const fetchSelectedCustomer = async () => {

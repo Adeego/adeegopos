@@ -29,6 +29,7 @@ const createWindow = () => {
     frame: true, // Show the title bar and window controls
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
+      // nodeIntegration: true,   // Important for using Node.js modules like PouchDB
     },
   });
 

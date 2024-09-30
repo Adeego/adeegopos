@@ -1,6 +1,6 @@
 function createStaff(db, staffData) {
   const staff = {
-    _id: `staff_${staffData._id}`,
+    _id: staffData._id,
     type: 'staff',
     ...staffData
   };

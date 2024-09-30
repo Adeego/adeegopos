@@ -103,6 +103,7 @@ export default function AddProduct({ fetchProducts }) {
         restockThreshold: parseInt(newProduct.restockThreshold, 10),
         restockPeriod: parseInt(newProduct.restockPeriod, 10),
         variants: newProduct.variants, // Include the variants
+        state: "Active",
       };
       console.log(productData);
       const result = await window.electronAPI.realmOperation(
@@ -272,13 +273,13 @@ export default function AddProduct({ fetchProducts }) {
                 />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="sku" className="text-right">
-                  SKU
+                <Label htmlFor="barCode" className="text-right">
+                  Bar Code
                 </Label>
                 <Input
-                  id="sku"
-                  name="sku"
-                  value={newProduct.sku}
+                  id="barCode"
+                  name="barCode"
+                  value={newProduct.barCode}
                   onChange={handleInputChange}
                   className="col-span-3"
                 />

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import AddProduct from './addProduct';
 import ViewProduct from './viewProduct';
 
-import { MoreHorizontal, Search, ChevronDown, ChevronUp } from "lucide-react";
+import { MoreHorizontal, Search, ChevronDown, ChevronUp, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -116,7 +116,7 @@ export default function ProductTable() {
                     <TableCell className="hidden md:table-cell text-left">{product.stock}</TableCell>
                     <TableCell className="hidden md:table-cell text-left">{product.status}</TableCell>
                     <TableCell className="hidden md:table-cell text-left">
-                      <Link href={`/product/${product._id}`}>View</Link>
+                      <Link href={`/product/${product._id}`} className='hover:bg-neutral-600 rounded-md h-8 w-8' ><Eye /></Link>
                     </TableCell>
                   </TableRow>
                 </React.Fragment>

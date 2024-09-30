@@ -47,30 +47,19 @@ function SaleCard() {
     setName(e.target.value);
   };
 
-  const handleProductSelect = (product) => {
-    if (product.variants.length === 1) {
-      handleVariantSelect(product.variants[0]);
-    } else {
-      setSelectedProduct(product);
-      setIsVariantDialogOpen(true);
-    }
-  };
-
-  const handleVariantSelect = (variant) => {
+  const handleProductSelect = (variant) => {
     setSelectedProducts(prevProducts => {
       const existingVariantIndex = prevProducts.findIndex(p => p._id === variant._id);
-      
-
       if (existingVariantIndex !== -1) {
-        return prevProducts.map((p, index) => 
+        // If the variant is already selected, increase its quantity
+        return prevProducts.map((p, index) =>
           index === existingVariantIndex ? { ...p, quantity: p.quantity + 1 } : p
         );
       } else {
+        // If it's a new variant, add it to the list
         return [...prevProducts, { ...variant, quantity: 1 }];
       }
     });
-    setIsVariantDialogOpen(false);
-    setSelectedProduct(null);
   };
 
   const handleProductRemove = (variantId) => {
@@ -99,9 +88,11 @@ function SaleCard() {
       const result = await window.electronAPI.searchCustomers(name);
       if (result.success) {
         setCustomerResult(result.customers);
+        console.log(result)
       } else {
         console.error('Search failed:', result.error);
         setCustomerResult([]);
+        console.log(result)
       }
     } catch (error) {
       console.error('Error during search:', error);
@@ -110,32 +101,41 @@ function SaleCard() {
   };
 
   const handleCustomerSelect = (chosenCustomer) => {
-    setSelectedCustomer(customer);
+    setSelectedCustomer(chosenCustomer);
     setCustomer(chosenCustomer);
     setCustomerResult([]);
     setName('')
   };
 
+  console.log(selectedProducts)
+
   const handleCreateSale = async () => {
     const saleData = {
-      _id: uuidv4(),
+      _id: `24091324:${uuidv4()}`,
       customerId: customer._id,
       items: selectedProducts.map(product => ({
-        _id: uuidv4(),
-        productVariantId: product._id, // Change this to store the variant ID instead of the whole object
+        _id: `24091324:${uuidv4()}`,
+        productId: product._id, // Change this to store the variant ID instead of the whole object
+        name: `${product.productName} ${product.name}`,
+        buyPrice: product.buyPrice * product.conversionFactor,
         quantity: product.quantity,
         unitPrice: product.unitPrice,
         subtotal: product.unitPrice * product.quantity,
         discount: 0,
+        conversionFactor: product.conversionFactor
       })),
       totalAmount: totalAmount,
       totalItems: selectedProducts.length,
       paymentMethod: paymentMethods,
-      type: saleType,
-      paid: true,
+      saleType: saleType,
+      fullfilmentType: fulfillmentType,
+      confirmed: true,
+      storeNo: '24091324',
       createdAt: new Date(),
       updatedAt: new Date(),
     };
+
+    console.log(saleData);
   
     try {
       const result = await window.electronAPI.realmOperation('createSale', saleData);
@@ -209,7 +209,7 @@ function SaleCard() {
                     <SelectItem value="MPESA">MPESA</SelectItem>
                     <SelectItem value="CREDIT">CREDIT</SelectItem>
                   </SelectContent>
-                </Select>
+                </Select> 
                 <Label>Sale type</Label>
                 <Select name="saleType" value={saleType} onValueChange={(value) => setSaleType(value)}>
                   <SelectTrigger className="col-span-3">
@@ -276,12 +276,12 @@ function SaleCard() {
           </div>
         </CardFooter>
       </Card>
-      <VariantSelection
+      {/* <VariantSelection
         isOpen={isVariantDialogOpen}
         onClose={() => setIsVariantDialogOpen(false)}
         product={selectedProduct}
         onVariantSelect={handleVariantSelect}
-      />
+      /> */}
     </div>
   );
 }

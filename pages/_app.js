@@ -121,12 +121,12 @@ export default function App({ Component, pageProps }) {
       </div>
       <div className="fixed bottom-4 right-4 z-50">
         {isOnline ? (
-          <Badge variant="secondary">
+          <Badge className="border-solid border-2 border-neutral-800" variant="secondary">
             <Wifi size={16} />
             <p className="ml-1">Online</p>
           </Badge>
         ) : (
-          <Badge variant="secondary">
+          <Badge className="border-solid border-2 border-neutral-800" variant="secondary">
             <WifiOff size={16} />
             <p className="ml-1">Offline</p>
           </Badge>

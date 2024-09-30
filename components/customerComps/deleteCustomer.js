@@ -14,7 +14,7 @@ import {
 import { Trash2 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 
-export default function DeleteCustomer({ customerId, customerName, onDeleteSuccess }) {
+export default function DeleteCustomer({ customerId, customerName, onDeleteSuccess, fetchCustomers }) {
   const [isDeleting, setIsDeleting] = useState(false);
   const { toast } = useToast();
 
@@ -28,6 +28,7 @@ export default function DeleteCustomer({ customerId, customerName, onDeleteSucce
           title: "Success",
           description: `Customer ${customerName} has been deleted.`,
         });
+        fetchCustomers();
         onDeleteSuccess();
       } else {
         throw new Error(result && result.error ? result.error : 'Failed to delete customer');
@@ -47,8 +48,8 @@ export default function DeleteCustomer({ customerId, customerName, onDeleteSucce
   return (
     <AlertDialog>
       <AlertDialogTrigger asChild>
-        <div variant="ghost" size="icon">
-          <Trash2 className="h-4 w-4" /> Delete
+        <div variant="ghost" size="icon" className='flex justify-center items-center rounded-md hover:bg-neutral-200 h-8 w-8' >
+          <Trash2 className=" text-red-700" />
         </div>
       </AlertDialogTrigger>
       <AlertDialogContent>

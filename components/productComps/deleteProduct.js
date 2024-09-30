@@ -7,27 +7,27 @@ export default function DeleteProduct({onDeleteSuccess, productId, productName})
     const { toast } = useToast();
 
     const handleDelete = async () => {
-        try {
-          const result = await window.electronAPI.realmOperation('deleteProduct', productId);
-      
-          if (result && result.success) {
-            toast({
-              title: "Success",
-              description: `Product ${productName} has been deleted.`,
-            });
-            onDeleteSuccess();
-          } else {
-            throw new Error(result && result.error ? result.error : 'Failed to delete product');
-          }
-        } catch (error) {
-          console.error('Error deleting product:', error);
+      try {
+        const result = await window.electronAPI.realmOperation('deleteProduct', productId);
+    
+        if (result && result.success) {
           toast({
-            title: "Error",
-            description: error.message || "Failed to delete product. Please try again.",
-            variant: "destructive",
+            title: "Success",
+            description: `Product ${productName} has been deleted.`,
           });
+          onDeleteSuccess();
+        } else {
+          throw new Error(result && result.error ? result.error : 'Failed to delete product');
         }
-      };
+      } catch (error) {
+        console.error('Error deleting product:', error);
+        toast({
+          title: "Error",
+          description: error.message || "Failed to delete product. Please try again.",
+          variant: "destructive",
+        });
+      }
+    };
 
   return (
     <AlertDialog>

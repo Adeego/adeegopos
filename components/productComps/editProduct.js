@@ -1,90 +1,105 @@
-import React, {useState} from 'react'
-import { toast } from '../ui/use-toast';
+'use client'
 
-export default function EditProduct({product, onEditSuccess, isEditing, handleEditState}) {
-    const [name, setName] = useState(product.name);
-    const [quantity, setQuantity] = useState(product.quantity)
-    const [unit, setUnit] = useState(product.unit);
-    const [unitPrice, setUnitPrice] = useState(product.unitPrice);
-    const [stock, setStock] = useState(product.stock);
-    const [status, setStatus] = useState(product.status)
+import React, { useState } from 'react'
+import { toast } from '@/components/ui/use-toast'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
+import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/card'
 
-    const handleInputs = {
-        handleName: (value) => setName(value),
-        handleQuantity: (value) => setQuantity(value),
-        handleUnit: (value) => setUnit(value),
-        handleUnitPrice: (value) => setUnitPrice(value),
-        handleStock: (value) => setStock(value),
-        handleStatus: (value) => setStatus(value)
-    };
+export default function EditProduct({ product, handleEditState, fetchSelectedProduct }) {
+  const [formData, setFormData] = useState(product)
 
-    const handleEditing = async (e) => {
-        try {
-          const editFields = {
-              _id: product._id,
-              name: name,
-              quantity: quantity,
-              unit: unit,
-              unitPrice: parseInt(unitPrice),
-              stock: parseInt(stock),
-              status: status
-          }
-          console.log(editFields);
-          const result = await window.electronAPI.realmOperation('updateProduct', editFields);
-          if (result.success) {
-            toast({
-              title: "Success",
-              description: "Product updated successfully!",
-            });
-            onEditSuccess();
-            handleEditState();
-          } else {
-            throw new Error(result.error);
-          }
-        } catch (error) {
-          console.error('Error updating product:', error);
-          toast({
-            title: "Error",
-            description: "Failed to update product. Please try again.",
-            variant: "destructive",
-          });
-        }
-      };
+  const handleInputChange = (e) => {
+    const { name, value } = e.target
+    setFormData((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handleSelectChange = (value) => {
+    setFormData((prev) => ({ ...prev, status: value }))
+  }
+
+  const handleEditing = async () => {
+    try {
+      const editFields = {
+        ...formData,
+        buyPrice: parseFloat(formData.buyPrice.toString()),
+      }
+      console.log(editFields)
+      const result = await window.electronAPI.realmOperation('updateProduct', editFields)
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: "Product updated successfully!",
+        })
+        fetchSelectedProduct()
+        handleEditState()
+      } else {
+        throw new Error(result.error)
+      }
+    } catch (error) {
+      console.error('Error updating product:', error)
+      toast({
+        title: "Error",
+        description: "Failed to update product. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
 
   return (
-    <div>
-        <div>
-            <div>Name</div>
-            <input type="text" value={name} onChange={(e) => {handleInputs.handleName(e.target.value)}} />
-        </div>
-        <div>
-            <div>Quantity</div>
-            <input type="number" value={quantity} onChange={(e) => {handleInputs.handleQuantity(e.target.value)}} />
-        </div>
-        <div>
-            <div>Unit</div>
-            <input type="text" value={unit} onChange={(e) => {handleInputs.handleUnit(e.target.value)}} />
-        </div>
-        <div>
-            <div>Unit Price</div>
-            <input type="number" value={unitPrice} onChange={(e) => {handleInputs.handleUnitPrice(e.target.value)}} />
-        </div>
-        <div>
-            <div>Stock</div>
-            <input type="text" value={stock} onChange={(e) => {handleInputs.handleStock(e.target.value)}} />
-        </div>
-        <div>
-            <div>Status</div>
-            <select name="status" value={status}>
-                <option value="In Stock">In Stock</option>
-                <option value="Out Stock">Out Stock</option>
-                <option value="Archived">Archived</option>
-            </select>
-        </div>
-        <div>
-            <button>Cancel</button>
-            <button onClick={handleEditing} >Update</button>
-        </div>
-    </div>
+    <Card className="w-full max-w-2xl mx-auto">
+      <CardHeader>
+        <CardTitle>Edit Product</CardTitle>
+      </CardHeader>
+      <div >
+        <CardContent className="grid gap-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="name">Name</Label>
+              <Input id="name" name="name" value={formData.name} onChange={handleInputChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="baseUnit">Base Unit</Label>
+              <Input id="baseUnit" name="baseUnit" value={formData.baseUnit} onChange={handleInputChange} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="buyPrice">Buy Price</Label>
+              <Input id="buyPrice" name="buyPrice" type="number" value={formData.buyPrice} onChange={handleInputChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="barCode">Bar Code</Label>
+              <Input id="barCode" name="barCode" value={formData.barCode} onChange={handleInputChange} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="status">Status</Label>
+              <Select onValueChange={handleSelectChange} defaultValue={formData.status}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="In Stock">In Stock</SelectItem>
+                  <SelectItem value="Out Stock">Out of Stock</SelectItem>
+                  <SelectItem value="Archived">Archived</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="category">Category</Label>
+              <Input id="category" name="category" value={formData.category} onChange={handleInputChange} />
+            </div>
+          </div>
+        </CardContent>
+        <CardFooter className="flex justify-between">
+          <Button variant="outline" onClick={() => {handleEditState()}}>Cancel</Button>
+          <Button onClick={() => {handleEditing()}} >Update</Button>
+        </CardFooter>
+      </div>
+    </Card>
   )
 }

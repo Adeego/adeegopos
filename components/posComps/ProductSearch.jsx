@@ -23,9 +23,10 @@ function ProductSearch({ handleProductSelect }) {
 
   const fetchAllProducts = async () => {
     try {
-      const result = await window.electronAPI.realmOperation('getAllProducts');
+      const result = await window.electronAPI.realmOperation('getAllVariants');
       if (result.success) {
         setSearchResults(result.products);
+        console.log(result);
       } else {
         console.error('Failed to fetch products:', result.error);
         setSearchResults([]);
@@ -40,7 +41,9 @@ function ProductSearch({ handleProductSelect }) {
     try {
       const result = await window.electronAPI.searchProducts(searchTerm);
       if (result.success) {
+        console.log(result);
         setSearchResults(result.products);
+        console.log("Search successifull")
       } else {
         console.error('Search failed:', result.error);
         setSearchResults([]);
@@ -102,8 +105,8 @@ function ProductSearch({ handleProductSelect }) {
                 }`}
                 onClick={() => handleSelectProduct(product)} // Add click handler
               >
-                <h4 className="font-semibold">{product.name}</h4>
-                <p className="text-sm text-gray-600">{product.unit}</p>
+                <h4 className="font-semibold">{product.productName} {product.variantName}</h4>
+                <p className="text-sm text-gray-600">{product.unitPrice}</p>
               </li>
             ))}
           </ul>

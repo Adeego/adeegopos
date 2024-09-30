@@ -5,7 +5,10 @@ const wholeSalerService = require('./services/wholeSalerService')
 const staffService = require('./services/staffService')
 const saleService = require('./services/saleService')
 const supplierService = require('./services/supplierService')
-const { openPouchDB } = require('./pouchSync');
+const accountService = require('./services/finance/accountService')
+const expenseService = require('./services/finance/expenseService')
+const transactionService = require('./services/finance/transactionService')
+// const { openPouchDB } = require('./pouchSync');
 
 function getSyncStatus(db) {
   return db.info()
@@ -65,20 +68,66 @@ function setupIpcHandlers(ipcMain, db) {
         return customerService.getCustomerById(db, args[0]);
       case 'getAllProducts':
         return productService.getAllProducts(db);
+      case 'getAllVariants':
+        return productService.getAllVariants(db);
       case 'getSaleItemsByProductId':
         return productService.getSaleItemsByProductId(db, args[0], args[1], args[2]);
       case 'getProductById':
         return productService.getProductById(db, args[0]);
       case 'updateProduct':
         return productService.updateProduct(db, args[0]);
+      case 'addNewVariant':
+        return productService.addNewVariant(db, args[0], args[1])
+      case 'removeVariant':
+        return productService.removeVariant(db, args[0], args[1])
       case 'addNewProduct':
         return productService.addNewProduct(db, args[0]);
-      case 'deleteProduct':
-        return productService.deleteProduct(db, args[0]);
+      case 'archiveProduct':
+        return productService.archiveProduct(db, args[0]);
       case 'createSale':
         return saleService.createSale(db, ...args);
-      case 'getSupplierProducts':
-        return getSupplierProducts(db, ...args).map(product => product.toJSON());
+      case 'archiveSale':
+        return saleService.archiveSale(db, args[0]);
+      case 'createSupplier':
+        return supplierService.createSupplier(db, args[0]);
+      case 'getAllSuppliers':
+        return supplierService.getAllSuppliers(db);
+      case 'getSupplierById':
+        return supplierService.getSupplierById(db, args[0]);
+      case 'updateSupplier':
+        return supplierService.updateSupplier(db, args[0]);
+      case 'archiveSupplier':
+        return supplierService.archiveSupplier(db, args[0]);
+      case 'createAccount':
+        return accountService.createAccount(db, args[0]);
+      case 'getAllAccounts':
+        return accountService.getAllAccounts(db);
+      case 'getAccountById':
+        return accountService.getAccountById(db, args[0]);
+      case 'updateAccount':
+        return accountService.updateAccount(db, args[0]);
+      case 'archiveAccount':
+        return accountService.archiveAccount(db, args[0]);
+      case 'createExpense':
+        return expenseService.createExpense(db, args[0]);
+      case 'getAllExpenses':
+        return expenseService.getAllExpenses(db);
+      case 'getExpenseById':
+        return expenseService.getExpenseById(db, args[0]);
+      case 'updateExpense':
+        return expenseService.updateExpense(db, args[0]);
+      case 'archiveExpense':
+        return expenseService.archiveExpense(db, args[0]);
+      case 'createTransaction':
+        return transactionService.createTransaction(db, args[0]);
+      case 'getAllTransactions':
+        return transactionService.getAllTransactions(db);
+      case 'getTransactionById':
+        return transactionService.getTransactionById(db, args[0]);
+      case 'updateTransaction':
+        return transactionService.updateTransaction(db, args[0]);
+      case 'archiveTransaction':
+        return transactionService.archiveTransaction(db, args[0]);
       case 'getCustomerSales':
         return customerService.getCustomerSales(db, ...args).map(sale => sale.toJSON());
       case 'getSaleProducts':

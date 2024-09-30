@@ -4,7 +4,7 @@ import EditCustomer from './editCustomer';
 import AddCustomer from './addCustomer';
 import Edit from './edit';
 
-import { MoreHorizontal, Search } from "lucide-react";
+import { MoreHorizontal, Search, Eye } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -65,54 +65,6 @@ export default function CustomerTable() {
     }
   };
 
-  // const handleInputChange = (e) => {
-  //   const { name, value, type, checked } = e.target;
-  //   setNewCustomer(prev => ({
-  //     ...prev,
-  //     [name]: type === 'checkbox' ? checked : value
-  //   }));
-  // };
-
-  // const handleSubmit = async (e) => {
-  //   e.preventDefault();
-  //   setIsAddingCustomer(true);
-  //   try {
-  //       const customerData = {
-  //         ...newCustomer,
-  //         balance: parseInt(newCustomer.balance)
-  //       };
-  //       const result = await window.electronAPI.realmOperation('createCustomer', customerData);
-  //       if (result.success) {
-  //           toast({
-  //               title: "Success",
-  //               description: "Customer created successfully!",
-  //           });
-  //           fetchCustomers(); // Refresh the customer list
-  //           setNewCustomer({
-  //               _id: uuidv4(),
-  //               name: '',
-  //               phoneNumber: '',
-  //               address: '',
-  //               balance: '',
-  //               credit: false,
-  //               status: ''
-  //           });
-  //       } else {
-  //           throw new Error(result.error);
-  //       }
-  //   } catch (error) {
-  //       console.error('Error creating customer:', error);
-  //       toast({
-  //           title: "Error",
-  //           description: "Failed to create customer. Please try again.",
-  //           variant: "destructive",
-  //       });
-  //   } finally {
-  //       setIsAddingCustomer(false);
-  //   }
-  // };
-
-
   const indexOfLastCustomer = currentPage * rowsPerPage;
   const indexOfFirstCustomer = indexOfLastCustomer - rowsPerPage;
   const currentCustomers = filteredCustomers.slice(indexOfFirstCustomer, indexOfLastCustomer);
@@ -164,7 +116,7 @@ export default function CustomerTable() {
               <TableHead className="hidden md:table-cell text-left">Balance</TableHead>
               <TableHead className="hidden md:table-cell text-left">Credit</TableHead>
               <TableHead className="hidden md:table-cell text-left">Status</TableHead>
-              <TableHead className="hidden md:table-cell text-left">View</TableHead>
+              <TableHead className="hidden md:table-cell text-left"></TableHead>
               <TableHead>
                 <span className="sr-only">Actions</span>
               </TableHead>
@@ -180,7 +132,15 @@ export default function CustomerTable() {
                 <TableCell className="hidden md:table-cell text-left">{customer.credit ? 'Yes' : 'No'}</TableCell>
                 <TableCell className="hidden md:table-cell text-left">{customer.status}</TableCell>
                 <TableCell className="hidden md:table-cell text-left">
-                  <Link href={`/customers/${customer._id}`}>View</Link>
+                  <div className=' flex flex-row gap-2 ' >
+                    <Link href={`/customers/${customer._id}`} className='h-8 w-8 flex justify-center items-center rounded-md hover:bg-neutral-200' ><Eye /></Link>
+                    <DeleteCustomer
+                      customerId={customer._id}
+                      customerName={customer.name}
+                      fetchCustomers={fetchCustomers}
+                      onDeleteSuccess={fetchCustomers}
+                    />
+                  </div>
                 </TableCell>
                 <TableCell>
                   <DropdownMenu>
@@ -202,11 +162,7 @@ export default function CustomerTable() {
                         />
                       </DropdownMenuItem>
                       <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                        <DeleteCustomer
-                          customerId={customer._id}
-                          customerName={customer.name}
-                          onDeleteSuccess={fetchCustomers}
-                        />
+                        
                       </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>

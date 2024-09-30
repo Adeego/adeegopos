@@ -29,7 +29,7 @@ function SelectedProductsTable({ selectedProducts, handleProductRemove, handleQu
         <TableBody>
           {selectedProducts.map((variant) => (
             <TableRow key={variant._id}>
-              <TableCell>{variant.product.name}</TableCell>
+              <TableCell>{variant.productName}</TableCell>
               <TableCell>{variant.name}</TableCell>
               <TableCell>
                 <Input

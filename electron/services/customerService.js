@@ -1,7 +1,7 @@
 // Create a new customer
 function createCustomer(db, customerData) {
   const customer = {
-    _id: `${customerData.storeNo}_${customerData._id}`,
+    _id: customerData._id,
     name: customerData.name,
     phoneNumber: customerData.phoneNumber,
     address: customerData.address,
@@ -12,6 +12,7 @@ function createCustomer(db, customerData) {
     createdAt: customerData.createdAt,
     updatedAt: customerData.updatedAt,
     type: "customer",
+    state: "Active"
   };
   return db
     .put(customer)
@@ -26,7 +27,10 @@ function createCustomer(db, customerData) {
 function getAllCustomers(db) {
   return db
     .find({
-      selector: { type: "customer" },
+      selector: { 
+        type: "customer",
+        state: "Active"
+      },
     })
     .then((result) => ({ success: true, customers: result.docs }))
     .catch((error) => ({ success: false, error: error.message }));
@@ -35,33 +39,36 @@ function getAllCustomers(db) {
 // Get a customer by ID
 function getCustomerById(db, customerId) {
   return db
-    .get(`customer_${customerId}`)
+    .get(customerId)
     .then((customer) => ({ success: true, customer }))
     .catch((error) => ({ success: false, error: error.message }));
 }
 
 // Added a new function for customer search
-function searchCustomers(db, name) {
-  return db
-    .find({
+async function searchCustomers(db, searchTerm, state = "Active", type = "customer") {
+  try {
+    const result = await db.find({
       selector: {
-        type: "customer",
         $or: [
-          { name: { $regex: name, $options: "i" } },
-          { phoneNumber: { $regex: name, $options: "i" } },
-          { address: { $regex: name, $options: "i" } },
+          { name: { $regex: new RegExp(searchTerm, 'i') } },
+          { phoneNumber: { $regex: new RegExp(searchTerm, 'i') } }
         ],
-      },
-    })
-    .then((result) => ({ success: true, customers: result.docs }))
-    .catch((error) => ({ success: false, error: error.message }));
+        state: state,
+        type: type
+      }
+    });
+    return { success: true, customers: result.docs };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 }
 
 // Update an existing customer
 function updateCustomer(db, customerData) {
   const customer = {
-    _id: `customer_${customerData._id}`,
+    _id: customerData._id,
     type: "customer",
+    state: "Active",
     ...customerData,
   };
   return db
@@ -76,8 +83,12 @@ function updateCustomer(db, customerData) {
 // Delete a customer
 function deleteCustomer(db, customerId) {
   return db
-    .get(`customer_${customerId}`)
-    .then((doc) => db.remove(doc))
+    .get(customerId)
+    .then((product) => {
+      // Update the state field to "Inactive"
+      product.state = "Inactive";
+      return db.put(product);
+    })
     .then(() => ({ success: true }))
     .catch((error) => ({ success: false, error: error.message }));
 }
