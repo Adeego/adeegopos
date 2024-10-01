@@ -83,7 +83,7 @@ export default function WsDropdownMenu({ isSideBarEnlarged, icon }) {
           <DialogHeader>
             <DialogTitle>Confirm Logout</DialogTitle>
             <DialogDescription>
-              Are you sure you want to log out? You'll need to log in again to access your account.
+              Are you sure you want to log out? You will need to log in again to access your account.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

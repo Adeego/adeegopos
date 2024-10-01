@@ -242,7 +242,7 @@ export default function ViewProduct({ product, fetchSelectedProduct, saleItems, 
                                 <AlertDialogTitle>Are you sure?</AlertDialogTitle>
                                 <AlertDialogDescription>
                                   This action cannot be undone. This will permanently delete the variant
-                                  "{variant.name}" from the product.
+                                  {variant.name} from the product.
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>

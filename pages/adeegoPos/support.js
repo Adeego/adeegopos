@@ -16,7 +16,7 @@ export default function Support() {
       <div className="max-w-3xl mx-auto">
         <header className="text-center mb-12">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">POS Pro Support</h1>
-          <p className="text-xl text-gray-600">We're here to help you with your POS needs</p>
+          <p className="text-xl text-gray-600">We are here to help you with your POS needs</p>
         </header>
 
         <div className="grid gap-8 md:grid-cols-2 mb-12">
@@ -59,7 +59,7 @@ export default function Support() {
               <AccordionItem value="item-1">
                 <AccordionTrigger>How do I set up my POS system?</AccordionTrigger>
                 <AccordionContent>
-                  Setting up your POS system is easy. First, unpack all components. Connect the main terminal to power, then follow the on-screen instructions to connect to your Wi-Fi network. Finally, log in with your provided credentials and you're ready to go!
+                  Setting up your POS system is easy. First, unpack all components. Connect the main terminal to power, then follow the on-screen instructions to connect to your Wi-Fi network. Finally, log in with your provided credentials and you are ready to go!
                 </AccordionContent>
               </AccordionItem>
               <AccordionItem value="item-2">
@@ -71,13 +71,13 @@ export default function Support() {
               <AccordionItem value="item-3">
                 <AccordionTrigger>How do I generate sales reports?</AccordionTrigger>
                 <AccordionContent>
-                  To generate sales reports, log into your POS dashboard. Navigate to the 'Reports' section, select the type of report you need (e.g., daily sales, inventory), choose your date range, and click 'Generate'. You can view the report on-screen or download it as a PDF or CSV file.
+                  To generate sales reports, log into your POS dashboard. Navigate to the Reports section, select the type of report you need (e.g., daily sales, inventory), choose your date range, and click Generate. You can view the report on-screen or download it as a PDF or CSV file.
                 </AccordionContent>
               </AccordionItem>
               <AccordionItem value="item-4">
                 <AccordionTrigger>What should I do if my POS system is not working?</AccordionTrigger>
                 <AccordionContent>
-                  If your POS system isn't working, first ensure all cables are properly connected and the system is powered on. Try restarting the system. If the issue persists, check your internet connection. For further assistance, please contact our support team via phone or WhatsApp.
+                  If your POS system isnt working, first ensure all cables are properly connected and the system is powered on. Try restarting the system. If the issue persists, check your internet connection. For further assistance, please contact our support team via phone or WhatsApp.
                 </AccordionContent>
               </AccordionItem>
             </Accordion>
@@ -87,7 +87,7 @@ export default function Support() {
         <Card>
           <CardHeader>
             <CardTitle>Submit a Support Request</CardTitle>
-            <CardDescription>We'll get back to you as soon as possible</CardDescription>
+            <CardDescription>We will get back to you as soon as possible</CardDescription>
           </CardHeader>
           <CardContent>
             <form className="space-y-4">

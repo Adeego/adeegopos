@@ -113,6 +113,6 @@ app.on("before-quit", async (event) => {
     pouch.close();
   }
 
-  console.log("Realm closed. Quitting app...");
+  console.log("Pouch closed. Quitting app...");
   app.exit(0); // Force quit the app
 });

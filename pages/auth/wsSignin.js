@@ -17,32 +17,69 @@ export default function WsSignin() {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [location, setLocation] = useState('');
-  const [isOnline, setIsOnline] = useState(false)
+  const [isOnline, setIsOnline] = useState(true)
   const router = useRouter();
   const [showOfflineDialog, setShowOfflineDialog] = useState(false)
   const addWsinfo = useWsinfoStore((state) => state.addWsinfo);
 
+  // useEffect(() => {
+  //   let removeListener; // Track the listener so that it can be removed
+  
+  //   if (typeof window !== "undefined" && window.electronAPI) {
+  //     // Initial check
+  //     window.electronAPI.getOnlineStatus().then((status) => {
+  //       // console.log("Initial online status:", status);
+  //       setIsOnline(status);
+  //     });
+  
+  //     // Listen for changes
+  //     removeListener = window.electronAPI.onOnlineStatusChanged((status) => {
+  //       // console.log("Online status changed:", status);
+  //       setIsOnline(status);
+  //     });
+  //   }
+  
+  //   // Cleanup: Unsubscribe from the listener when the component is unmounted
+  //   return () => {
+  //     if (removeListener) {
+  //       removeListener();
+  //     }
+  //   };
+  // }, []);
+
   useEffect(() => {
-    let removeListener; // Track the listener so that it can be removed
+    let removeListener;
+    let timeoutId;
+  
+    const checkStatus = async () => {
+      if (typeof window !== "undefined" && window.electronAPI) {
+        try {
+          const status = await window.electronAPI.getOnlineStatus();
+          setIsOnline(status);
+        } catch (error) {
+          console.error("Failed to get online status:", error);
+          setIsOnline(false); // Assume offline if there's an error
+        }
+      }
+    };
+  
+    // Set a timeout before starting the initial check and listener setup
+    timeoutId = setTimeout(() => {
+      checkStatus(); // Initial check
   
     if (typeof window !== "undefined" && window.electronAPI) {
-      // Initial check
-      window.electronAPI.getOnlineStatus().then((status) => {
-        // console.log("Initial online status:", status);
-        setIsOnline(status);
-      });
-  
-      // Listen for changes
       removeListener = window.electronAPI.onOnlineStatusChanged((status) => {
-        // console.log("Online status changed:", status);
         setIsOnline(status);
       });
     }
-  
-    // Cleanup: Unsubscribe from the listener when the component is unmounted
+    }, 5000); // 5000 milliseconds = 5 seconds
+
     return () => {
       if (removeListener) {
         removeListener();
+      }
+      if (timeoutId) {
+        clearTimeout(timeoutId); // Clear the timeout if the component unmounts
       }
     };
   }, []);
@@ -114,7 +151,7 @@ export default function WsSignin() {
       <Dialog open={showOfflineDialog} onOpenChange={setShowOfflineDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>You're Offline</DialogTitle>
+            <DialogTitle>You are Offline</DialogTitle>
             <DialogDescription>
               <div className="flex items-center space-x-2">
                 <WifiOffIcon className="text-red-500" />

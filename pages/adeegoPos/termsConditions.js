@@ -38,7 +38,7 @@ export default function TermsConditions() {
 
             <section>
               <h2 className="text-xl font-semibold mb-2">6. Liability</h2>
-              <p>We provide this POS system "as is" and make no warranties, express or implied. We shall not be liable for any indirect, incidental, special, consequential or punitive damages.</p>
+              <p>We provide this POS system as is and make no warranties, express or implied. We shall not be liable for any indirect, incidental, special, consequential or punitive damages.</p>
             </section>
 
             <section>
