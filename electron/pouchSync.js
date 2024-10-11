@@ -1,11 +1,26 @@
+// pouchSync.js
+
 const PouchDB = require("pouchdb");
+const { ipcMain } = require('electron');
 PouchDB.plugin(require("pouchdb-find"));
 
-const COUCHDB_URL = "http://admin:adeego2027@127.0.0.1:5984/wholesalers";
+const COUCHDB_URL = "http://admin:Adeego2025@127.0.0.1:5984/adeegopos";
 
-function openPouchDB(storeNo) {
-  const localDB = new PouchDB(storeNo);
+let localDB;
+let currentStoreNo = null;
+let syncHandler; // New line added as suggested
 
+function openPouchDB(initialStoreNo = null) {
+  localDB = new PouchDB("adeegopos");
+  currentStoreNo = initialStoreNo;
+
+  setupIndexes();
+  setupSync();
+  setupStoreNoListener();
+  return localDB;
+}
+
+function setupIndexes() {
   // Define the index fields for products
   const productIndexFields = ['name', 'state', 'type'];
   // Define the index fields for customers
@@ -60,20 +75,55 @@ function openPouchDB(storeNo) {
   }).catch((error) => {
     console.error('Error checking customer indexes:', error);
   });
+}
 
-  localDB
-    .sync(`${COUCHDB_URL}?partition=${storeNo}`, {
-      live: true,
-      retry: true,
-    })
-    .on("change", function (info) {
-      console.log("Sync change:", info);
-    })
-    .on("error", function (err) {
-      console.error("Sync error:", err);
-    });
+function setupSync() {
+  if (currentStoreNo) {
+    // Cancel existing sync if it exists
+    if (syncHandler) {
+      syncHandler.cancel();
+    }
 
-  return localDB;
+    // Start new sync
+    syncHandler = localDB.sync(`${COUCHDB_URL}?partition=${currentStoreNo}`, {
+        live: true,
+        retry: true,
+        filter: function (doc) {
+          return doc._id.startsWith(`${currentStoreNo}:`);
+        }
+      })
+      .on("change", function (info) {
+        console.log("Sync change:", info);
+      })
+      .on("error", function (err) {
+        console.error("Sync error:", err);
+      });
+  } else {
+    console.log("No storeNo provided, sync not started");
+  }
+}
+
+function setupStoreNoListener() {
+  ipcMain.on("send-storeNo", async (event, newStoreNo) => {
+    if (currentStoreNo !== newStoreNo) {
+      console.log("Received new storeNo:", newStoreNo);
+      currentStoreNo = newStoreNo;
+
+      try {
+        // Setup new sync with new storeNo
+        setupSync();
+
+        console.log("Database updated with new storeNo");
+        event.reply("storeNo-update-status", { success: true });
+      } catch (error) {
+        console.error("Error updating storeNo in database:", error);
+        event.reply("storeNo-update-status", { success: false, error: error.message });
+      }
+    } else {
+      console.log("Received same storeNo, no update needed");
+      event.reply("storeNo-update-status", { success: true, noChange: true });
+    }
+  });
 }
 
 module.exports = {

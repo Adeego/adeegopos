@@ -79,16 +79,10 @@ app.on("ready", async () => {
   try {
     createWindow();
 
-    // Wait for storeNo from Next.js before initializing PouchDB
-    await new Promise((resolve) => {
-      ipcMain.once("send-storeNo", async (event, storeNo) => {
-        console.log("Received storeNo:", storeNo);
-        pouch = openPouchDB(storeNo);
-        console.log("PouchDB opened successfully");
-        resolve();
-      });
-    });
-
+    // Initialize PouchDB without storeNo
+    pouch = openPouchDB();  // Pass null initially
+    console.log("PouchDB opened successfully");
+    
     // Set up IPC handlers after PouchDB is initialized
     setupIpcHandlers(ipcMain, pouch);
 

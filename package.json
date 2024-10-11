@@ -17,22 +17,46 @@
     "dist": "next build && electron-builder"
   },
   "build": {
-    "appId": "com.adeegoltd.claude",
-    "productName": "CLAUDE",
+    "appId": "com.adeegoltd.adeego",
+    "productName": "ADEEGO POS",
     "files": [
       "electron/**/*",
       "out/**/*",
       "package.json"
     ],
-    "win": {
-      "target": "nsis"
-    },
     "mac": {
       "target": "dmg"
     },
     "linux": {
       "target": "AppImage"
-    }
+    },
+    "win": {
+      "target": [
+        "nsis" 
+      ],
+      "publisherName": "ADEEGO POS",
+      "icon": "assets/pos.ico",
+      "artifactName": "${adeego}-Setup-${v1.0.0}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "assets/pos2.ico",
+      "uninstallerIcon": "assets/pos.ico",
+      "uninstallDisplayName": "Uninstall Adeego Pos", 
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ADEEGO POS",
+      "artifactName": "${adeego}-Setup-${v1.0.0}.${ext}",
+      "runAfterFinish": true
+    },
+    "publish": {
+    "provider": "github",
+    "owner": "AbdiazizAbdullahi",
+    "repo": "https://github.com/Adeego/AdeegoPOS.git",
+    "releaseType": "draft"
+  }
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
@@ -54,6 +78,7 @@
     "@radix-ui/react-toast": "^1.2.1",
     "@radix-ui/react-tooltip": "^1.1.2",
     "@tanstack/react-table": "^8.19.3",
+    "axios": "^1.7.7",
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "date-fns": "^3.6.0",

@@ -8,10 +8,10 @@ function ProductSearch({ handleProductSelect }) {
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const inputRef = useRef(null);
 
-  useEffect(() => {
-    // Fetch all products when component mounts
-    fetchAllProducts();
-  }, []);
+  // useEffect(() => {
+  //   // Fetch all products when component mounts
+  //   fetchAllProducts();
+  // }, []);
 
   useEffect(() => {
     if (searchTerm) {

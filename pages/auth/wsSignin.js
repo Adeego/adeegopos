@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import useWsinfoStore from '@/stores/wsinfo';
+import axios from 'axios';
 import { WifiOffIcon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -15,7 +16,7 @@ import {
 
 export default function WsSignin() {
   const [name, setName] = useState('');
-  const [phone, setPhone] = useState('');
+  const [passcode, setPhone] = useState('');
   const [location, setLocation] = useState('');
   const [isOnline, setIsOnline] = useState(true)
   const router = useRouter();
@@ -86,23 +87,41 @@ export default function WsSignin() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!isOnline) {
-      setShowOfflineDialog(true)
-      return
-    }
-    // Here you would typically make an API call to verify the workspace info
+  
     try {
-      // Here you would typically make an API call to verify the workspace info
-      const result = await window.electronAPI.realmOperation('getAllWholeSalers')
-      if (result.success && result.wholeSalers.length > 0) {
-        addWsinfo(result.wholeSalers[0]) // Store the first wholesaler
-        router.push('/')
+    const response = await axios.post('http://0.0.0.0:8000/signin', {
+        name: name,
+        passcode: passcode, // Assuming passcode is used as passcode
+    }, {
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    const result = response.data;
+    if (result.wholesaler) {
+      addWsinfo(result.wholesaler);
+      router.push('/');
       } else {
-        console.log(result.error || 'Invalid credentials')
+      console.log('Invalid credentials');
       }
     } catch (error) {
-      console.error('Error during submission:', error)
+    console.error('Error during submission:', error);
+    if (error.response) {
+      // The request was made and the server responded with a status code
+      // that falls out of the range of 2xx
+      console.error('Response data:', error.response.data);
+      console.error('Response status:', error.response.status);
+      console.error('Response headers:', error.response.headers);
+    } else if (error.request) {
+      // The request was made but no response was received
+      console.error('No response received:', error.request);
+    } else {
+      // Something happened in setting up the request that triggered an Error
+      console.error('Error setting up request:', error.message);
     }
+    // You might want to show an error message to the user here
+  }
   };  
 
   return (
@@ -112,7 +131,7 @@ export default function WsSignin() {
         <form onSubmit={handleSubmit} className="mt-4">
           <div className="space-y-4">
             <div>
-              <Label htmlFor="name">Workspace Name</Label>
+              <Label htmlFor="name">Wholesaler Name or Phone</Label>
               <Input
                 type="text"
                 id="name"
@@ -123,24 +142,13 @@ export default function WsSignin() {
               />
             </div>
             <div>
-              <Label htmlFor="phone">Phone</Label>
+              <Label htmlFor="passcode">Passcode</Label>
               <Input
                 type="tel"
-                id="phone"
-                placeholder="Phone"
-                value={phone}
+                id="passcode"
+                placeholder="Passcode"
+                value={passcode}
                 onChange={(e) => setPhone(e.target.value)}
-                required
-              />
-            </div>
-            <div>
-              <Label htmlFor="location">Location</Label>
-              <Input
-                type="text"
-                id="location"
-                placeholder="Location"
-                value={location}
-                onChange={(e) => setLocation(e.target.value)}
                 required
               />
             </div>
