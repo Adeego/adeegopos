@@ -1,5 +1,5 @@
 {
-  "name": "claude",
+  "name": "ADEEGO POS",
   "description": "POS App",
   "version": "0.1.0",
   "private": true,
@@ -24,32 +24,17 @@
       "out/**/*",
       "package.json"
     ],
-    "mac": {
-      "target": "dmg"
-    },
     "linux": {
-      "target": "AppImage"
+      "target": "AppImage",
+      "icon": "assets/pos.png"
     },
     "win": {
       "target": [
         "nsis" 
       ],
       "publisherName": "ADEEGO POS",
-      "icon": "assets/pos.ico",
-      "artifactName": "${adeego}-Setup-${v1.0.0}.${ext}"
-    },
-    "nsis": {
-      "oneClick": false,
-      "perMachine": false,
-      "allowToChangeInstallationDirectory": true,
-      "installerIcon": "assets/pos2.ico",
-      "uninstallerIcon": "assets/pos.ico",
-      "uninstallDisplayName": "Uninstall Adeego Pos", 
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "ADEEGO POS",
-      "artifactName": "${adeego}-Setup-${v1.0.0}.${ext}",
-      "runAfterFinish": true
+      "icon": "assets/pos2.ico",
+      "artifactName": "${productName}-Setup-${version}.${ext}"
     },
     "publish": {
     "provider": "github",
