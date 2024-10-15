@@ -2,7 +2,7 @@
 FROM electronuserland/builder:wine
 
 # Install Node.js and npm (already included in the base image, but we'll specify the version)
-ENV NODE_VERSION 16.x
+ENV NODE_VERSION=16.x
 RUN apt-get update && apt-get install -y curl && \
     curl -sL https://deb.nodesource.com/setup_${NODE_VERSION} | bash - && \
     apt-get install -y nodejs
