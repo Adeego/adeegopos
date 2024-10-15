@@ -89,7 +89,7 @@ export default function WsSignin() {
     e.preventDefault();
   
     try {
-    const response = await axios.post('http://0.0.0.0:8000/signin', {
+    const response = await axios.post('http://64.227.129.110:8000/signin', {
         name: name,
         passcode: passcode, // Assuming passcode is used as passcode
     }, {

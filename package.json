@@ -1,47 +1,46 @@
 {
-  "name": "ADEEGO POS",
+  "name": "claude",
   "description": "POS App",
-  "version": "0.1.0",
+  "version": "1.0.7",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build && npm run copy-static",
+    "cleanup": "sudo rm -rf out dist && sudo rm -rf node_modules/.cache",
     "copy-static": "cp -r ./public ./out/",
     "start": "next start",
     "lint": "next lint",
     "electron": "electron .",
     "electron-dev": "concurrently -n \"NEXT,ELECTRON\" -c \"yellow,blue\" --kill-others \"next dev -p 3333\" \"electron .\"",
     "electron-builder": "electron-builder",
-    "pack": "next build && electron-builder -w",
-    "dist": "next build && electron-builder"
+    "pack": "next build && electron-builder -w --ia32 --publish always",
+    "dist": "next build && electron-builder",
+    "publish": "next build && electron-builder --publish always",
+    "pack:docker": "docker build -t claude-electron-builder . && docker run --rm -v ${PWD}:/app -v ${PWD}/dist:/app/dist claude-electron-builder"
   },
   "build": {
-    "appId": "com.adeegoltd.adeego",
-    "productName": "ADEEGO POS",
+    "appId": "com.adeegoltd.claude",
+    "productName": "CLAUDE",
     "files": [
       "electron/**/*",
       "out/**/*",
       "package.json"
     ],
-    "linux": {
-      "target": "AppImage",
-      "icon": "assets/pos.png"
-    },
     "win": {
-      "target": [
-        "nsis" 
-      ],
-      "publisherName": "ADEEGO POS",
-      "icon": "assets/pos2.ico",
-      "artifactName": "${productName}-Setup-${version}.${ext}"
+      "target": "nsis"
     },
-    "publish": {
-    "provider": "github",
-    "owner": "AbdiazizAbdullahi",
-    "repo": "https://github.com/Adeego/AdeegoPOS.git",
-    "releaseType": "draft"
-  }
+    "mac": {
+      "target": "dmg"
+    },
+    "linux": {
+      "target": "AppImage"
+    },
+    "publish": [{
+      "provider": "github",
+      "owner": "Adeego",
+      "repo": "AdeegoPOS"
+    }]
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
@@ -68,7 +67,7 @@
     "clsx": "^2.1.1",
     "date-fns": "^3.6.0",
     "electron-serve": "^2.0.0",
-    "electron-store": "^10.0.0",
+    "electron-updater": "^6.1.8",
     "fuse.js": "^7.0.0",
     "is-online": "^11.0.0",
     "lucide-react": "^0.424.0",
@@ -81,7 +80,6 @@
     "react-dom": "^18",
     "react-hook-form": "^7.52.2",
     "react-router-dom": "^6.26.0",
-    "realm": "^12.2.0",
     "recharts": "^2.12.7",
     "tailwind-merge": "^2.4.0",
     "tailwindcss-animate": "^1.0.7",

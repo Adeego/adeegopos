@@ -4,7 +4,7 @@ const PouchDB = require("pouchdb");
 const { ipcMain } = require('electron');
 PouchDB.plugin(require("pouchdb-find"));
 
-const COUCHDB_URL = "http://admin:Adeego2025@127.0.0.1:5984/adeegopos";
+const COUCHDB_URL = "http://admin:Adeego2025@64.227.129.110:5984//adeegopos";
 
 let localDB;
 let currentStoreNo = null;

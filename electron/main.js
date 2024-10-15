@@ -1,7 +1,8 @@
-const { app, BrowserWindow, protocol, ipcMain, net } = require("electron");
+const { app, BrowserWindow, protocol, ipcMain, net, Menu } = require("electron");
 const path = require("path");
 const { openPouchDB } = require("./pouchSync");
 const setupIpcHandlers = require("./ipcHandlers");
+const { autoUpdater } = require("electron-updater");
 
 let serve;
 let pouch;
@@ -25,15 +26,13 @@ if (app.isPackaged) {
 
 const createWindow = () => {
   mainWindow = new BrowserWindow({
-    fullscreen: false, // Set to false to enable title bar
-    frame: true, // Show the title bar and window controls
+    fullscreen: false,
+    frame: true,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
-      // nodeIntegration: true,   // Important for using Node.js modules like PouchDB
     },
   });
 
-  // Optionally, you can set the window to be maximized to use all available screen space
   mainWindow.maximize();
 
   mainWindow.once("ready-to-show", () => {
@@ -55,6 +54,9 @@ const createWindow = () => {
     });
     checkOnlineStatus();
   }
+
+  // Check for updates after window is created
+  autoUpdater.checkForUpdatesAndNotify();
 };
 
 function checkNetworkConnection() {
@@ -75,22 +77,50 @@ async function checkOnlineStatus() {
   mainWindow.webContents.send("online-status-changed", online);
 }
 
+// Auto-updater events
+autoUpdater.on('update-available', () => {
+  mainWindow.webContents.send('update_available');
+});
+
+autoUpdater.on('update-downloaded', () => {
+  mainWindow.webContents.send('update_downloaded');
+});
+
+// Create a menu template with a "Check for Updates" item
+const createMenu = () => {
+  const template = [
+    {
+      label: 'App',
+      submenu: [
+        {
+          label: 'Check for Updates',
+          click: () => {
+            autoUpdater.checkForUpdatesAndNotify();
+          }
+        },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    }
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
+};
+
 app.on("ready", async () => {
   try {
     createWindow();
+    createMenu();
 
-    // Initialize PouchDB without storeNo
-    pouch = openPouchDB();  // Pass null initially
+    pouch = openPouchDB();
     console.log("PouchDB opened successfully");
     
-    // Set up IPC handlers after PouchDB is initialized
     setupIpcHandlers(ipcMain, pouch);
 
-    // Start checking online status only after IPC handlers are set up
-    checkOnlineStatus(); // Initial check
+    checkOnlineStatus();
     setInterval(checkOnlineStatus, 60000);
 
-    // Add these lines to check status on network change
     require("electron").powerMonitor.on("suspend", checkOnlineStatus);
     require("electron").powerMonitor.on("resume", checkOnlineStatus);
   } catch (error) {
@@ -100,7 +130,7 @@ app.on("ready", async () => {
 });
 
 app.on("before-quit", async (event) => {
-  event.preventDefault(); // Prevent the app from quitting immediately
+  event.preventDefault();
 
   if (pouch && !pouch.isClosed) {
     console.log("Closing Realm...");
@@ -108,5 +138,10 @@ app.on("before-quit", async (event) => {
   }
 
   console.log("Pouch closed. Quitting app...");
-  app.exit(0); // Force quit the app
+  app.exit(0);
+});
+
+// IPC handlers for auto-update
+ipcMain.on('restart_app', () => {
+  autoUpdater.quitAndInstall();
 });
