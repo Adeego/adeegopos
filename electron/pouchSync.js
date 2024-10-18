@@ -8,14 +8,10 @@ const COUCHDB_URL = "http://admin:Adeego2025@64.227.129.110:5984//adeegopos";
 
 let localDB;
 let currentStoreNo = null;
-let syncHandler; // New line added as suggested
+let syncHandler;
 
-function openPouchDB(initialStoreNo = null) {
+function openPouchDB() {
   localDB = new PouchDB("adeegopos");
-  currentStoreNo = initialStoreNo;
-
-  setupIndexes();
-  setupSync();
   setupStoreNoListener();
   return localDB;
 }
@@ -110,6 +106,10 @@ function setupStoreNoListener() {
       currentStoreNo = newStoreNo;
 
       try {
+        // Setup indexes
+        await setupIndexes();
+        console.log("Indexes set up successfully");
+
         // Setup new sync with new storeNo
         setupSync();
 

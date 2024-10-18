@@ -1,7 +1,7 @@
 {
   "name": "claude",
   "description": "POS App",
-  "version": "1.0.7",
+  "version": "1.0.9",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
@@ -39,7 +39,7 @@
     "publish": [{
       "provider": "github",
       "owner": "Adeego",
-      "repo": "AdeegoPOS"
+      "repo": "adeegopos"
     }]
   },
   "dependencies": {
