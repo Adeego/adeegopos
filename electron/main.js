@@ -54,9 +54,6 @@ const createWindow = () => {
     });
     checkOnlineStatus();
   }
-
-  // Check for updates after window is created
-  autoUpdater.checkForUpdatesAndNotify();
 };
 
 function checkNetworkConnection() {
@@ -77,52 +74,68 @@ async function checkOnlineStatus() {
   mainWindow.webContents.send("online-status-changed", online);
 }
 
-// Auto-updater events
-autoUpdater.on('update-available', () => {
-  mainWindow.webContents.send('update_available');
-});
+function setupAutoUpdater() {
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = false;
 
-autoUpdater.on('update-downloaded', () => {
-  mainWindow.webContents.send('update_downloaded');
-});
+  autoUpdater.on('checking-for-update', () => {
+    sendStatusToWindow('Checking for update...');
+  });
 
-// Create a menu template with a "Check for Updates" item
-// const createMenu = () => {
-//   const template = [
-//     {
-//       label: 'App',
-//       submenu: [
-//         {
-//           label: 'Check for Updates',
-//           click: () => {
-//             autoUpdater.checkForUpdatesAndNotify();
-//           }
-//         },
-//         { type: 'separator' },
-//         { role: 'quit' }
-//       ]
-//     }
-//   ];
+  autoUpdater.on('update-available', (info) => {
+    sendStatusToWindow('Update available.');
+    mainWindow.webContents.send('update-available', info);
+  });
 
-//   const menu = Menu.buildFromTemplate(template);
-//   Menu.setApplicationMenu(menu);
-// };
+  autoUpdater.on('update-not-available', (info) => {
+    sendStatusToWindow('Update not available.');
+    mainWindow.webContents.send('update-not-available', info);
+  });
+
+  autoUpdater.on('error', (err) => {
+    sendStatusToWindow('Error in auto-updater. ' + err);
+    mainWindow.webContents.send('update-error', err);
+  });
+
+  autoUpdater.on('download-progress', (progressObj) => {
+    let log_message = "Download speed: " + progressObj.bytesPerSecond;
+    log_message = log_message + ' - Downloaded ' + progressObj.percent + '%';
+    log_message = log_message + ' (' + progressObj.transferred + "/" + progressObj.total + ')';
+    sendStatusToWindow(log_message);
+    mainWindow.webContents.send('download-progress', progressObj);
+  });
+
+  autoUpdater.on('update-downloaded', (info) => {
+    sendStatusToWindow('Update downloaded');
+    mainWindow.webContents.send('update-downloaded', info);
+  });
+}
+
+function sendStatusToWindow(text) {
+  console.log(text);
+  mainWindow.webContents.send('update-message', text);
+}
 
 app.on("ready", async () => {
   try {
     createWindow();
-    // createMenu();
 
     pouch = openPouchDB();
     console.log("PouchDB opened successfully");
     
     setupIpcHandlers(ipcMain, pouch);
+    setupAutoUpdater();
 
     checkOnlineStatus();
     setInterval(checkOnlineStatus, 60000);
 
     require("electron").powerMonitor.on("suspend", checkOnlineStatus);
     require("electron").powerMonitor.on("resume", checkOnlineStatus);
+
+    // Check for updates on app start
+    if (app.isPackaged) {
+      autoUpdater.checkForUpdates();
+    }
   } catch (error) {
     console.error("Failed to open PouchDB:", error);
     app.quit();
@@ -142,6 +155,16 @@ app.on("before-quit", async (event) => {
 });
 
 // IPC handlers for auto-update
-ipcMain.on('restart_app', () => {
+ipcMain.handle('check-for-updates', () => {
+  if (app.isPackaged) {
+    autoUpdater.checkForUpdates();
+  }
+});
+
+ipcMain.handle('download-update', () => {
+  autoUpdater.downloadUpdate();
+});
+
+ipcMain.handle('install-update', () => {
   autoUpdater.quitAndInstall();
 });

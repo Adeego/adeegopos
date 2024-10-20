@@ -55,7 +55,7 @@ const links = [
   {
     label: "Home",
     icon: <Home className="h-[18px] w-[18px]" strokeWidth={2} />,
-    pageLink: "/customers",
+    pageLink: "/staff",
   },
   {
     label: "Staff",
