@@ -4,7 +4,6 @@ import useStaffStore from "@/stores/staffStore";
 import useWsinfoStore from "@/stores/wsinfo";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
-import { useOnlineStatus } from "@/components/adeegoPos/useOnlineStatus";
 import { Badge } from "@/components/ui/badge";
 import { Wifi, WifiOff } from "lucide-react";
 import AutoUpdater from "@/components/AutoUpdater";
@@ -92,7 +91,7 @@ export default function App({ Component, pageProps }) {
 
   return (
     <div className="flex">
-      {staff._id && wsinfo._id && <Sidebar />}
+      {wsinfo._id && <Sidebar />}
       <div className="p-4 flex-1 bg-muted/50">
         <Component {...pageProps} />
       </div>

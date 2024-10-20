@@ -17,32 +17,40 @@ const AutoUpdater = () => {
     window.electronAPI.onUpdateAvailable(() => {
       setUpdateAvailable(true);
       setUpdateStatus('Update available');
+      console.log("Kuna update available")
     });
 
     window.electronAPI.onUpdateNotAvailable(() => {
       setUpdateStatus('No updates available');
+      console.log("Hakuna update available")
     });
 
     window.electronAPI.onUpdateError((error) => {
-      setUpdateStatus(`Error: ${error}`);
+      setUpdateStatus(`UpdateError4rmUpdater: ${error}`);
+      console.log("kuna shida hapa")
     });
 
     window.electronAPI.onDownloadProgress((progressObj) => {
       setDownloadProgress(progressObj.percent);
+      console.log("Progress iko hivi")
     });
 
     window.electronAPI.onUpdateDownloaded(() => {
       setUpdateDownloaded(true);
       setUpdateStatus('Update downloaded');
+      console.log("Update imeshuka")
     });
 
     window.electronAPI.onUpdateMessage((message) => {
       setUpdateStatus(message);
+      console.log("meso ya update imefika")
     });
   }, []);
 
   const checkForUpdates = () => {
-    window.electronAPI.checkForUpdates();
+    const result = window.electronAPI.checkForUpdates();
+    console.log(result)
+    console.log("Umeguza")
   };
 
   const downloadUpdate = () => {
