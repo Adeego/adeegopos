@@ -1,14 +1,8 @@
-import SaleCard from "@/components/posComps/SaleCard";
-import { Inter } from "next/font/google";
-
-
-const inter = Inter({ subsets: ["latin"] });
+import SaleCard from "../components/posComps/SaleCard";
 
 export default function Pos() {
   return (
-    <main
-      className={`p-4 ${inter.className}`}
-    >
+    <main>
       <SaleCard />
     </main>
   );

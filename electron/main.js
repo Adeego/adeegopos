@@ -87,31 +87,31 @@ autoUpdater.on('update-downloaded', () => {
 });
 
 // Create a menu template with a "Check for Updates" item
-const createMenu = () => {
-  const template = [
-    {
-      label: 'App',
-      submenu: [
-        {
-          label: 'Check for Updates',
-          click: () => {
-            autoUpdater.checkForUpdatesAndNotify();
-          }
-        },
-        { type: 'separator' },
-        { role: 'quit' }
-      ]
-    }
-  ];
+// const createMenu = () => {
+//   const template = [
+//     {
+//       label: 'App',
+//       submenu: [
+//         {
+//           label: 'Check for Updates',
+//           click: () => {
+//             autoUpdater.checkForUpdatesAndNotify();
+//           }
+//         },
+//         { type: 'separator' },
+//         { role: 'quit' }
+//       ]
+//     }
+//   ];
 
-  const menu = Menu.buildFromTemplate(template);
-  Menu.setApplicationMenu(menu);
-};
+//   const menu = Menu.buildFromTemplate(template);
+//   Menu.setApplicationMenu(menu);
+// };
 
 app.on("ready", async () => {
   try {
     createWindow();
-    createMenu();
+    // createMenu();
 
     pouch = openPouchDB();
     console.log("PouchDB opened successfully");

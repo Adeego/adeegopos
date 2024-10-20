@@ -1,7 +1,7 @@
 {
   "name": "claude",
   "description": "POS App",
-  "version": "1.0.9",
+  "version": "1.1.0",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
@@ -14,10 +14,10 @@
     "electron": "electron .",
     "electron-dev": "concurrently -n \"NEXT,ELECTRON\" -c \"yellow,blue\" --kill-others \"next dev -p 3333\" \"electron .\"",
     "electron-builder": "electron-builder",
-    "pack": "next build && electron-builder -w --ia32 --publish always",
+    "pack": "next build && electron-builder",
     "dist": "next build && electron-builder",
     "publish": "next build && electron-builder --publish always",
-    "pack:docker": "docker build -t claude-electron-builder . && docker run --rm -v ${PWD}:/app -v ${PWD}/dist:/app/dist claude-electron-builder"
+    "pack:publish": "next build && electron-builder --publish always"
   },
   "build": {
     "appId": "com.adeegoltd.claude",
@@ -39,7 +39,8 @@
     "publish": [{
       "provider": "github",
       "owner": "Adeego",
-      "repo": "adeegopos"
+      "repo": "adeegopos",
+      "token": "ghp_82pgM4UiTH3AQ0RghpXUg0chzp5DrJ2Cm076"
     }]
   },
   "dependencies": {
