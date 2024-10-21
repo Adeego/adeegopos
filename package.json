@@ -1,7 +1,7 @@
 {
   "name": "claude",
   "description": "POS App",
-  "version": "1.1.2",
+  "version": "0.1.1",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
@@ -16,31 +16,38 @@
     "electron-builder": "electron-builder",
     "pack": "next build && electron-builder",
     "dist": "next build && electron-builder",
-    "publish": "next build && electron-builder --publish always",
-    "pack:publish": "next build && electron-builder --publish always"
+    "publish": "dotenv -e .env -- next build && electron-builder --publish always",
+    "pack:publish": "dotenv -e .env -- next build && dotenv -e .env -- electron-builder --publish always"
   },
   "build": {
     "appId": "com.adeegoltd.claude",
     "productName": "CLAUDE",
+    "copyright": "adeego",
     "files": [
       "electron/**/*",
       "out/**/*",
       "package.json"
     ],
     "win": {
-      "target": "nsis"
-    },
-    "mac": {
-      "target": "dmg"
+      "target": "nsis",
+      "publish": {
+        "provider": "github",
+        "owner": "Adeego",
+        "repo": "adeegopos"
+      }
     },
     "linux": {
-      "target": "AppImage"
+      "target": "AppImage",
+      "publish": {
+        "provider": "github",
+        "owner": "Adeego",
+        "repo": "adeegopos"
+      }
     },
     "publish": [
       {
         "provider": "github",
-        "owner": "Adeego",
-        "repo": "adeegopos"
+        "owner": "Adeego"
       }
     ]
   },
@@ -69,6 +76,7 @@
     "class-variance-authority": "^0.7.0",
     "clsx": "^2.1.1",
     "date-fns": "^3.6.0",
+    "electron-log": "^5.2.0",
     "electron-serve": "^2.0.0",
     "electron-updater": "^6.1.8",
     "fuse.js": "^7.0.0",
@@ -93,6 +101,7 @@
   "devDependencies": {
     "concurrently": "^8.2.2",
     "cross-env": "^7.0.3",
+    "dotenv-cli": "^7.4.2",
     "electron": "^31.3.1",
     "electron-builder": "^24.13.3",
     "eslint": "^8",

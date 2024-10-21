@@ -1,8 +1,9 @@
-const { app, BrowserWindow, protocol, ipcMain, net, Menu } = require("electron");
+const { app, BrowserWindow, protocol, ipcMain, net, dialog } = require("electron");
 const path = require("path");
 const { openPouchDB } = require("./pouchSync");
 const setupIpcHandlers = require("./ipcHandlers");
 const { autoUpdater } = require("electron-updater");
+const log = require('electron-log');
 
 let serve;
 let pouch;
@@ -74,47 +75,35 @@ async function checkOnlineStatus() {
   mainWindow.webContents.send("online-status-changed", online);
 }
 
-function setupAutoUpdater() {
-  autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = false;
+autoUpdater.on("update-available", (_event, releaseNotes, releaseName) => {
+  const dialogOpts = {
+     type: 'info',
+     buttons: ['Ok'],
+     title: 'Update Available',
+     message: process.platform === 'win32' ? releaseNotes : releaseName,
+     detail: 'A new version download started. The app will be restarted to install the update.'
+  };
+  dialog.showMessageBox(dialogOpts);
+});
 
-  autoUpdater.on('checking-for-update', () => {
-    sendStatusToWindow('Checking for update...');
-  });
-
-  autoUpdater.on('update-available', (info) => {
-    sendStatusToWindow('Update available.');
-    mainWindow.webContents.send('update-available', info);
-  });
-
-  autoUpdater.on('update-not-available', (info) => {
-    sendStatusToWindow('Update not available.');
-    mainWindow.webContents.send('update-not-available', info);
-  });
-
-  autoUpdater.on('error', (err) => {
-    sendStatusToWindow('Error in auto-updater. ' + err);
-    mainWindow.webContents.send('update-error', err);
-  });
-
-  autoUpdater.on('download-progress', (progressObj) => {
-    let log_message = "Download speed: " + progressObj.bytesPerSecond;
-    log_message = log_message + ' - Downloaded ' + progressObj.percent + '%';
-    log_message = log_message + ' (' + progressObj.transferred + "/" + progressObj.total + ')';
-    sendStatusToWindow(log_message);
-    mainWindow.webContents.send('download-progress', progressObj);
-  });
-
-  autoUpdater.on('update-downloaded', (info) => {
-    sendStatusToWindow('Update downloaded');
-    mainWindow.webContents.send('update-downloaded', info);
-  });
-}
-
-function sendStatusToWindow(text) {
-  console.log(text);
-  mainWindow.webContents.send('update-message', text);
-}
+autoUpdater.on("update-downloaded", async (_event, releaseNotes, releaseName) => {
+  const dialogOpts = {
+    type: 'info',
+    buttons: ['Restart', 'Later'],
+    title: 'Application Update',
+    message: process.platform === 'win32' ? releaseNotes : releaseName,
+    detail: 'A new version has been downloaded. Restart the application to apply the updates.'
+  };
+  try {
+    const returnValue = await dialog.showMessageBox(dialogOpts);
+    if (returnValue.response === 0) {
+      // Consider adding a save prompt or autosave feature here
+      autoUpdater.quitAndInstall();
+    }
+  } catch (error) {
+    log.error('Error showing update dialog:', error);
+  }
+});
 
 app.on("ready", async () => {
   try {
@@ -124,7 +113,6 @@ app.on("ready", async () => {
     console.log("PouchDB opened successfully");
     
     setupIpcHandlers(ipcMain, pouch);
-    setupAutoUpdater();
 
     checkOnlineStatus();
     setInterval(checkOnlineStatus, 60000);
@@ -152,19 +140,4 @@ app.on("before-quit", async (event) => {
 
   console.log("Pouch closed. Quitting app...");
   app.exit(0);
-});
-
-// IPC handlers for auto-update
-ipcMain.handle('check-for-updates', () => {
-  if (app.isPackaged) {
-    autoUpdater.checkForUpdates();
-  }
-});
-
-ipcMain.handle('download-update', () => {
-  autoUpdater.downloadUpdate();
-});
-
-ipcMain.handle('install-update', () => {
-  autoUpdater.quitAndInstall();
 });
