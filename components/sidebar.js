@@ -24,16 +24,6 @@ import {
   Settings,
 } from "lucide-react";
 
-// Note: You'll need to implement or import these UI components
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "./ui/dropdown-menu";
-
 import {
   Tooltip,
   TooltipContent,
@@ -41,21 +31,11 @@ import {
   TooltipTrigger,
 } from "./ui/tooltip";
 
-import {
-  Breadcrumb,
-  BreadcrumbEllipsis,
-  BreadcrumbItem,
-  BreadcrumbLink,
-  BreadcrumbList,
-  BreadcrumbPage,
-  BreadcrumbSeparator,
-} from "./ui/breadcrumb";
-
 const links = [
   {
     label: "Home",
     icon: <Home className="h-[18px] w-[18px]" strokeWidth={2} />,
-    pageLink: "/staff",
+    pageLink: "/supplier",
   },
   {
     label: "Staff",

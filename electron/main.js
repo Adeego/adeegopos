@@ -3,7 +3,8 @@ const path = require("path");
 const { openPouchDB } = require("./pouchSync");
 const setupIpcHandlers = require("./ipcHandlers");
 const { autoUpdater } = require("electron-updater");
-const log = require('electron-log');
+const fs = require('fs');
+const { execSync } = require('child_process');
 
 let serve;
 let pouch;
@@ -97,21 +98,66 @@ autoUpdater.on("update-downloaded", async (_event, releaseNotes, releaseName) =>
   try {
     const returnValue = await dialog.showMessageBox(dialogOpts);
     if (returnValue.response === 0) {
-      // Consider adding a save prompt or autosave feature here
-      autoUpdater.quitAndInstall();
+      // Prepare for update
+      prepareForUpdate();
     }
   } catch (error) {
-    log.error('Error showing update dialog:', error);
+    autoUpdater.logger.error('Error showing update dialog:', error);
   }
 });
 
+autoUpdater.logger = require('electron-log');
+autoUpdater.logger.transports.file.level = 'debug';
+
+// Ensure proper permissions for auto-updater
+function ensureAutoUpdaterPermissions() {
+  const appUpdateDir = path.join(app.getPath('userData'), 'update');
+  try {
+    if (!fs.existsSync(appUpdateDir)) {
+      fs.mkdirSync(appUpdateDir, { recursive: true });
+    }
+    fs.accessSync(appUpdateDir, fs.constants.W_OK);
+    
+    // Grant full control to Users group
+    if (process.platform === 'win32') {
+      execSync(`icacls "${appUpdateDir}" /grant Users:F /T`);
+    }
+  } catch (err) {
+    autoUpdater.logger.error('Error ensuring auto-updater permissions:', err);
+    dialog.showErrorBox('Update Error', 'Unable to access the update directory. Please run the application as an administrator.');
+  }
+}
+
+function prepareForUpdate() {
+  // Close all windows
+  BrowserWindow.getAllWindows().forEach(window => {
+    window.close();
+  });
+
+  // Close PouchDB
+  if (pouch && !pouch.isClosed) {
+    console.log("Closing PouchDB...");
+    pouch.close();
+  }
+
+  // Set a flag to prevent the app from restarting
+  app.isQuitting = true;
+
+  // Wait a bit to ensure everything is closed, then quit and install
+  setTimeout(() => {
+    app.quit();
+    autoUpdater.quitAndInstall(false, true);
+  }, 2000);
+}
+
 app.on("ready", async () => {
   try {
+    ensureAutoUpdaterPermissions();
     createWindow();
 
     pouch = openPouchDB();
     console.log("PouchDB opened successfully");
-    
+
     setupIpcHandlers(ipcMain, pouch);
 
     checkOnlineStatus();
@@ -130,14 +176,22 @@ app.on("ready", async () => {
   }
 });
 
-app.on("before-quit", async (event) => {
-  event.preventDefault();
-
-  if (pouch && !pouch.isClosed) {
-    console.log("Closing Realm...");
-    pouch.close();
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin" && !app.isQuitting) {
+    app.quit();
   }
+});
 
-  console.log("Pouch closed. Quitting app...");
-  app.exit(0);
+app.on("before-quit", async (event) => {
+  if (!app.isQuitting) {
+    event.preventDefault();
+
+    if (pouch && !pouch.isClosed) {
+      console.log("Closing PouchDB...");
+      pouch.close();
+    }
+
+    console.log("PouchDB closed. Quitting app...");
+    app.exit(0);
+  }
 });

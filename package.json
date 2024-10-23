@@ -1,7 +1,7 @@
 {
   "name": "claude",
   "description": "POS App",
-  "version": "0.1.1",
+  "version": "0.2.8",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
@@ -49,7 +49,17 @@
         "provider": "github",
         "owner": "Adeego"
       }
-    ]
+    ],
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "CLAUDE",
+      "uninstallDisplayName": "Uninstall CLAUDE",
+      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "deleteAppDataOnUninstall": true
+    }
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
