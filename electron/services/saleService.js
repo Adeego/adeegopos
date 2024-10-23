@@ -1,3 +1,5 @@
+const { printReceipt } = require('./printerService');
+
 // Create a sale                                               
 function createSale(db, saleData) {
   const sale = {
@@ -27,7 +29,13 @@ function createSale(db, saleData) {
     updatedAt: saleData.updatedAt,
   };
   return db.put(sale)
-    .then(response => ({ success: true, sale: { _id: response.id, ...sale } }))
+    .then(response => {
+      const createdSale = { _id: response.id, ...sale };
+      // Print receipt after successful sale creation
+      printReceipt(createdSale)
+        .catch(error => console.error('Receipt printing failed:', error));
+      return { success: true, sale: createdSale };
+    })
     .catch(error => ({ success: false, error: error.message }));
 }
                                                                      
@@ -44,8 +52,7 @@ function getSaleProducts(db, saleId) {
 // Function to get the number of sales grouped by payment methods fr date1 to date2                                                       
 function getSalesByPaymentMethod(db, date1, date2) {                 
   return db.find({                                                   
-    selector: { createdAt: { $gte: new Date(date1), $lte: new        
-Date(date2) } }                                                      
+    selector: { createdAt: { $gte: new Date(date1), $lte: new Date(date2) } }                                                    
   })                                                                 
     .then(result => {                                                
       const groupedSales = {                                         
@@ -73,12 +80,10 @@ Date(date2) } }
 // Total sales for a given time period                               
 function getTotalSales(db, startDate, endDate) {                     
   return db.find({                                                   
-    selector: { createdAt: { $gte: new Date(startDate), $lte: new    
-Date(endDate) } }                                                    
+    selector: { createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) } }                                                    
   })                                                                 
     .then(result => {                                                
-      const totalSales = result.docs.reduce((sum, sale) => sum +     
-sale.totalAmount, 0);                                                
+      const totalSales = result.docs.reduce((sum, sale) => sum + sale.totalAmount, 0);                                                
       return { success: true, data: totalSales };                    
     })                                                               
     .catch(error => {                                                
@@ -90,18 +95,15 @@ sale.totalAmount, 0);
 // Average transaction value for a given time period                 
 function getAverageTransactionValue(db, startDate, endDate) {        
   return db.find({                                                   
-    selector: { createdAt: { $gte: new Date(startDate), $lte: new    
-Date(endDate) } }                                                    
+    selector: { createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) } }                                                    
   })                                                                 
     .then(result => {                                                
-      const totalSales = result.docs.reduce((sum, sale) => sum +     
-sale.totalAmount, 0);                                                
+      const totalSales = result.docs.reduce((sum, sale) => sum + sale.totalAmount, 0);                                                
       const averageValue = totalSales / result.docs.length;          
       return { success: true, data: averageValue };                  
     })                                                               
     .catch(error => {                                                
-      console.error('Error getting average transaction value:',      
-error);                                                              
+      console.error('Error getting average transaction value:', error);                                                              
       return { success: false, error: error.message };               
     });                                                              
 }                                                                    
@@ -109,8 +111,7 @@ error);
 // Sales by product category for a given time period                 
 function getSalesByCategory(db, startDate, endDate) {                
   return db.find({                                                   
-    selector: { createdAt: { $gte: new Date(startDate), $lte: new    
-Date(endDate) } }                                                    
+    selector: { createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) } }                                                    
   })                                                                 
     .then(result => {                                                
       const categoryTotals = {};                                     
@@ -136,8 +137,7 @@ Date(endDate) } }
 // Top-selling items for a given time period                         
 function getTopSellingItems(db, startDate, endDate, limit = 10) {    
   return db.find({                                                   
-    selector: { createdAt: { $gte: new Date(startDate), $lte: new    
-Date(endDate) } }                                                    
+    selector: { createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) } }                                                    
   })                                                                 
     .then(result => {                                                
       const itemSales = {};                                          
@@ -157,8 +157,7 @@ Date(endDate) } }
         });                                                          
       });                                                            
                                                                      
-      const sortedItems = Object.values(itemSales).sort((a, b) =>    
-b.totalSales - a.totalSales).slice(0, limit);                        
+      const sortedItems = Object.values(itemSales).sort((a, b) => b.totalSales - a.totalSales).slice(0, limit);                        
       return { success: true, data: sortedItems };                   
     })                                                               
     .catch(error => {                                                
@@ -170,8 +169,7 @@ b.totalSales - a.totalSales).slice(0, limit);
 // Gross profit margin for a given time period                       
 function getGrossProfitMargin(db, startDate, endDate) {              
   return db.find({                                                   
-    selector: { createdAt: { $gte: new Date(startDate), $lte: new    
-Date(endDate) } }                                                    
+    selector: { createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) } }                                                    
   })                                                                 
     .then(result => {                                                
       let totalRevenue = 0;                                          
@@ -180,9 +178,7 @@ Date(endDate) } }
       result.docs.forEach(sale => {                                  
         sale.items.forEach(item => {                                 
           totalRevenue += item.subtotal;                             
-          totalCost += item.quantity *                               
-item.productVariant.product.buyPrice *                               
-item.productVariant.conversionFactor;                                
+          totalCost += item.quantity * item.productVariant.product.buyPrice * item.productVariant.conversionFactor;                                
         });                                                          
       });                                                            
                                                                      
@@ -200,8 +196,7 @@ item.productVariant.conversionFactor;
 // Function to get total sales, revenue, and gross profit            
 function getTotalSalesRevenueAndProfit(db, startDate, endDate) {     
   return db.find({                                                   
-    selector: { createdAt: { $gte: new Date(startDate), $lte: new    
-Date(endDate) } }                                                    
+    selector: { createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) } }                                                    
   })                                                                 
     .then(result => {                                                
       let totalSales = 0;                                            
@@ -213,10 +208,8 @@ Date(endDate) } }
         totalRevenue += Number(sale.totalAmount) || 0;               
         sale.items.forEach(item => {                                 
           const quantity = Number(item.quantity) || 0;               
-          const buyPrice =                                           
-Number(item.productVariant.product.buyPrice) || 0;                   
-          const conversionFactor =                                   
-Number(item.productVariant.conversionFactor) || 1;                   
+          const buyPrice = Number(item.productVariant.product.buyPrice) || 0;                   
+          const conversionFactor = Number(item.productVariant.conversionFactor) || 1;                   
           totalCost += quantity * buyPrice * conversionFactor;       
         });                                                          
       });                                                            
@@ -335,4 +328,4 @@ module.exports = {
   getAllSalesBetweenDates,                                           
   getSaleById,
   archiveSale,                                                     
-};       
+};
