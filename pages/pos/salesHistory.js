@@ -260,13 +260,11 @@ export default function SalesHistory() {
           <TableHeader>
             <TableRow>
               <TableHead>Date</TableHead>
-              <TableHead>Customer</TableHead>
+              <TableHead>Time</TableHead>
               <TableHead>Total Amount</TableHead>
               <TableHead>Items</TableHead>
               <TableHead>Payment Method</TableHead>
               <TableHead>Type</TableHead>
-              <TableHead>Fulfillment</TableHead>
-              <TableHead>Paid</TableHead>
               <TableHead></TableHead>
             </TableRow>
           </TableHeader>
@@ -274,13 +272,11 @@ export default function SalesHistory() {
             {currentSales.map((sale) => (
               <TableRow key={sale._id}>
                 <TableCell>{new Date(sale.createdAt).toLocaleDateString()}</TableCell>
-                <TableCell>{sale.customerName}</TableCell>
+                <TableCell>{new Date(sale.createdAt).toLocaleTimeString()}</TableCell>
                 <TableCell>{sale.totalAmount.toFixed(2)}</TableCell>
                 <TableCell>{sale.totalItems}</TableCell>
                 <TableCell>{sale.paymentMethod}</TableCell>
-                <TableCell>{sale.type}</TableCell>
-                <TableCell>{sale.fulfillment}</TableCell>
-                <TableCell>{sale.paid ? 'Yes' : 'No'}</TableCell>
+                <TableCell>{sale.saleType}</TableCell>
                 <TableCell>
                   <div className=' flex flex-row gap-2 ' >
                     <Link href={`/pos/${sale._id}`} passHref className='h-8 w-8 flex justify-center items-center rounded-md hover:bg-neutral-200' >

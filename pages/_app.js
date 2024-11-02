@@ -5,8 +5,16 @@ import useWsinfoStore from "@/stores/wsinfo";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import { Badge } from "@/components/ui/badge";
-import { Wifi, WifiOff } from "lucide-react";
+import { Toaster } from "@/components/ui/toaster";
+import { Wifi, WifiOff, ArrowLeft, Bell, Menu } from "lucide-react";
 import AutoUpdater from "@/components/AutoUpdater";
+import { Button } from "@/components/ui/button"
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"
 
 export default function App({ Component, pageProps }) {
   const staff = useStaffStore((state) => state.staff);
@@ -93,24 +101,38 @@ export default function App({ Component, pageProps }) {
     <div className="flex">
       {wsinfo._id && <Sidebar />}
       <div className="p-4 flex-1 bg-muted/50">
+        <header className="flex items-center justify-between px-4 h-[50px] bg-white/80 backdrop-blur-sm z-40 mb-2 rounded-md border ">
+          <div className="flex items-center">
+            <Button variant="ghost" size="icon" onClick={() => router.back()} className="mr-2">
+              <ArrowLeft className="h-4 w-4" />
+              <span className="sr-only">Go back</span>
+            </Button>
+          </div>
+          <div className="flex items-center space-x-4">
+            <Button variant="ghost" size="icon">
+              <Bell className="h-5 w-5" />
+              <span className="sr-only">Notifications</span>
+            </Button>
+          </div>
+        </header>
         <Component {...pageProps} />
       </div>
       <div className="fixed bottom-4 right-4 z-50">
         {isOnline ? (
-          <Badge className="border-solid border-2 border-neutral-800" variant="secondary">
-            <Wifi size={16} />
-            <p className="ml-1">Online</p>
+          <Badge variant="secondary" className="bg-white/10 backdrop-blur-sm scale-80 p-0">
+            <Wifi size={14} />
+            <p className="ml-1 text-sm">Online</p>
           </Badge>
         ) : (
-          <Badge className="border-solid border-2 border-neutral-800" variant="secondary">
-            <WifiOff size={16} />
-            <p className="ml-1">Offline</p>
+          <Badge variant="secondary" className="bg-white/10 backdrop-blur-sm scale-80 p-0">
+            <WifiOff size={14} />
+            <p className="ml-1 text-sm">Offline</p>
           </Badge>
         )}
       </div>
-      {/* <div className="fixed top-4 right-4 z-50">
-        <AutoUpdater />
-      </div> */}
+
+      <Toaster />
+
     </div>
   );
 }

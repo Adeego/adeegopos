@@ -68,7 +68,10 @@ export default function ProductTable() {
               Manage your products and view their sales performance.
             </CardDescription>
           </div>
-          <AddProduct fetchProducts={fetchProducts} />
+          <div className=''>
+            <Button className='mr-2' ><Link href={`/product/restock`} >Restock</Link></Button>
+            <AddProduct fetchProducts={fetchProducts} />
+          </div>
         </div>
       </CardHeader>
       <CardContent>

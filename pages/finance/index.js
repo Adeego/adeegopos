@@ -7,7 +7,7 @@ import TransactionTable from '@/components/financeComps/transaction/transactionT
 
 export default function Finance() {
   return (
-    <Tabs defaultValue="accounts" className="w-full max-w-4xl mx-auto">
+    <Tabs defaultValue="accounts" className="w-full">
       <TabsList className="grid w-full grid-cols-2 md:grid-cols-5">
         <TabsTrigger value="accounts">ACCOUNTS</TabsTrigger>
         <TabsTrigger value="transaction">TRANSACTION</TabsTrigger>

@@ -179,13 +179,23 @@ export default function AddProduct({ fetchProducts }) {
                 <Label htmlFor="baseUnit" className="text-right">
                   Base Unit
                 </Label>
-                <Input
-                  id="baseUnit"
+                <Select
                   name="baseUnit"
                   value={newProduct.baseUnit}
-                  onChange={handleInputChange}
-                  className="col-span-3"
-                />
+                  onValueChange={(value) =>
+                    setNewProduct((prev) => ({ ...prev, baseUnit: value }))
+                  }
+                >
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue placeholder="Select base unit" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="PCS">PCS</SelectItem>
+                    <SelectItem value="KG">KG</SelectItem>
+                    <SelectItem value="G">G</SelectItem>
+                    <SelectItem value="L">L</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="buyPrice" className="text-right">

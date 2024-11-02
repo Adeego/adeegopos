@@ -145,8 +145,69 @@ function removeVariant(db, productId, variantId) {
     .catch((error) => ({ success: false, error: error.message }));
 }
 
+// Restock multiple products
+async function restockProducts(db, productsData) {
+  console.log("Starting restockProducts with data:", productsData);
+  try {
+    // Validate the input data
+    const isValid = productsData.every(product => {
+      console.log("Validating product:", product);
+      const valid = product.restockQuantity > 0 && 
+        product.newBuyPrice > 0 && 
+        product.supplierId && 
+        product.amountOwed >= 0;
+      console.log("Validation result:", valid);
+      return valid;
+    });
+    if (!isValid) {
+      console.log("Input validation failed");
+      return { success: false, error: "Invalid input data" };
+    }
+
+    for (const product of productsData) {
+      console.log("Processing product:", product);
+      
+      // Update product stock and buy price
+      const updatedProduct = {
+        ...product,
+        stock: Number(product.stock) + Number(product.restockQuantity),
+        buyPrice: product.newBuyPrice
+      };
+      console.log("Updated product data:", updatedProduct);
+      
+      const productResult = await updateProduct(db, updatedProduct);
+      console.log("Product update result:", productResult);
+      
+      if (!productResult.success) {
+        console.error("Failed to update product:", productResult.error);
+        throw new Error(`Failed to update product: ${productResult.error}`);
+      }
+
+      // Get and update supplier
+      console.log("Fetching supplier with ID:", product.supplierId);
+      const supplierResult = await db.get(product.supplierId);
+      console.log("Current supplier data:", supplierResult);
+      
+      const updatedSupplier = {
+        ...supplierResult,
+        balance: Number(supplierResult.balance) + Number(product.amountOwed)
+      };
+      console.log("Updated supplier data:", updatedSupplier);
+      
+      const supplierUpdateResult = await db.put(updatedSupplier);
+      console.log("Supplier update result:", supplierUpdateResult);
+    }
+
+    console.log("Restock operation completed successfully");
+    return { success: true };
+  } catch (error) {
+    console.error("Error in restockProducts:", error);
+    return { success: false, error: error.message };
+  }
+}
+
 // Added a new function for product search
-function searchProducts(db, searchTerm) {
+function searchVariants(db, searchTerm) {
   console.log("Searching products with term:", searchTerm);
   return db.find({
       selector: {
@@ -178,6 +239,25 @@ function searchProducts(db, searchTerm) {
       });
 
       return { success: true, products: flattenedProducts };
+    })
+    .catch((error) => {
+      console.error("Error searching products:", error);
+      return { success: false, error: error.message };
+    });
+}
+
+function searchProducts(db, searchTerm) {
+  console.log("Searching products with term:", searchTerm);
+  return db.find({
+      selector: {
+        name: { $regex: new RegExp(searchTerm, 'i') },
+        state: "Active",
+        type: "product"
+      }
+    })
+    .then((result) => {
+      console.log("Search result:", result);
+      return { success: true, products: result.docs };
     })
     .catch((error) => {
       console.error("Error searching products:", error);
@@ -282,6 +362,8 @@ module.exports = {
   getAllProducts,
   getAllVariants,
   getProductById,
-  searchProducts,
+  searchVariants,
   getSaleItemsByProductId,
+  restockProducts,
+  searchProducts,
 };

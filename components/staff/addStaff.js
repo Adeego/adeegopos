@@ -15,7 +15,7 @@ export default function AddStaff({ fetchStaff }) {
     _id: uuidv4(),
     firstName: '',
     lastName: '',
-    phone: '',
+    phoneNumber: '',
     role: '',
     salary: '',
     passcode: '',
@@ -50,7 +50,7 @@ export default function AddStaff({ fetchStaff }) {
           _id: uuidv4(),
           firstName: '',
           lastName: '',
-          phone: '',
+          phoneNumber: '',
           role: '',
           salary: '',
           passcode: '',
@@ -96,8 +96,8 @@ export default function AddStaff({ fetchStaff }) {
                 <Input id="lastName" name="lastName" value={newStaff.lastName} onChange={handleInputChange} className="col-span-3" />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="phone" className="text-right">Phone</Label>
-                <Input id="phone" name="phone" value={newStaff.phone} onChange={handleInputChange} className="col-span-3" />
+                <Label htmlFor="phoneNumber" className="text-right">Phone</Label>
+                <Input id="phoneNumber" name="phoneNumber" value={newStaff.phoneNumber} onChange={handleInputChange} className="col-span-3" />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="role" className="text-right">Role</Label>

@@ -21,6 +21,8 @@ function setupIndexes() {
   const productIndexFields = ['name', 'state', 'type'];
   // Define the index fields for customers
   const customerIndexFields = ['name', 'phoneNumber', 'state', 'type', 'createdAt'];
+  // Define the index fields for general use
+  const generalIndexFields = ['createdAt', 'type', 'state'];
 
   // Check if the product index already exists
   localDB.getIndexes().then((result) => {
@@ -70,6 +72,31 @@ function setupIndexes() {
     }
   }).catch((error) => {
     console.error('Error checking customer indexes:', error);
+  });
+
+  // Check if the general index already exists
+  localDB.getIndexes().then((result) => {
+    const generalIndexExists = result.indexes.some(index => 
+      index.def && index.def.fields && index.def.fields.length === generalIndexFields.length &&
+      index.def.fields.every((field, i) => field === generalIndexFields[i])
+    );
+
+    if (!generalIndexExists) {
+      // Create the general index if it does not exist
+      return localDB.createIndex({
+        index: {
+          fields: generalIndexFields
+        }
+      }).then(() => {
+        console.log('General index created successfully');
+      }).catch((error) => {
+        console.error('Error creating general index:', error);
+      });
+    } else {
+      console.log('General index already exists');
+    }
+  }).catch((error) => {
+    console.error('Error checking general indexes:', error);
   });
 }
 

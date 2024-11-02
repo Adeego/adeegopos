@@ -15,18 +15,18 @@ import { Input } from '../ui/input';
 function SelectedProductsTable({ selectedProducts, handleProductRemove, handleQuantityChange }) {
   return (
     <div >
-      <Table>
-        <TableHeader>
+      <Table className='overflow-y-auto'>
+        <TableHeader className='text-base font-bold'>
           <TableRow>
-            <TableHead>Product</TableHead>
-            <TableHead>Variant</TableHead>
-            <TableHead>Quantity</TableHead>
-            <TableHead>Unit Price</TableHead>
-            <TableHead>Total</TableHead>
-            <TableHead className="text-right">Remove</TableHead>
+            <TableHead>PRODUCT</TableHead>
+            <TableHead>VARIANT</TableHead>
+            <TableHead>QUANTITY</TableHead>
+            <TableHead>UNIT PRICE</TableHead>
+            <TableHead>TOTAL</TableHead>
+            <TableHead className="text-right">REMOVE</TableHead>
           </TableRow>
         </TableHeader>
-        <TableBody>
+        <TableBody className='text-base font-semibold' >
           {selectedProducts.map((variant) => (
             <TableRow key={variant._id}>
               <TableCell>{variant.productName}</TableCell>

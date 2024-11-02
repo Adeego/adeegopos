@@ -6,8 +6,8 @@ function createExpense(db, expenseData) {
       amount: expenseData.amount,
       date: expenseData.date,
       storeNo: expenseData.storeNo,
-      createdAt: expenseData.createdAt,
-      updatedAt: expenseData.updatedAt,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       type: "expense",
       state: "Active"
     };

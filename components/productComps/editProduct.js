@@ -62,7 +62,17 @@ export default function EditProduct({ product, handleEditState, fetchSelectedPro
             </div>
             <div className="space-y-2">
               <Label htmlFor="baseUnit">Base Unit</Label>
-              <Input id="baseUnit" name="baseUnit" value={formData.baseUnit} onChange={handleInputChange} />
+              <Select onValueChange={(value) => setFormData(prev => ({ ...prev, baseUnit: value }))} defaultValue={formData.baseUnit}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select unit" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="PCS">PCS</SelectItem>
+                  <SelectItem value="KG">KG</SelectItem>
+                  <SelectItem value="G">G</SelectItem>
+                  <SelectItem value="L">L</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">

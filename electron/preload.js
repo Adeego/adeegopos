@@ -18,7 +18,9 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
     signInStaff: (phoneNumber, passcode) => ipcRenderer.invoke('sign-in-staff', phoneNumber, passcode),
     searchCustomers: (name) => ipcRenderer.invoke('search-customers', name),
+    searchVariants: (searchTerm) => ipcRenderer.invoke('search-variants', searchTerm),
     searchProducts: (searchTerm) => ipcRenderer.invoke('search-products', searchTerm),
+    searchCSS: (searchTerm, type) => ipcRenderer.invoke('search-css', searchTerm, type),
     realmOperation: (operation, ...args) => ipcRenderer.invoke('realm-operation', operation, ...args),
     getSyncStatus: () => ipcRenderer.invoke('get-sync-status'),
     onSyncStatusChanged: (callback) => {

@@ -39,7 +39,7 @@ function ProductSearch({ handleProductSelect }) {
 
   const performSearch = async () => {
     try {
-      const result = await window.electronAPI.searchProducts(searchTerm);
+      const result = await window.electronAPI.searchVariants(searchTerm);
       if (result.success) {
         console.log(result);
         setSearchResults(result.products);
@@ -80,13 +80,15 @@ function ProductSearch({ handleProductSelect }) {
   }, [selectedIndex, searchResults]);
 
   return (
-    <div className="relative">
-      <div className="relative ml-auto flex-1 md:grow-0">
-        <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
+    <div className="p-2">
+      <div className="flex flex-row items-center w-full rounded-lg border bg-background gap-1 h-12">
+        <div className="flex justify-center items-center text-muted-foreground rounded-md border h-10 w-10 ml-1" >
+          <Search size={26}  />
+        </div>
         <Input
           type="search"
           placeholder="Search products..."
-          className="w-full rounded-lg bg-background pl-8 md:w-[200px] lg:w-[320px]"
+          className="w-[84%]"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           ref={inputRef}
@@ -95,7 +97,7 @@ function ProductSearch({ handleProductSelect }) {
 
       {/* Search Results */}
       {searchResults && searchResults.length > 0 && (
-        <div className="mt-2 rounded-lg border border-gray-300 bg-white shadow-lg max-h-60 overflow-y-auto">
+        <div className="mt-2 rounded-lg border border-gray-300 h-[330px] overflow-y-auto">
           <ul className="divide-y divide-gray-200">
             {searchResults.map((product, index) => (
               <li

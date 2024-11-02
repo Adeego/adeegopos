@@ -8,7 +8,7 @@ const supplierService = require('./services/supplierService')
 const accountService = require('./services/finance/accountService')
 const expenseService = require('./services/finance/expenseService')
 const transactionService = require('./services/finance/transactionService')
-// const { openPouchDB } = require('./pouchSync');
+const dashboardService = require('./services/dashboardService')
 
 function getSyncStatus(db) {
   return db.info()
@@ -34,26 +34,30 @@ function setupIpcHandlers(ipcMain, db) {
     return checkNetworkConnection();
   });
 
-  // Add this new IPC handler for getting sync status
   ipcMain.handle('get-sync-status', async () => {
     return getSyncStatus(db);
   });
 
-  // Add this new IPC handler for staff sign-in
   ipcMain.handle('sign-in-staff', async (event, phoneNumber, passcode) => {
     return staffService.signInStaff(db, phoneNumber, passcode);
   });
-    // Added new IPC handler for customer search
+
   ipcMain.handle('search-customers', async (event, name) => {
     return customerService.searchCustomers(db, name);
   });
 
-  // Added new IPC handler for product search
   ipcMain.handle('search-products', async (event, searchTerm) => {
     return productService.searchProducts(db, searchTerm);
   });
 
-  // Set up IPC handlers for Realm operations
+  ipcMain.handle('search-variants', async (event, searchTerm) => {
+    return productService.searchVariants(db, searchTerm);
+  });
+
+  ipcMain.handle('search-css', async (event, searchTerm, type) => {
+    return transactionService.searchCSS(db, searchTerm, type);
+  });
+
   ipcMain.handle('realm-operation', async (event, operation, ...args) => {
     switch (operation) {
       case 'createCustomer':
@@ -84,6 +88,8 @@ function setupIpcHandlers(ipcMain, db) {
         return productService.addNewProduct(db, args[0]);
       case 'archiveProduct':
         return productService.archiveProduct(db, args[0]);
+      case 'restockProducts':
+        return productService.restockProducts(db, args[0]);
       case 'createSale':
         return saleService.createSale(db, ...args);
       case 'archiveSale':
@@ -172,7 +178,14 @@ function setupIpcHandlers(ipcMain, db) {
         return saleService.getAllSalesBetweenDates(db, args[0], args[1]);
       case 'getSaleById':
         return saleService.getSaleById(db, args[0]);
-      // Add other operations as needed
+      case 'getTodaysSalesMetrics':
+        return dashboardService.getTodaysSalesMetrics(db);
+      case 'getTodaysExpenses':
+        return dashboardService.getTodaysExpenses(db);
+      case 'getHourlySalesData':
+        return dashboardService.getHourlySalesData(db);
+      case 'transactionMetrics':
+        return dashboardService.transactionMetrics(db);
       default:
         throw new Error(`Unknown operation: ${operation}`);
     }

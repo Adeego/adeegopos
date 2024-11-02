@@ -126,7 +126,7 @@ export default function StaffDetail() {
                 </div>
                 <div>
                   <Label htmlFor="phone">Phone</Label>
-                  <Input id="phone" name="phone" value={staff.phone} onChange={handleInputChange} />
+                  <Input id="phone" name="phone" value={staff.phoneNumber} onChange={handleInputChange} />
                 </div>
                 <div>
                   <Label htmlFor="role">Role</Label>
@@ -159,7 +159,7 @@ export default function StaffDetail() {
                 </div>
                 <div className="flex items-center justify-between py-2 border-b border-gray-100">
                   <div className="text-sm font-medium text-gray-600">PHONE</div>
-                  <div className="text-sm font-semibold text-gray-900">{staff.phone}</div>
+                  <div className="text-sm font-semibold text-gray-900">{staff.phoneNumber}</div>
                 </div>
                 <div className="flex items-center justify-between py-2 border-b border-gray-100">
                   <div className="text-sm font-medium text-gray-600">ROLE</div>

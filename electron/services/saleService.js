@@ -1,6 +1,6 @@
 const { printReceipt } = require('./printerService');
 
-// Create a sale                                               
+// Create a sale
 function createSale(db, saleData) {
   const sale = {
     _id: saleData._id,
@@ -28,13 +28,48 @@ function createSale(db, saleData) {
     createdAt: saleData.createdAt,
     updatedAt: saleData.updatedAt,
   };
+
+  // Function to update stock based on sale type
+  const updateStock = (saleType, items) => {
+    const updates = items.map(item => {
+      return db.get(item.productId)
+        .then(product => {
+          const stockChange = saleType === 'NEW SALE' ? -(item.conversionFactor * item.quantity) : (item.conversionFactor * item.quantity);
+          const updatedProduct = { ...product, stock: product.stock + stockChange };
+          return db.put(updatedProduct);
+        });
+    });
+    return Promise.all(updates);
+  };
+
   return db.put(sale)
     .then(response => {
       const createdSale = { _id: response.id, ...sale };
-      // Print receipt after successful sale creation
-      printReceipt(createdSale)
-        .catch(error => console.error('Receipt printing failed:', error));
-      return { success: true, sale: createdSale };
+      // Update stock based on sale type after successful sale creation
+      if (saleData.saleType === 'NEW SALE' || saleData.saleType === 'return sale') {
+        return updateStock(saleData.saleType, saleData.items)
+          .then(() => {
+            // Print receipt after successful stock update
+            return printReceipt(createdSale)
+              .then(() => ({ success: true, sale: createdSale }))
+              .catch(error => {
+                console.error('Receipt printing failed:', error);
+                return { success: true, sale: createdSale, receiptError: error.message };
+              });
+          })
+          .catch(error => {
+            console.error('Error updating stock:', error);
+            return { success: true, sale: createdSale, stockUpdateError: error.message };
+          });
+      } else {
+        // If no stock update is needed, just print the receipt
+        return printReceipt(createdSale)
+          .then(() => ({ success: true, sale: createdSale }))
+          .catch(error => {
+            console.error('Receipt printing failed:', error);
+            return { success: true, sale: createdSale, receiptError: error.message };
+          });
+      }
     })
     .catch(error => ({ success: false, error: error.message }));
 }
