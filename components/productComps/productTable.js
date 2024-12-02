@@ -10,6 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import Link from 'next/link';
+import { useRouter } from 'next/router';
 
 export default function ProductTable() {
   const [products, setProducts] = useState([]);
@@ -17,6 +18,7 @@ export default function ProductTable() {
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [searchTerm, setSearchTerm] = useState('');
+  const router = useRouter();
   // const [expandedProducts, setExpandedProducts] = useState({});
 
   useEffect(() => {
@@ -106,20 +108,19 @@ export default function ProductTable() {
                 <TableHead className="hidden md:table-cell text-left">Buy Price</TableHead>
                 <TableHead className="hidden md:table-cell text-left">Stock</TableHead>
                 <TableHead className="hidden md:table-cell text-left">Status</TableHead>
-                <TableHead className="hidden md:table-cell text-left">View</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {currentProducts.map((product) => (
                 <React.Fragment key={product._id}>
-                  <TableRow className="text-base">
+                  <TableRow className="text-sm">
                     <TableCell className="text-left font-medium">{product.name}</TableCell>
                     <TableCell className="text-left">{product.baseUnit}</TableCell>
                     <TableCell className="hidden md:table-cell text-left">{product.buyPrice}</TableCell>
                     <TableCell className="hidden md:table-cell text-left">{product.stock}</TableCell>
                     <TableCell className="hidden md:table-cell text-left">{product.status}</TableCell>
-                    <TableCell className="hidden md:table-cell text-left">
-                      <Link href={`/product/${product._id}`} className='hover:bg-neutral-600 rounded-md h-8 w-8' ><Eye /></Link>
+                    <TableCell className="text-right">
+                      <Button className="h-6 w-12" onClick={() => router.push(`/product/${product._id}`)}>View</Button>
                     </TableCell>
                   </TableRow>
                 </React.Fragment>
@@ -127,7 +128,6 @@ export default function ProductTable() {
             </TableBody>
           </Table>
         </div>
-        
       </CardContent>
       <CardFooter className="flex justify-between items-center">
         <div className="text-base text-muted-foreground">

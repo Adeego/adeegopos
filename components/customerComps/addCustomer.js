@@ -1,6 +1,6 @@
-import React, {useState} from 'react'
+import React, {useEffect, useState} from 'react'
 import { v4 as uuidv4 } from 'uuid';
-
+import useWsinfoStore from '@/stores/wsinfo';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger, SheetFooter, SheetClose } from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -11,8 +11,6 @@ import { toast } from "@/components/ui/use-toast";
 
 export default function AddCustomer({fetchCustomers}) {
   const [isAddingCustomer, setIsAddingCustomer] = useState(false);
-
-  // New customer state
   const [newCustomer, setNewCustomer] = useState({
     _id: '',
     name: '',
@@ -21,7 +19,18 @@ export default function AddCustomer({fetchCustomers}) {
     balance: '',
     credit: false,
     status: '',
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
   });
+  const [storeNo, setStoreNo] = useState("")
+  const store = useWsinfoStore((state) => state.wsinfo);
+
+  useEffect(() => {
+    const storeNo = store.storeNo;
+    if (storeNo) {
+      setStoreNo(storeNo)
+    }
+  }, [store.storeNo]);
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -37,9 +46,9 @@ export default function AddCustomer({fetchCustomers}) {
     try {
         const customerData = {
           ...newCustomer,
-          _id: `24091324:${uuidv4()}`,
+          _id: `${storeNo}:${uuidv4()}`,
           balance: parseInt(newCustomer.balance),
-          storeNo: "24091324"
+          storeNo: `${storeNo}`
         };
         console.log(customerData);
         const result = await window.electronAPI.realmOperation('createCustomer', customerData);

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import useWsinfoStore from '@/stores/wsinfo';
 import { v4 as uuidv4 } from 'uuid';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger, SheetFooter, SheetClose } from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
@@ -9,15 +10,22 @@ import { toast } from "@/components/ui/use-toast";
 
 export default function CreateAccount({ fetchAccounts }) {
   const [isAddingAccount, setIsAddingAccount] = useState(false);
-
-  // New account state
   const [newAccount, setNewAccount] = useState({
     _id: '',
     name: '',
     accountNumber: '',
-    bank: '',
+    accountType: '',
     balance: '',
   });
+  const [storeNo, setStoreNo] = useState("")
+  const store = useWsinfoStore((state) => state.wsinfo);
+
+  useEffect(() => {
+    const storeNo = store.storeNo;
+    if (storeNo) {
+      setStoreNo(storeNo)
+    }
+  }, [store.storeNo]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -27,15 +35,22 @@ export default function CreateAccount({ fetchAccounts }) {
     }));
   };
 
+  const handleAccountTypeChange = (value) => {
+    setNewAccount(prev => ({
+      ...prev,
+      accountType: value
+    }));
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsAddingAccount(true);
     try {
       const accountData = {
         ...newAccount,
-        _id: `24091324:${uuidv4()}`,
+        _id: `${storeNo}:${uuidv4()}`,
         balance: parseInt(newAccount.balance),
-        storeNo: "24091324"
+        storeNo: `${storeNo}`
       };
       console.log(accountData);
       const result = await window.electronAPI.realmOperation('createAccount', accountData);
@@ -49,7 +64,7 @@ export default function CreateAccount({ fetchAccounts }) {
           _id: uuidv4(),
           name: '',
           accountNumber: '',
-          bank: '',
+          accountType: '',
           balance: '',
         });
       } else {
@@ -106,16 +121,22 @@ export default function CreateAccount({ fetchAccounts }) {
               />
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="bank" className="text-right">
-                Bank
+              <Label htmlFor="accountType" className="text-right">
+                Account Type
               </Label>
-              <Input
-                id="bank"
-                name="bank"
-                value={newAccount.bank}
-                onChange={handleInputChange}
-                className="col-span-3"
-              />
+              <Select 
+                name="accountType"
+                value={newAccount.accountType} 
+                onValueChange={handleAccountTypeChange}
+              >
+                <SelectTrigger className="col-span-3">
+                  <SelectValue placeholder="Select Account Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Bank">Bank</SelectItem>
+                  <SelectItem value="Legible">Legible</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="grid grid-cols-4 items-center gap-4">
               <Label htmlFor="balance" className="text-right">

@@ -3,6 +3,7 @@
 import React, { useState } from 'react'
 import { useRouter } from 'next/router';
 import useWsinfoStore from '@/stores/wsinfo';
+import useStaffStore from '@/stores/staffStore';
 import { Button } from "@/components/ui/button"
 import Link from 'next/link';
 import {
@@ -27,14 +28,16 @@ import {
 export default function WsDropdownMenu({ isSideBarEnlarged, icon }) {
   const [isLogoutDialogOpen, setIsLogoutDialogOpen] = useState(false)
   const deleteWsinfo = useWsinfoStore(state => state.deleteWsinfo);
+  const deleteStaff = useStaffStore(state => state.deleteStaff)
   const router = useRouter()
 
   const handleLogout = () => {
     // Call the deleteWsinfo function to clear the wsinfo data
     deleteWsinfo();
+    deleteStaff();
     // Add your actual logout logic here
-    router.push('/auth/wsSignin')
     setIsLogoutDialogOpen(false);
+    router.push('/auth/wsSignin')
   }  
 
   return (
@@ -78,7 +81,7 @@ export default function WsDropdownMenu({ isSideBarEnlarged, icon }) {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <Dialog open={isLogoutDialogOpen} onOpenChange={setIsLogoutDialogOpen}>
+      <Dialog modal={false} open={isLogoutDialogOpen} onOpenChange={setIsLogoutDialogOpen}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Confirm Logout</DialogTitle>

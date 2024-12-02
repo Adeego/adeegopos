@@ -9,6 +9,9 @@ const accountService = require('./services/finance/accountService')
 const expenseService = require('./services/finance/expenseService')
 const transactionService = require('./services/finance/transactionService')
 const dashboardService = require('./services/dashboardService')
+const financeReport = require('./services/finance/financeReportService')
+const balanceSheet = require('./services/finance/balanceSheetServices')
+const reportService = require('./services/reportService')
 
 function getSyncStatus(db) {
   return db.info()
@@ -164,8 +167,8 @@ function setupIpcHandlers(ipcMain, db) {
         return staffService.createStaff(db, args[0]);
       case 'updateStaff':
         return staffService.updateStaff(db, args[0]);
-      case 'deleteStaff':
-        return staffService.deleteStaff(db, args[0]);
+      case 'archiveStaff':
+        return staffService.archiveStaff(db, args[0]);
       case 'getStaffById':
         return staffService.getStaffById(db, args[0]);
       case 'getAllStaff':
@@ -178,6 +181,14 @@ function setupIpcHandlers(ipcMain, db) {
         return saleService.getAllSalesBetweenDates(db, args[0], args[1]);
       case 'getSaleById':
         return saleService.getSaleById(db, args[0]);
+      case 'getSalesMetricsReport':
+        return reportService.getSalesMetricsReport(db, args[0], args[1]);
+      case 'getExpensesReport':
+        return reportService.getExpensesReport(db, args[0], args[1]);
+      case 'getDailySalesReport':
+        return reportService.getDailySalesReport(db, args[0], args[1]);
+      case 'getTransactionMetricsReport':
+        return reportService.getTransactionMetricsReport(db, args[0], args[1]);
       case 'getTodaysSalesMetrics':
         return dashboardService.getTodaysSalesMetrics(db);
       case 'getTodaysExpenses':
@@ -186,6 +197,22 @@ function setupIpcHandlers(ipcMain, db) {
         return dashboardService.getHourlySalesData(db);
       case 'transactionMetrics':
         return dashboardService.transactionMetrics(db);
+      case 'incomeStatement':
+        return financeReport.incomeStatement(db, args[0], args[1]);
+      case 'getAccountStatement':
+        return financeReport.getAccountStatement(db, args[0], args[1]);
+      case 'getBalanceSheet':
+        return financeReport.getBalanceSheet(db, args[0], args[1]);
+      case 'createBalanceSheetEntry':
+        return balanceSheet.createBalanceSheetEntry(db, args[0]);
+      case 'getAllBalanceSheets':
+        return balanceSheet.getAllBalanceSheets(db);
+      case 'getBalanceSheetById':
+        return balanceSheet.getBalanceSheetById(db, args[0]);
+      case 'archiveBalanceSheet':
+        return balanceSheet.archiveBalanceSheet(db, args[0]);
+      case 'updateBalanceSheet':
+        return balanceSheet.updateBalanceSheet(db, args[0]);
       default:
         throw new Error(`Unknown operation: ${operation}`);
     }

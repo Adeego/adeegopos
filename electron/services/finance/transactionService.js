@@ -45,13 +45,13 @@ async function createTransaction(db, transactionData) {
     // Update balances
     if (transactionData.transType === 'deposit') {
       if (sourceDoc.balance !== undefined) {
-        sourceDoc.balance -= transactionData.amount;
+        sourceDoc.balance += transactionData.amount;
       }
       destDoc.balance += transactionData.amount;
     } else { // WITHDRAW
       sourceDoc.balance -= transactionData.amount;
       if (destDoc.balance !== undefined) {
-        destDoc.balance += transactionData.amount;
+        destDoc.balance -= transactionData.amount;
       }
     }
 

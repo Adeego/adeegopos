@@ -4,7 +4,7 @@ function createAccount(db, accountData) {
     _id: accountData._id,
     name: accountData.name,
     accountNumber: accountData.accountNumber,
-    bank: accountData.bank || '',
+    accountType: accountData.accountType || '',
     balance: accountData.balance,
     storeNo: accountData.storeNo,
     createdAt: accountData.createdAt,

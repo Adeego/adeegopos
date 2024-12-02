@@ -271,7 +271,7 @@ function getSaleItemsByProductId(db, productId, startDate, endDate) {
     .find({
       selector: {
         type: "sale",
-        "productVariant.product._id": productId,
+        "items.productId": productId,
         createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) },
       },
     })

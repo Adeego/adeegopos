@@ -7,23 +7,6 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { ScrollArea } from '@/components/ui/scroll-area';
 
 export default function ProductSales({ saleItems, onDateRangeChange = () => {} }) {
-    const [date, setDate] = useState(new Date());
-    const onDateRangeChangeRef = useRef(onDateRangeChange);
-
-    useEffect(() => {
-        onDateRangeChangeRef.current = onDateRangeChange;
-    }, [onDateRangeChange]);
-
-    useEffect(() => {
-        if (date) {
-            onDateRangeChangeRef.current(date);
-        }
-    }, [date]);
-
-    function formatDate(date) {
-        return date
-    }
-
     console.log(saleItems);
 
     return (
@@ -33,10 +16,6 @@ export default function ProductSales({ saleItems, onDateRangeChange = () => {} }
                 <CardDescription className="text-sm text-gray-600">Product sales over time</CardDescription>
             </CardHeader>
             <CardContent className="flex flex-col gap-6 p-6">
-                <div className="flex justify-end">
-                    <DatePickerWithPresets date={date} setDate={setDate} />
-                </div>
-
                 <ScrollArea className="h-[500px] rounded-md border border-gray-200">
                     <Table>
                         <TableHeader>

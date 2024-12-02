@@ -4,6 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import AccountsTable from '@/components/financeComps/account/accountsTable'
 import ExpenseTable from '@/components/financeComps/expense/expenseTable'
 import TransactionTable from '@/components/financeComps/transaction/transactionTable'
+import ReportDash from '@/components/financeComps/financeReport/reportDash'
 
 export default function Finance() {
   return (
@@ -36,15 +37,7 @@ export default function Finance() {
         </Card>
       </TabsContent>
       <TabsContent value="report">
-        <Card>
-          <CardHeader>
-            <CardTitle>Report</CardTitle>
-            <CardDescription>Generate and view financial reports.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p>Financial reporting content goes here.</p>
-          </CardContent>
-        </Card>
+        <ReportDash/>
       </TabsContent>
     </Tabs>
   )

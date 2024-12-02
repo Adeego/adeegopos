@@ -87,95 +87,80 @@ export default function ViewProduct({ product, fetchSelectedProduct, saleItems, 
   }
 
   return (
-    <div className="flex flex-col lg:flex-col gap-8">
-      <div className="flex flex-col lg:flex-row gap-8">
-        <Card className="shadow-lg overflow-hidden rounded-md hover:shadow-xl transition-shadow duration-300 w-7/12">
-          <CardHeader className="bg-gray-100">
-            <CardTitle className="text-2xl font-bold text-gray-800">{product.name}</CardTitle>
+    <div className="space-y-8">
+      <div className="grid gap-8 md:grid-cols-3">
+        <Card className="md:col-span-2">
+          <CardHeader>
+            <CardTitle className="text-2xl font-bold">{product.name}</CardTitle>
+            <CardDescription>Product Details</CardDescription>
           </CardHeader>
-          <CardContent className="p-6">
-              <div className="space-y-2 text-gray-700 ">
-                <div className="w-full flex items-center justify-between">
-                  <div className="text-base font-medium text-neutral-700">BASE UNIT</div>
-                  <div className="text-base font-medium text-gray-900">{product.baseUnit}</div>
+          <CardContent>
+            <div className="space-y-4">
+              {[
+                { label: 'Base Unit', value: product.baseUnit },
+                { label: 'Unit Price', value: product.buyPrice },
+                { label: 'Stock', value: `${product.stock} ${product.baseUnit}` },
+                { label: 'Status', value: product.status },
+                { label: 'Category', value: product.category },
+                { label: 'Restock Period', value: `${product.restockPeriod} days` },
+              ].map((item, index) => (
+                <div key={index} className="flex items-center justify-between">
+                  <span className="text-sm font-medium text-muted-foreground">{item.label}</span>
+                  <span className="font-semibold">{item.value}</span>
                 </div>
-                <Separator />
-                <div className="w-full flex items-center justify-between">
-                  <div className="text-base font-medium text-neutral-700">UNIT PRICE</div>
-                  <div className="text-base font-medium text-gray-900">{product.buyPrice}</div>
-                </div>
-                <Separator />
-                <div className="w-full flex items-center justify-between">
-                  <div className="text-base font-medium text-neutral-700">STOCK</div>
-                  <div className="text-base font-medium text-gray-900">{product.stock} {product.baseUnit}</div>
-                </div>
-                <Separator />
-                <div className="w-full flex items-center justify-between">
-                  <div className="text-base font-medium text-neutral-700">STATUS</div>
-                  <div className="text-base font-medium text-gray-900">{product.status}</div>
-                </div>
-                <Separator />
-                <div className="w-full flex items-center justify-between">
-                  <div className="text-base font-medium text-neutral-700">CATEGORY</div>
-                  <div className="text-base font-medium text-gray-900">{product.category}</div>
-                </div>
-                <Separator />
-                <div className="w-full flex items-center justify-between">
-                  <div className="text-base font-medium text-neutral-700">RESTOCK PERIOD</div>
-                  <div className="text-base font-medium text-gray-900">{product.restockPeriod} DAYS</div>
-                </div>
-                <Separator />
-              </div>
-            </CardContent>
-            <CardFooter className="flex justify-between bg-gray-100 p-4">
-              <Button onClick={() => {handleEditState()}} size="sm" className="hover:bg-blue-600 text-white">
-                <p className='mr-2 text-sm'>Edit</p>
-                <FilePenLine size={16} />
-              </Button>
-              <AlertDialog>
-                <AlertDialogTrigger>
-                  <div variant="destructive" size="sm" className="flex flex-row p-2 rounded-md bg-red-500 hover:bg-red-600 text-white font-medium">
-                    <p className='mr-2 text-sm'>Delete</p>
-                    <Trash2 size={16} />
-                  </div>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This action cannot be undone. This will permanently delete your account
-                      and remove your data from our servers.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction onClick={() => {handleArchiveProduct()}} >Confirm</AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
-            </CardFooter>
-          </Card>
+              ))}
+            </div>
+          </CardContent>
+          <CardFooter className="flex justify-between">
+            <Button onClick={handleEditState} size="sm" className="text-white">
+              <FilePenLine className="mr-2 h-4 w-4" />
+              Edit
+            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" size="sm">
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This action cannot be undone. This will permanently delete the product
+                    and remove all associated data from our servers.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={handleArchiveProduct}>Confirm</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </CardFooter>
+        </Card>
 
-          <Card className="shadow-lg overflow-hidden hover:shadow-xl transition-shadow duration-300 w-5/12">
-            <CardHeader className="flex flex-row justify-between items-center bg-gray-100">
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
               <div>
-                <CardTitle className="text-xl font-bold text-gray-800">Product Variants</CardTitle>
-                <CardDescription className="text-sm text-gray-600">Manage product variants</CardDescription>
+                <CardTitle className="text-xl font-bold">Product Variants</CardTitle>
+                <CardDescription>Manage product variants</CardDescription>
               </div>
               <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button size="sm" className="hover:bg-green-600 text-white">
-                    <p className='mr-2 text-sm'>Add Variant</p>
-                    <SquarePlus size={16} />
+                  <Button size="sm" className="text-white">
+                    <SquarePlus className="mr-2 h-4 w-4" />
+                    Add Variant
                   </Button>
                 </DialogTrigger>
                 <DialogContent>
                   <DialogHeader>
                     <DialogTitle>Add New Variant</DialogTitle>
+                    <DialogDescription>Fill all the fields to add a new variant.</DialogDescription>
                   </DialogHeader>
-                  <DialogDescription >Fill all the fields</DialogDescription>
                   <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
+                    <div className="space-y-2">
                       <Label htmlFor="name">Name</Label>
                       <Input
                         id="name"
@@ -186,7 +171,7 @@ export default function ViewProduct({ product, fetchSelectedProduct, saleItems, 
                         placeholder="Enter variant name"
                       />
                     </div>
-                    <div>
+                    <div className="space-y-2">
                       <Label htmlFor="conversionFactor">Conversion Factor</Label>
                       <Input
                         id="conversionFactor"
@@ -198,7 +183,7 @@ export default function ViewProduct({ product, fetchSelectedProduct, saleItems, 
                         placeholder="Enter conversion factor"
                       />
                     </div>
-                    <div>
+                    <div className="space-y-2">
                       <Label htmlFor="unitPrice">Unit Price</Label>
                       <Input
                         id="unitPrice"
@@ -214,57 +199,56 @@ export default function ViewProduct({ product, fetchSelectedProduct, saleItems, 
                   </form>
                 </DialogContent>
               </Dialog>
-            </CardHeader>
-            <CardContent className="p-4">
-              <div>
-                <Table>
-                  <TableHeader>
-                    <TableRow className="text-base">
-                      <TableHead>Name</TableHead>
-                      <TableHead>Unit Price</TableHead>
-                      <TableHead>Conversion Factor</TableHead>
-                      <TableHead></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {product.variants.map((variant) => (
-                      <TableRow key={variant._id} className="text-base" >
-                        <TableCell>{variant.name}</TableCell>
-                        <TableCell>{variant.unitPrice}</TableCell>
-                        <TableCell>{variant.conversionFactor}</TableCell>
-                        <TableCell>
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button variant="secondery" className="rounded-md hover:bg-neutral-200" ><Trash2 className=" text-red-700" /></Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Are you sure?</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  This action cannot be undone. This will permanently delete the variant
-                                  {variant.name} from the product.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={() => handleRemoveVariant(variant._id)}>
-                                  Remove
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>    
-          </Card>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Unit Price</TableHead>
+                  <TableHead>Conversion</TableHead>
+                  <TableHead className="w-[100px]">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {product.variants.map((variant) => (
+                  <TableRow key={variant._id}>
+                    <TableCell className="font-medium">{variant.name}</TableCell>
+                    <TableCell>{variant.unitPrice}</TableCell>
+                    <TableCell>{variant.conversionFactor}</TableCell>
+                    <TableCell>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <Button variant="ghost" size="sm">
+                            <Trash2 className="h-4 w-4 text-red-500" />
+                          </Button>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Remove Variant</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to remove the variant {variant.name}? This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction onClick={() => handleRemoveVariant(variant._id)}>
+                              Remove
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
       </div>
-      <div className="w-full">
-        <ProductSales saleItems={saleItems || []} onDateRangeChange={fetchProductSales} />
-      </div>
+      
+      <ProductSales saleItems={product.saleItems || []} />
     </div>
   );
 }

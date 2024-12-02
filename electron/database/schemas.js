@@ -126,6 +126,7 @@ const StaffSchema = {
     createdAt: "date",
     updatedAt: "date",
     storeNo: "string",
+    state: "string"
   },
   primaryKey: "_id",
 };

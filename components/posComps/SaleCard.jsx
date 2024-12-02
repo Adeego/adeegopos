@@ -1,68 +1,76 @@
 import React, { useState, useEffect } from 'react';
+import useWsinfoStore from '@/stores/wsinfo';
+import useStaffStore from '@/stores/staffStore';
 import SelectedProductsTable from './SelectedProductsTable';
 import ProductSearch from './ProductSearch';
-import VariantSelection from './Variant';
 import { v4 as uuidv4 } from 'uuid';
 import {
     Card,
     CardContent,
     CardDescription,
-    CardFooter,
     CardHeader,
     CardTitle
 } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Separator } from "@/components/ui/separator";
-import { Button } from '../ui/button';
-import Link from 'next/link';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
-import { Popover, PopoverContent, PopoverTrigger } from '../ui/popover';
+import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { useToast } from '../ui/use-toast';
-import { Search, User, UserPlus, CreditCard, DollarSign, Smartphone, ShoppingBag, RotateCcw, UserCheck, Truck, ShoppingCart } from 'lucide-react';
+
+// Import new components
+import TotalAmountCard from './sale/TotalAmountCard';
+import CustomerSelectionDialog from './sale/CustomerSelectionDialog';
+import SaleDetailsDialog from './sale/SaleDetailsDialog';
+import AlertDialogs from './sale/AlertDialogs';
+import NewCustomerDialog from './sale/NewCustomerDialog';
+import { Button } from '../ui/button';
+import { ChevronDown, MapPin, MapPinHouse, PenLine, Search, User } from 'lucide-react';
+import { Input } from '../ui/input';
+import { Label } from '../ui/label';
 
 function SaleCard() {
-  const { toast } = useToast()
+  const { toast } = useToast();
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [selectedProduct, setSelectedProduct] = useState(null);
-  const [isVariantDialogOpen, setIsVariantDialogOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState('CASH');
   const [saleType, setSaleType] = useState('NEW SALE');
   const [name, setName] = useState('');
-  const [customer, setCustomer] = useState([]);
+  const [customer, setCustomer] = useState(null);
   const [fulfillmentType, setFulfillmentType] = useState('WALK-IN-CLIENT');
   const [customerResult, setCustomerResult] = useState([]);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [showOutOfStockAlert, setShowOutOfStockAlert] = useState(false);
   const [showLowStockAlert, setShowLowStockAlert] = useState(false);
   const [showNewCustomerDialog, setShowNewCustomerDialog] = useState(false);
+  const [showNoCreditAlert, setShowNoCreditAlert] = useState(false);
   const [newCustomerData, setNewCustomerData] = useState({
     name: '',
     phoneNumber: '',
     address: '',
   });
   const [currentVariant, setCurrentVariant] = useState(null);
+  const [custSearchDialog, setCustSearchDialog] = useState(false);
+  const [storeNo, setStoreNo] = useState("");
+  const [saleDetail, setSaleDetail] = useState(false);
+  const [servedBy, setServedBy] = useState('');
+  const [amountPaid, setAmountPaid] = useState(null);
+  const [note, setNote] = useState('');
+  const [change, setChange] = useState(null)
+  const [discount, setDiscount] = useState(0)
+  const store = useWsinfoStore((state) => state.wsinfo);
+  const staff = useStaffStore((state) => state.staff)
+
+  useEffect(() => {
+    const handleKeyPress = (event) => {
+    if (event.code === 'F10') {
+      event.preventDefault(); // Prevent default F10 behavior
+        setSaleDetail(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+
+    return () => {
+      window.removeEventListener('keydown', handleKeyPress);
+    };
+  }, []);
 
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
@@ -76,26 +84,74 @@ function SaleCard() {
     return () => clearTimeout(delayDebounceFn);
   }, [name]);
 
+  useEffect(() => {
+    const storeNo = store.storeNo;
+    if (storeNo) {
+      setStoreNo(storeNo);
+    }
+  }, [store.storeNo]);
+
+  useEffect(() => {
+    if (staff.firstName) {
+      setServedBy(staff.firstName + " " + staff.lastName)
+    }
+  }, [staff.firstName])
+
+  useEffect(() => {
+    const changeAmount = amountPaid - totalAmount
+    setChange(changeAmount);
+  }, [amountPaid])
+
+  useEffect(() => {
+    const fetchDefaultCustomer = async (storeNumber) => {
+      console.log(store.storeNo)
+      try {
+        const result = await window.electronAPI.searchCustomers(storeNumber);
+        if (result.success && result.customers.length > 0) {
+          console.log(result.customers);
+          setCustomer(result.customers[0]);
+        }
+        return null;
+      } catch (error) {
+        console.error('Error searching for customer:', error);
+        return null;
+      }
+    };
+
+    if (store.storeNo) {
+      fetchDefaultCustomer(store.storeNo);
+    }
+  }, [store.storeNo]);
+
   const handleNameChange = (e) => {
     setName(e.target.value);
   };
 
   const handleProductSelect = (variant) => {
     setCurrentVariant(variant);
-    if (variant.stock < 1) {
+    
+    if (variant.stock < variant.conversionFactor) {
       setShowOutOfStockAlert(true);
       return;
     }
 
+    const existingProduct = selectedProducts.find(p => p._id === variant._id);
+    if (existingProduct) {
+      const totalQuantity = (existingProduct.quantity) * existingProduct.conversionFactor;
+      if (totalQuantity + variant.conversionFactor > variant.stock) {
+        setShowOutOfStockAlert(true);
+        return;
+      }
+    }
+
     if (variant.stock <= 5) {
       setShowLowStockAlert(true);
-      return; // Add return here to prevent immediate product selection
+      return;
     }
 
     addProductToSelection(variant);
   };
 
-  // New function to handle adding product to selection
   const addProductToSelection = (variant) => {
     setSelectedProducts(prevProducts => {
       const existingVariantIndex = prevProducts.findIndex(p => p._id === variant._id);
@@ -104,24 +160,58 @@ function SaleCard() {
           index === existingVariantIndex ? { ...p, quantity: p.quantity + 1 } : p
         );
       } else {
-        return [...prevProducts, { ...variant, quantity: 1 }];
+        // Store the original price when adding a new product
+        return [...prevProducts, { ...variant, quantity: 1, originalPrice: variant.unitPrice }];
       }
     });
   };
 
   const handleProductRemove = (variantId) => {
-    setSelectedProducts(prevProducts => 
-      prevProducts.filter(variant => variant._id !== variantId)
-    );
+    setSelectedProducts(prevProducts => {
+      const removedProduct = prevProducts.find(p => p._id === variantId);
+      if (removedProduct) {
+        // Calculate discount to remove
+        const productDiscount = (removedProduct.originalPrice - removedProduct.unitPrice) * removedProduct.quantity;
+        setDiscount(prevDiscount => Math.max(0, prevDiscount - productDiscount));
+      }
+      return prevProducts.filter(variant => variant._id !== variantId);
+    });
   };
 
   const handleQuantityChange = (variantId, newQuantity) => {
     setSelectedProducts(prevProducts =>
-      prevProducts.map(variant =>
-        variant._id === variantId
-          ? { ...variant, quantity: Math.max(1, newQuantity) }
-          : variant
-      )
+      prevProducts.map(variant => {
+        if (variant._id === variantId) {
+          if (newQuantity * variant.conversionFactor > variant.stock) {
+            setShowOutOfStockAlert(true);
+            return variant;
+          }
+          // Recalculate discount based on new quantity
+          const oldDiscount = (variant.originalPrice - variant.unitPrice) * variant.quantity;
+          const newDiscount = (variant.originalPrice - variant.unitPrice) * newQuantity;
+          setDiscount(prevDiscount => prevDiscount - oldDiscount + newDiscount);
+          return { ...variant, quantity: Math.max(1, newQuantity) };
+        }
+        return variant;
+      })
+    );
+  };
+
+  const handlePriceChange = (variantId, newPrice) => {
+    setSelectedProducts(prevProducts =>
+      prevProducts.map(variant => {
+        if (variant._id === variantId) {
+          // Calculate old and new discount amounts
+          const oldDiscount = (variant.originalPrice - variant.unitPrice) * variant.quantity;
+          const newDiscount = (variant.originalPrice - newPrice) * variant.quantity;
+          
+          // Update total discount
+          setDiscount(prevDiscount => prevDiscount - oldDiscount + newDiscount);
+          
+          return { ...variant, unitPrice: Math.max(1, newPrice) };
+        }
+        return variant;
+      })
     );
   };
 
@@ -150,18 +240,23 @@ function SaleCard() {
     setCustomer(chosenCustomer);
     setCustomerResult([]);
     setName('');
+    setCustSearchDialog(false);
+  };
+
+  const handleCustomerDataChange = (field, value) => {
+    setNewCustomerData(prev => ({ ...prev, [field]: value }));
   };
 
   const handleCreateCustomer = async () => {
     const customerData = {
-      _id: `24091324:${uuidv4()}`,
+      _id: `${storeNo}:${uuidv4()}`,
       ...newCustomerData,
       balance: 0,
-      credit: 0,
+      credit: true,
       status: 'Active',
-      storeNo: '24091324',
-      createdAt: new Date(),
-      updatedAt: new Date(),
+      storeNo: `${storeNo}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     };
 
     try {
@@ -178,29 +273,73 @@ function SaleCard() {
     }
   };
 
+  const validateSale = () => {
+    if (!customer || !customer._id) {
+      toast({
+        title: "Error",
+        description: "Please select a customer",
+        variant: "destructive"
+      });
+      return false;
+    }
+
+    if (selectedProducts.length === 0) {
+      toast({
+        title: "Error",
+        description: "Please add at least one product",
+        variant: "destructive"
+      });
+      return false;
+    }
+
+    if (!amountPaid) {
+      toast({
+        title: "Error",
+        description: "Please fill the Amount Paid",
+        variant: "destructive"
+      });
+      return false;
+    }
+
+    if (paymentMethod === 'CREDIT' && !customer.credit) {
+      setShowNoCreditAlert(true);
+      return false;
+    }
+
+    return true;
+  };
+
   const handleCreateSale = async () => {
-    console.log(selectedProducts)
+    if (!validateSale()) {
+      return;
+    }
+
     const saleData = {
-      _id: `24091324:${uuidv4()}`,
+      _id: `${storeNo}:${uuidv4()}`,
       customerId: customer._id,
       items: selectedProducts.map(product => ({
-        _id: `24091324:${uuidv4()}`,
+        _id: `${storeNo}:${uuidv4()}`,
         productId: product.productId,
         name: `${product.productName} ${product.name}`,
         buyPrice: product.buyPrice * product.conversionFactor,
         quantity: product.quantity,
         unitPrice: product.unitPrice,
         subtotal: product.unitPrice * product.quantity,
-        discount: 0,
+        discount: parseInt((product.originalPrice - product.unitPrice) * product.quantity),
         conversionFactor: product.conversionFactor
       })),
       totalAmount: totalAmount,
       totalItems: selectedProducts.length,
+      totalDiscount: discount,
+      servedBy: `${servedBy}`,
+      amountPaid: parseInt(amountPaid),
+      change: change,
+      note: `${note}`,
       paymentMethod: paymentMethod,
       saleType: saleType,
       fullfilmentType: fulfillmentType,
       confirmed: true,
-      storeNo: '24091324',
+      storeNo: `${storeNo}`,
       createdAt: new Date(),
       updatedAt: new Date(),
     };
@@ -213,325 +352,165 @@ function SaleCard() {
         setCustomer(null);
         setPaymentMethod('CASH');
         setSaleType('NEW SALE');
+        setSaleDetail(false);
+        setDiscount(0);
         toast({
           title: "Success",
           description: "Sale created successfully!",
-        })
+        });
       } else {
         console.error("Sale creation failed:", result.error);
-        alert('Failed to create sale. Please try again.');
+        toast({
+          title: "Error",
+          description: "Failed to create sale. Please try again.",
+          variant: "destructive"
+        });
       }
     } catch (error) {
       console.error("Error creating sale:", error);
-      alert('An error occurred while creating the sale.');
+      toast({
+        title: "Error",
+        description: "An error occurred while creating the sale.",
+        variant: "destructive"
+      });
     }
-  };  
+  };
+
+  const handleLowStockContinue = () => {
+    setShowLowStockAlert(false);
+    addProductToSelection(currentVariant);
+  };
 
   return (
     <div className="">
-      <Card className="">
-        <CardHeader className="flex flex-row justify-between">
-          <div>
-            <CardTitle className="text-left">New Sale</CardTitle>
-            <CardDescription className="text-left">Fill all the required fields</CardDescription>
-          </div>
-          <div>
-            <Button>
-              <Link href={'pos/salesHistory'}>Sales History</Link>
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="h-1/2">
-          <div className="flex h-full gap-3">
-            <div className="w-2/3 rounded-md border h-[405px] overflow-y-auto">
-              <SelectedProductsTable 
-                selectedProducts={selectedProducts} 
-                handleProductRemove={handleProductRemove} 
-                handleQuantityChange={handleQuantityChange}
-              />
+      <Card>
+        <CardHeader className="flex flex-row justify-between space-y-0 pb-2">
+          <div className="flex flex-col justify-around" >
+            <div>
+              <CardTitle className="text-3xl font-bold">New Sale</CardTitle>
+              <CardDescription className="text-sm text-muted-foreground">Create a new sales transaction</CardDescription>
             </div>
-            {/* <Separator orientation="vertical" className="mx-3" /> */}
-            <div className="w-1/3 rounded-md border">
-              <ProductSearch handleProductSelect={handleProductSelect} />
+            <div>
+              <Dialog>
+                <DialogTrigger className="">Drafted Sale [5]</DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Drafted Sales</DialogTitle>
+                    <DialogDescription>Drifted item list</DialogDescription>
+                  </DialogHeader>
+                </DialogContent>
+              </Dialog>
             </div>
           </div>
-          {/* <Separator /> */}
-        </CardContent>
-        <CardFooter>
-            <div className='flex justify-between w-full gap-2'>
-              <Card className="w-1/3">
-                <CardHeader>
-                  <CardTitle>Order Details</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="payment">Payment Method</Label>
-                    <Select name="payment" value={paymentMethod} onValueChange={setPaymentMethod}>
-                      <SelectTrigger id="payment">
-                        <SelectValue placeholder="Select payment method" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="CASH">
-                          <span className="flex items-center">
-                            <DollarSign className="mr-2 h-4 w-4" />
-                            Cash
-                          </span>
-                        </SelectItem>
-                        <SelectItem value="MPESA">
-                          <span className="flex items-center">
-                            <Smartphone className="mr-2 h-4 w-4" />
-                            M-Pesa
-                          </span>
-                        </SelectItem>
-                        <SelectItem value="CREDIT">
-                          <span className="flex items-center">
-                            <CreditCard className="mr-2 h-4 w-4" />
-                            Credit
-                          </span>
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                    </div>
-
-                  <div className="space-y-2">
-                    <Label>Sale Type</Label>
-                    <RadioGroup value={saleType} onValueChange={setSaleType} className="flex space-x-4">
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="NEW SALE" id="new-sale" />
-                        <Label htmlFor="new-sale" className="flex items-center">
-                          <ShoppingBag className="mr-2 h-4 w-4" />
-                          New Sale
-                        </Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="RETURN SALE" id="return-sale" />
-                        <Label htmlFor="return-sale" className="flex items-center">
-                          <RotateCcw className="mr-2 h-4 w-4" />
-                          Return Sale
-                        </Label>
-                      </div>
-                    </RadioGroup>
-                    </div>
-
-                  <div className="space-y-2">
-                    <Label>Fulfillment Type</Label>
-                    <RadioGroup value={fulfillmentType} onValueChange={setFulfillmentType} className="flex space-x-4">
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="WALK-IN-CLIENT" id="walk-in" />
-                        <Label htmlFor="walk-in" className="flex items-center">
-                          <UserCheck className="mr-2 h-4 w-4" />
-                          Walk-in Client
-                        </Label>
-                      </div>
-                      <div className="flex items-center space-x-2">
-                        <RadioGroupItem value="DELIVERY" id="delivery" />
-                        <Label htmlFor="delivery" className="flex items-center">
-                          <Truck className="mr-2 h-4 w-4" />
-                          Delivery
-                        </Label>
-                      </div>
-                    </RadioGroup>
-                  </div>
-                </CardContent>
-              </Card>
-              <Card className="w-1/3 max-w-md">
-                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                  <CardTitle className="text-2xl font-bold">Customer</CardTitle>
+          
+          <div className="flex flex-row justify-center items-center space-x-2" >
+            <Card className="w-[280px] max-w-md">
+              <CardContent className="space-y-3 p-4">
+                <div className="space-y-2">
+                  <Label htmlFor="customer-select">Select Customer</Label>
                   <Button
+                    id="customer-select"
                     variant="outline"
-                    size="icon"
-                    onClick={() => {
-                    setShowNewCustomerDialog(true)
-                    }}
+                    role="combobox"
+                    aria-label="Select customer"
+                    className="w-full justify-between text-left font-normal text-base py-6"
+                    onClick={() => setCustSearchDialog(true)}
                   >
-                    <UserPlus className="h-4 w-4" />
-                    <span className="sr-only">Add new customer</span>
+                    {customer ? (
+                      <div className="flex items-center space-x-2">
+                        <User className="h-4 w-4" />
+                        <span>{customer.name}</span>
+                      </div>
+                    ) : (
+                      <span>Select customer</span>
+                    )}
+                    <ChevronDown className="h-4 w-4 opacity-50" />
                   </Button>
-                </CardHeader>
-                <CardContent>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button
-                        variant="outline"
-                        role="combobox"
-                        className="w-full justify-between"
-                      >
-                        {customer ? customer.name : "Select customer"}
-                        <Search className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-full p-0" align="start">
-                      <div className="flex items-center border-b px-3 py-2">
-                        <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
-                        <Input
-                          placeholder="Search customers..."
-                          className="flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
-                          value={name}
-                          onChange={handleNameChange}
-                        />
-                      </div>
-                      {customerResult && customerResult.length > 0 ? (
-                        <ScrollArea className="h-[300px] w-full">
-                          {customerResult.map((chosenCustomer) => (
-                            <div
-                              key={chosenCustomer._id}
-                              className="cursor-pointer px-3 py-2 hover:bg-accent"
-                              onClick={() => handleCustomerSelect(chosenCustomer)}
-                            >
-                              <div className="font-medium">{chosenCustomer.name}</div>
-                              <div className="text-sm text-muted-foreground">
-                                {chosenCustomer.phone}
-                              </div>
-                            </div>
-                          ))}
-                        </ScrollArea>
-                      ) : (
-                        <div className="p-4 text-center text-sm text-muted-foreground">
-                          No results found
-                        </div>
-                      )}
-                    </PopoverContent>
-                  </Popover>
-                  {customer && (
-                    <div className="mt-4 space-y-4 rounded-lg bg-accent/50 p-4 transition-all">
-                      <div className="flex items-center space-x-4">
-                        <User className="h-12 w-12 rounded-full bg-background p-2" />
-                        <div>
-                          <h3 className="font-semibold">{customer.name}</h3>
-                          <p className="text-sm text-muted-foreground">{customer.phone}</p>
-                        </div>
-                      </div>
-                      <div>
-                        <Label htmlFor="address">Address</Label>
-                        <Input id="address" value={customer.address} readOnly className="mt-1" />
-                      </div>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-              <Card className="w-1/3">
-                <CardContent className="p-6 space-y-6">
-                  <div className="space-y-2">
-                    <Label htmlFor="total-amount" className="text-sm font-medium text-muted-foreground">
-                      TOTAL AMOUNT
-                    </Label>
-                    <div className="relative">
-                      <DollarSign className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        id="total-amount"
-                        className="pl-10 text-3xl font-bold text-center h-16"
-                        value={`KES ${totalAmount.toFixed(2)}`}
-                        readOnly
-                      />
+                </div>
+                {customer && (
+                  <div className="rounded-md bg-muted p-4 mb-2">
+                    <div className="flex items-center space-x-2 text-base text-muted-foreground">
+                      <MapPin className="h-4 w-4" />
+                      <span>{customer.address}</span>
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="total-items" className="text-sm font-medium text-muted-foreground">
-                      TOTAL ITEMS
-                    </Label>
-                    <div className="relative">
-                      <ShoppingCart className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
-                      <Input
-                        id="total-items"
-                        className="pl-10 text-xl font-semibold text-center h-12"
-                        value={selectedProducts.length}
-                        readOnly
-                      />
-                    </div>
-                  </div>
-                </CardContent>
-                <CardFooter className="px-6 py-0">
-                  <Button
-                    onClick={handleCreateSale}
-                    className="w-full text-xl font-bold h-14"
-                  >
-                    SELL
-                  </Button>
-                </CardFooter>
-              </Card>
-            </div>
-        </CardFooter>
+                )}
+              </CardContent>
+            </Card>
+            <TotalAmountCard 
+              totalAmount={totalAmount}
+              onDraft={() => {}}
+              onNext={() => setSaleDetail(true)}
+            />
+          </div>
+          
+        </CardHeader>
+
+        <CardContent className="space-y-6">
+          <div className="grid grid-cols-3 gap-6">
+            <Card className="col-span-3">
+              <CardHeader className="flex flex-row justify-between items-center">
+                <CardTitle className="text-xl font-bold">Selected Products [{selectedProducts.length}]</CardTitle>
+                <ProductSearch handleProductSelect={handleProductSelect} />
+              </CardHeader>
+              <CardContent className="h-[400px] overflow-auto">
+                <SelectedProductsTable 
+                  selectedProducts={selectedProducts} 
+                  handleProductRemove={handleProductRemove} 
+                  handleQuantityChange={handleQuantityChange}
+                  handlePriceChange={handlePriceChange}
+                />
+              </CardContent>
+            </Card>
+          </div>
+        </CardContent>
       </Card>
 
-      <AlertDialog open={showOutOfStockAlert} onOpenChange={setShowOutOfStockAlert}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Out of Stock</AlertDialogTitle>
-            <AlertDialogDescription>
-              This item is out of stock. Please restock it.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogAction onClick={() => setShowOutOfStockAlert(false)}>OK</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <CustomerSelectionDialog
+        open={custSearchDialog}
+        onOpenChange={setCustSearchDialog}
+        name={name}
+        onNameChange={handleNameChange}
+        customerResult={customerResult}
+        onCustomerSelect={handleCustomerSelect}
+        selectedCustomer={customer}
+      />
 
-      <AlertDialog open={showLowStockAlert} onOpenChange={setShowLowStockAlert}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Low Stock Warning</AlertDialogTitle>
-            <AlertDialogDescription>
-              This item is running low on stock (5 or fewer items remaining).
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogAction onClick={() => {
-              setShowLowStockAlert(false);
-              addProductToSelection(currentVariant); // Call addProductToSelection instead of handleProductSelect
-            }}>Continue</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <SaleDetailsDialog
+        open={saleDetail}
+        onOpenChange={setSaleDetail}
+        paymentMethod={paymentMethod}
+        setPaymentMethod={setPaymentMethod}
+        saleType={saleType}
+        setSaleType={setSaleType}
+        fulfillmentType={fulfillmentType}
+        setFulfillmentType={setFulfillmentType}
+        onCompleteSale={handleCreateSale}
+        amountPaid={amountPaid}
+        setAmountPaid={setAmountPaid}
+        note={note}
+        setNote={setNote}
+        servedBy={servedBy}
+        change={change}
+      />
 
-      <Dialog open={showNewCustomerDialog} onOpenChange={setShowNewCustomerDialog}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Add New Customer</DialogTitle>
-            <DialogDescription>
-              Create a new customer record
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="name" className="text-right">
-                Name
-              </Label>
-              <Input
-                id="name"
-                value={newCustomerData.name}
-                onChange={(e) => setNewCustomerData(prev => ({ ...prev, name: e.target.value }))}
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="phone" className="text-right">
-                Phone
-              </Label>
-              <Input
-                id="phone"
-                value={newCustomerData.phoneNumber}
-                onChange={(e) => setNewCustomerData(prev => ({ ...prev, phoneNumber: e.target.value }))}
-                className="col-span-3"
-              />
-            </div>
-            <div className="grid grid-cols-4 items-center gap-4">
-              <Label htmlFor="address" className="text-right">
-                Address
-              </Label>
-              <Input
-                id="address"
-                value={newCustomerData.address}
-                onChange={(e) => setNewCustomerData(prev => ({ ...prev, address: e.target.value }))}
-                className="col-span-3"
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button onClick={handleCreateCustomer}>Create Customer</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <AlertDialogs
+        showOutOfStockAlert={showOutOfStockAlert}
+        setShowOutOfStockAlert={setShowOutOfStockAlert}
+        showLowStockAlert={showLowStockAlert}
+        setShowLowStockAlert={setShowLowStockAlert}
+        showNoCreditAlert={showNoCreditAlert}
+        setShowNoCreditAlert={setShowNoCreditAlert}
+        onLowStockContinue={handleLowStockContinue}
+      />
+
+      <NewCustomerDialog
+        open={showNewCustomerDialog}
+        onOpenChange={setShowNewCustomerDialog}
+        customerData={newCustomerData}
+        onCustomerDataChange={handleCustomerDataChange}
+        onCreateCustomer={handleCreateCustomer}
+      />
     </div>
   );
 }

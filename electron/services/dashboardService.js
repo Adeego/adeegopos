@@ -5,22 +5,19 @@ function getTodaysSalesMetrics(db) {
   const endOfDay = new Date();
   endOfDay.setHours(23, 59, 59, 999); // End of today
 
-  return db.find({
-    selector: {
-      createdAt: { 
-        $gte: today.toISOString(), 
-        $lte: endOfDay.toISOString() 
-      },
-        type: "sale",
-        state: "Active"
-      }
-  }).then(result => {
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1); // Start of yesterday
+  const endOfYesterday = new Date(yesterday);
+  endOfYesterday.setHours(23, 59, 59, 999); // End of yesterday
+
+  // Function to calculate metrics from sales documents
+  const calculateMetrics = (docs) => {
     let totalRevenue = 0;
     let totalCost = 0;
     let customerCredit = 0;
-    const numberOfSales = result.docs.length;
+    const numberOfSales = docs.length;
 
-    result.docs.forEach(sale => {
+    docs.forEach(sale => {
       // Calculate revenue
       totalRevenue += Number(sale.totalAmount) || 0;
 
@@ -41,18 +38,52 @@ function getTodaysSalesMetrics(db) {
     const profit = totalRevenue - totalCost;
 
     return {
-      success: true,
-      data: {
         revenue: Number(totalRevenue.toFixed(2)),
         numberOfSales,
         profit: Number(profit.toFixed(2)),
         customerCredit: Number(customerCredit.toFixed(2))
-      }
     };
-  }).catch(error => {
-    console.error('Error getting today\'s sales metrics:', error);
-    return { success: false, error: error.message };
+  };
+
+  // Promise for today's data
+  const todayPromise = db.find({
+    selector: {
+      createdAt: { 
+        $gte: today.toISOString(), 
+        $lte: endOfDay.toISOString() 
+      },
+      type: "sale",
+      state: "Active"
+}
   });
+
+  // Promise for yesterday's data
+  const yesterdayPromise = db.find({
+    selector: {
+      createdAt: { 
+        $gte: yesterday.toISOString(), 
+        $lte: endOfYesterday.toISOString() 
+      },
+      type: "sale",
+      state: "Active"
+    }
+  });
+
+  // Execute both promises concurrently
+  return Promise.all([todayPromise, yesterdayPromise])
+    .then(([todayResult, yesterdayResult]) => {
+      return {
+        success: true,
+        data: {
+          today: calculateMetrics(todayResult.docs),
+          yesterday: calculateMetrics(yesterdayResult.docs)
+        }
+      };
+    })
+    .catch(error => {
+      console.error('Error getting sales metrics:', error);
+      return { success: false, error: error.message };
+    });
 }
 
 // Function to get today's total expenses
@@ -62,7 +93,13 @@ function getTodaysExpenses(db) {
   const endOfDay = new Date();
   endOfDay.setHours(23, 59, 59, 999); // End of today
 
-  return db.find({
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1); // Start of yesterday
+  const endOfYesterday = new Date(yesterday);
+  endOfYesterday.setHours(23, 59, 59, 999); // End of yesterday
+
+  // Promise for today's expenses
+  const todayPromise = db.find({
     selector: {
       createdAt: {
         $gte: today.toISOString(),
@@ -71,23 +108,45 @@ function getTodaysExpenses(db) {
       type: "expense",
       state: "Active"
     }
-  }).then(result => {
-    let totalExpenses = 0;
-
-    result.docs.forEach(expense => {
-      totalExpenses += Number(expense.amount) || 0;
-    });
-
-    return {
-      success: true,
-      data: {
-        totalExpenses: Number(totalExpenses.toFixed(2))
-      }
-    };
-  }).catch(error => {
-    console.error('Error getting today\'s expenses:', error);
-    return { success: false, error: error.message };
   });
+
+  // Promise for yesterday's expenses
+  const yesterdayPromise = db.find({
+    selector: {
+      createdAt: {
+        $gte: yesterday.toISOString(),
+        $lte: endOfYesterday.toISOString()
+      },
+      type: "expense",
+      state: "Active"
+    }
+  });
+
+  // Calculate total expenses from documents
+  const calculateTotalExpenses = (docs) => {
+    return Number(docs.reduce((total, expense) => 
+      total + (Number(expense.amount) || 0), 0).toFixed(2));
+  };
+
+  // Execute both promises concurrently
+  return Promise.all([todayPromise, yesterdayPromise])
+    .then(([todayResult, yesterdayResult]) => {
+      return {
+        success: true,
+        data: {
+          today: {
+            totalExpenses: calculateTotalExpenses(todayResult.docs)
+          },
+          yesterday: {
+            totalExpenses: calculateTotalExpenses(yesterdayResult.docs)
+          }
+        }
+      };
+    })
+    .catch(error => {
+      console.error('Error getting expenses:', error);
+      return { success: false, error: error.message };
+    });
 }
 
 // Function to get hourly sales data for the line chart
@@ -152,20 +211,41 @@ function transactionMetrics(db) {
   const endOfDay = new Date();
   endOfDay.setHours(23, 59, 59, 999); 
 
-  return db.find({
+  const yesterday = new Date(today);
+  yesterday.setDate(yesterday.getDate() - 1); // Start of yesterday
+  const endOfYesterday = new Date(yesterday);
+  endOfYesterday.setHours(23, 59, 59, 999); // End of yesterday
+
+  // Promise for today's transactions
+  const todayPromise = db.find({
     selector: {
       createdAt: {
         $gte: today.toISOString(),
         $lte: endOfDay.toISOString()
       },
+      type: "transaction", 
+      state: "Active"
+    }
+  });
+
+  // Promise for yesterday's transactions
+  const yesterdayPromise = db.find({
+    selector: {
+      createdAt: {
+        $gte: yesterday.toISOString(),
+        $lte: endOfYesterday.toISOString()
+      },
       type: "transaction",
       state: "Active"
     }
-  }).then(result => {
+  });
+
+  // Function to calculate transaction metrics from documents
+  const calculateMetrics = (docs) => {
     let customerCredits = 0;
     let supplierPayments = 0;
 
-    result.docs.forEach(transaction => {
+    docs.forEach(transaction => {
       // Calculate customer credits
       if (transaction.source === 'customer') {
         customerCredits += Number(transaction.amount) || 0;
@@ -177,16 +257,26 @@ function transactionMetrics(db) {
     });
 
     return {
-      success: true,
-      data: {
         customerCredits: Number(customerCredits.toFixed(2)),
         supplierPayments: Number(supplierPayments.toFixed(2))
-      }
     };
-  }).catch(error => {
-    console.error('Error getting transaction metrics:', error);
-    return { success: false, error: error.message };
-  });
+  };
+
+  // Execute both promises concurrently
+  return Promise.all([todayPromise, yesterdayPromise])
+    .then(([todayResult, yesterdayResult]) => {
+      return {
+        success: true,
+        data: {
+          today: calculateMetrics(todayResult.docs),
+          yesterday: calculateMetrics(yesterdayResult.docs)
+}
+      };
+    })
+    .catch(error => {
+      console.error('Error getting transaction metrics:', error);
+      return { success: false, error: error.message };
+    });
 }
 
 module.exports = {

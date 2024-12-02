@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import DeleteCustomer from './deleteCustomer';
+import useStaffStore from '@/stores/staffStore';
 import EditCustomer from './editCustomer';
 import AddCustomer from './addCustomer';
 import Edit from './edit';
@@ -23,9 +24,9 @@ export default function CustomerTable() {
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [searchTerm, setSearchTerm] = useState('');
+  const [role, setRole] = useState(null)
+  const staff = useStaffStore((state) => state.staff);
   // const [isAddingCustomer, setIsAddingCustomer] = useState(false);
-
-  console.log(customers);
 
   // // New customer state
   // const [newCustomer, setNewCustomer] = useState({
@@ -37,6 +38,14 @@ export default function CustomerTable() {
   //   credit: false,
   //   status: '',
   // });
+
+  console.log(staff);
+
+  useEffect(() => {
+    if (staff.role) {
+      setRole(staff.role)
+    }
+  }, [staff.role])
 
   useEffect(() => {
     fetchCustomers();
@@ -81,7 +90,9 @@ export default function CustomerTable() {
               Manage your customers and view their contribution.
             </CardDescription>
           </div>
-          <AddCustomer fetchCustomers={fetchCustomers} />
+          {
+            role && (role === 'Admin' || role === 'Operator') && <AddCustomer fetchCustomers={fetchCustomers} />
+          }
         </div>
       </CardHeader>
       <CardContent>
@@ -117,9 +128,6 @@ export default function CustomerTable() {
               <TableHead className="hidden md:table-cell text-left">Credit</TableHead>
               <TableHead className="hidden md:table-cell text-left">Status</TableHead>
               <TableHead className="hidden md:table-cell text-left"></TableHead>
-              <TableHead>
-                <span className="sr-only">Actions</span>
-              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -133,39 +141,17 @@ export default function CustomerTable() {
                 <TableCell className="hidden md:table-cell text-left">{customer.status}</TableCell>
                 <TableCell className="hidden md:table-cell text-left">
                   <div className=' flex flex-row gap-2 ' >
-                    <Link href={`/customers/${customer._id}`} className='h-8 w-8 flex justify-center items-center rounded-md hover:bg-neutral-200' ><Eye /></Link>
-                    <DeleteCustomer
-                      customerId={customer._id}
-                      customerName={customer.name}
-                      fetchCustomers={fetchCustomers}
-                      onDeleteSuccess={fetchCustomers}
-                    />
+                    <Button ><Link href={`/customers/${customer._id}`} className='h-8 w-8 flex justify-center items-center' >View</Link></Button>
+                    {
+                      role && (role === 'Admin' || role === 'Operator') &&
+                      <DeleteCustomer
+                        customerId={customer._id}
+                        customerName={customer.name}
+                        fetchCustomers={fetchCustomers}
+                        onDeleteSuccess={fetchCustomers}
+                      />
+                    }
                   </div>
-                </TableCell>
-                <TableCell>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button aria-haspopup="true" size="icon" variant="ghost">
-                        <MoreHorizontal className="h-4 w-4" />
-                        <span className="sr-only">Toggle menu</span>
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                      <DropdownMenuItem>
-                        <Link href={`/customers/${customer._id}`}>View</Link>
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                        <EditCustomer
-                          customer={customer}
-                          onEditSuccess={fetchCustomers}
-                        />
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onSelect={(e) => e.preventDefault()}>
-                        
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
                 </TableCell>
               </TableRow>
             ))}

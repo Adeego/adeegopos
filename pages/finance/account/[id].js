@@ -45,6 +45,10 @@ export default function AccountDetail() {
     setAccount({ ...account, [name]: value });
   };
 
+  const handleAccountTypeChange = (value) => {
+    setAccount({ ...account, accountType: value });
+  };
+
   const handleSave = async () => {
     try {
       const result = await window.electronAPI.realmOperation('updateAccount', {
@@ -96,8 +100,20 @@ export default function AccountDetail() {
                   <Input id="accountNumber" name="accountNumber" value={account.accountNumber} onChange={handleInputChange} />
                 </div>
                 <div>
-                  <Label htmlFor="bank">Bank</Label>
-                  <Input id="bank" name="bank" value={account.bank} onChange={handleInputChange} />
+                  <Label htmlFor="accountType">Account Type</Label>
+                  <Select 
+                    name="accountType"
+                    value={account.accountType} 
+                    onValueChange={handleAccountTypeChange}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Account Type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Bank">Bank</SelectItem>
+                      <SelectItem value="Legible">Legible</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div>
                   <Label htmlFor="balance">Balance</Label>
@@ -115,8 +131,8 @@ export default function AccountDetail() {
                   <div className="text-sm font-semibold text-gray-900">{account.accountNumber}</div>
                 </div>
                 <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                  <div className="text-sm font-medium text-gray-600">BANK</div>
-                  <div className="text-sm font-semibold text-gray-900">{account.bank}</div>
+                  <div className="text-sm font-medium text-gray-600">ACCOUNT TYPE</div>
+                  <div className="text-sm font-semibold text-gray-900">{account.accountType}</div>
                 </div>
                 <div className="flex items-center justify-between py-2 border-b border-gray-100">
                   <div className="text-sm font-medium text-gray-600">BALANCE</div>
@@ -137,7 +153,6 @@ export default function AccountDetail() {
               <>
                 <Button onClick={() => setIsEditing(true)}>Edit</Button>
                 <DeleteAccount accountId={account._id} accountName={account.name} />
-                {/* <Button variant="destructive" onClick={handleDelete}>Delete</Button> */}
               </>
             )}
           </div>

@@ -89,7 +89,14 @@ export default function Restock() {
   const updateSelectedProduct = (productId, field, value) => {
     setSelectedProducts(selectedProducts.map(product => {
       if (product._id === productId) {
-        return { ...product, [field]: value }
+        const updatedProduct = { ...product, [field]: value }
+        
+        // Automatically calculate amountOwed when newBuyPrice or restockQuantity changes
+        if (field === 'newBuyPrice' || field === 'restockQuantity') {
+          updatedProduct.amountOwed = updatedProduct.newBuyPrice * updatedProduct.restockQuantity
+        }
+        
+        return updatedProduct
       }
       return product
     }))
@@ -206,17 +213,17 @@ export default function Restock() {
                   <TableCell>{product.name}</TableCell>
                   <TableCell>
                     <Input
-                      type="number"
+                      // type="number"
                       value={product.restockQuantity}
-                      onChange={(e) => updateSelectedProduct(product._id, 'restockQuantity', e.target.value)}
+                      onChange={(e) => updateSelectedProduct(product._id, 'restockQuantity', Number(e.target.value))}
                       className="w-24"
                     />
                   </TableCell>
                   <TableCell>
                     <Input
-                      type="number"
+                      // type="number"
                       value={product.newBuyPrice}
-                      onChange={(e) => updateSelectedProduct(product._id, 'newBuyPrice', e.target.value)}
+                      onChange={(e) => updateSelectedProduct(product._id, 'newBuyPrice', Number(e.target.value))}
                       className="w-24"
                     />
                   </TableCell>
@@ -241,7 +248,7 @@ export default function Restock() {
                     <Input
                       type="number"
                       value={product.amountOwed}
-                      onChange={(e) => updateSelectedProduct(product._id, 'amountOwed', e.target.value)}
+                      readOnly
                       className="w-24"
                     />
                   </TableCell>

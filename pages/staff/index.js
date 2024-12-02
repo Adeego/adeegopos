@@ -22,8 +22,8 @@ export default function Staff() {
 
   useEffect(() => {
     const filtered = staff.filter(s =>
-      (s.name && s.name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (s.phone && s.phone.includes(searchTerm))
+      (s.firstName && s.firstName.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (s.phoneNumber && s.phoneNumber.includes(searchTerm))
     );
     setFilteredStaff(filtered);
     setCurrentPage(1);
@@ -35,6 +35,7 @@ export default function Staff() {
       if (result.success) {
         setStaff(result.staff);
         setFilteredStaff(result.staff);
+        console.log(result.staff);
       } else {
         console.error('Failed to fetch staff:', result.error);
       }
@@ -99,7 +100,7 @@ export default function Staff() {
               {currentStaff.map((s) => (
                 <TableRow key={s._id} className="text-base">
                   <TableCell className="text-left font-medium">{s.firstName} {s.lastName}</TableCell>
-                  <TableCell className="text-left">{s.phone}</TableCell>
+                  <TableCell className="text-left">{s.phoneNumber}</TableCell>
                   <TableCell className="hidden md:table-cell text-left">{s.role}</TableCell>
                   <TableCell className="hidden md:table-cell text-left">KES {s.salary}</TableCell>
                   <TableCell className="text-right">

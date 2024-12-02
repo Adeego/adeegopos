@@ -19,6 +19,11 @@ function createSale(db, saleData) {
     })),
     totalAmount: saleData.totalAmount,
     totalItems: saleData.totalItems,
+    totalDiscount: saleData.totalDiscount,
+    servedBy: saleData.servedBy,
+    amountPaid: saleData.amountPaid,
+    change: saleData.change,
+    note: saleData.note || '',
     paymentMethod: saleData.paymentMethod,
     saleType: saleData.saleType,
     fullfilmentType: saleData.fullfilmentType,
@@ -42,34 +47,62 @@ function createSale(db, saleData) {
     return Promise.all(updates);
   };
 
+  // Function to update customer balance for credit sales
+  const updateCustomerBalance = () => {
+    if (saleData.paymentMethod === 'CREDIT' && saleData.customerId) {
+      return db.get(saleData.customerId)
+        .then(customer => {
+          const updatedCustomer = {
+            ...customer,
+            balance: (customer.balance || 0) - saleData.totalAmount
+          };
+          return db.put(updatedCustomer);
+        })
+              .catch(error => {
+          console.error('Error updating customer balance:', error);
+          throw error;
+              });
+    }
+    return Promise.resolve();
+  };
+
   return db.put(sale)
     .then(response => {
       const createdSale = { _id: response.id, ...sale };
-      // Update stock based on sale type after successful sale creation
-      if (saleData.saleType === 'NEW SALE' || saleData.saleType === 'return sale') {
-        return updateStock(saleData.saleType, saleData.items)
-          .then(() => {
-            // Print receipt after successful stock update
-            return printReceipt(createdSale)
-              .then(() => ({ success: true, sale: createdSale }))
-              .catch(error => {
-                console.error('Receipt printing failed:', error);
-                return { success: true, sale: createdSale, receiptError: error.message };
-              });
-          })
-          .catch(error => {
-            console.error('Error updating stock:', error);
-            return { success: true, sale: createdSale, stockUpdateError: error.message };
-          });
-      } else {
-        // If no stock update is needed, just print the receipt
+      
+      // Chain all necessary updates
+      return updateCustomerBalance()
+        .then(() => {
+          // Update stock if it's a new sale or return
+          if (saleData.saleType === 'NEW SALE' || saleData.saleType === 'return sale') {
+            return updateStock(saleData.saleType, saleData.items)
+              .then(() => {
+                // Print receipt after successful updates
         return printReceipt(createdSale)
           .then(() => ({ success: true, sale: createdSale }))
           .catch(error => {
             console.error('Receipt printing failed:', error);
             return { success: true, sale: createdSale, receiptError: error.message };
           });
-      }
+    })
+              .catch(error => {
+                console.error('Error updating stock:', error);
+                return { success: true, sale: createdSale, stockUpdateError: error.message };
+              });
+          } else {
+            // If no stock update is needed, just print the receipt
+            return printReceipt(createdSale)
+              .then(() => ({ success: true, sale: createdSale }))
+              .catch(error => {
+                console.error('Receipt printing failed:', error);
+                return { success: true, sale: createdSale, receiptError: error.message };
+              });
+}
+        })
+        .catch(error => {
+          console.error('Error processing sale:', error);
+          return { success: false, error: error.message };
+        });
     })
     .catch(error => ({ success: false, error: error.message }));
 }

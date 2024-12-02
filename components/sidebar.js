@@ -1,24 +1,19 @@
 import React, { useState } from "react";
-// import { Link, useLocation } from "react-router-dom";
 import Link from "next/link";
 import { usePathname } from 'next/navigation'
 import WsDropdownMenu from "./wholesalerComps/wsDropdownMenu";
+import useStaffStore from "../stores/staffStore";
 
 // Icons
 import {
-  UserRound,
-  LogOut,
-  Bell,
   BadgeDollarSign,
   ChartLine,
   Cable,
   PanelLeft,
-  Users,
   Home,
   ShoppingBag,
   ShoppingCart,
   UsersRound,
-  ChevronRight,
   LogIn,
   BriefcaseBusiness,
   Settings,
@@ -36,61 +31,62 @@ const links = [
     label: "Home",
     icon: <Home className="h-[18px] w-[18px]" strokeWidth={2} />,
     pageLink: "/dashboard",
+    allowedRoles: ["admin", "operator"], // Everyone can access home
   },
   {
     label: "Staff",
     icon: <BriefcaseBusiness className="h-[18px] w-[18px]" strokeWidth={2} />,
     pageLink: "/staff",
+    allowedRoles: ["admin"], // Only admin can manage staff
   },
-  //<BriefcaseBusiness />
   {
     label: "Products",
     icon: <ShoppingBag className="h-[18px] w-[18px]" strokeWidth={2} />,
     pageLink: "/product",
+    allowedRoles: ["admin", "operator"], // admin and operator can manage products
   },
   {
     label: "Sale",
     icon: <ShoppingCart className="h-[18px] w-[18px]" strokeWidth={2} />,
     pageLink: "/",
+    allowedRoles: ["admin", "worker", "operator"], // Everyone can access sales
   },
   {
     label: "Customers",
     icon: <UsersRound className="h-[18px] w-[18px]" strokeWidth={2} />,
     pageLink: "/customers",
+    allowedRoles: ["admin", "worker", "operator"], // admin and operator can manage customers
   },
   {
-    label: "Supplier",
+    label: "Suppliers",
     icon: <Cable className="h-[18px] w-[18px]" strokeWidth={2} />,
     pageLink: "/supplier",
+    allowedRoles: ["admin", "operator"], // admin and operator can manage suppliers
   },
   {
     label: "Finance",
     icon: <BadgeDollarSign className="h-[18px] w-[18px]" strokeWidth={2} />,
     pageLink: "/finance",
+    allowedRoles: ["admin"], // Only admin can access finance
   },
   {
     label: "Report",
     icon: <ChartLine className="h-[18px] w-[18px]" strokeWidth={2} />,
     pageLink: "/report",
-  },
-  {
-    label: "Signup",
-    icon: <LogIn className="h-[18px] w-[18px]" strokeWidth={2} />,
-    pageLink: "/auth/logout",
+    allowedRoles: ["admin"], // admin and operator can view reports
   },
 ];
 
 const Sidebar = () => {
   const [isSideBarEnlarged, setSideBarEnlarged] = useState(true);
   const toggleSideBarState = () => setSideBarEnlarged(!isSideBarEnlarged);
-//   const location = useLocation(); // Get the current location
   const pathname = usePathname();
+  const staff = useStaffStore((state) => state.staff);
 
-//   if (pathname === "/login") {
-//     return <div></div>;
-//   }
-
-  
+  // Filter links based on user role
+  const filteredLinks = links.filter(link => 
+    link.allowedRoles.includes(staff.role.toLowerCase())
+  );
 
   return (
     <>
@@ -129,7 +125,7 @@ const Sidebar = () => {
             <div className={`flex flex-col gap-4 md:gap-2 w-full items-left ${
               isSideBarEnlarged ? "px-1 lg:px-3" : "pl-3"
             } mt-4 lg:mt-0 transition-all duration-100`}>
-              {links.map((link, i) => {
+              {filteredLinks.map((link, i) => {
                 return (
                   <TooltipProvider delayDuration={100} key={i}>
                     <Tooltip>

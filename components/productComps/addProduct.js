@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 import {
   Sheet,
@@ -26,9 +26,6 @@ import useWsinfoStore from "@/stores/wsinfo";
 
 export default function AddProduct({ fetchProducts }) {
   const [isAddingProduct, setIsAddingProduct] = useState(false);
-  const wsinfo = useWsinfoStore((state) => state.wsinfo);
-
-  // Updated product state
   const [newProduct, setNewProduct] = useState({
     _id: "",
     name: "",
@@ -44,13 +41,22 @@ export default function AddProduct({ fetchProducts }) {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   });
-
   const [newVariant, setNewVariant] = useState({
     _id: "",
     name: "",
     conversionFactor: "",
     unitPrice: "",
   });
+  const [storeNo, setStoreNo] = useState("")
+  const store = useWsinfoStore((state) => state.wsinfo);
+
+  console.log(store)
+
+  useEffect(() => {
+    if (store.storeNo) {
+      setStoreNo(store.storeNo)
+    }
+  }, [store.storeNo]);
 
   const handleInputChange = (e) => {
     const { name, value, type } = e.target;
@@ -75,13 +81,15 @@ export default function AddProduct({ fetchProducts }) {
         ...prev.variants,
         {
           ...newVariant,
-          _id: `${wsinfo.storeNo}:${uuidv4()}`,
-          storeNo: wsinfo.storeNo,
+          _id: `${storeNo}:${uuidv4()}`,
+          storeNo: `${storeNo}`,
           conversionFactor: parseFloat(newVariant.conversionFactor),
           unitPrice: parseFloat(newVariant.unitPrice),
         },
       ],
     }));
+    console.log(storeNo)
+    console.log(store)
     setNewVariant({
       _id: "",
       name: "",
@@ -96,8 +104,8 @@ export default function AddProduct({ fetchProducts }) {
     try {
       const productData = {
         ...newProduct,
-        _id: `${wsinfo.storeNo}:${uuidv4()}`,
-        storeNo: wsinfo.storeNo,
+        _id: `${storeNo}:${uuidv4()}`,
+        storeNo: `${storeNo}`,
         buyPrice: parseFloat(newProduct.buyPrice),
         stock: parseFloat(newProduct.stock),
         restockThreshold: parseInt(newProduct.restockThreshold, 10),
@@ -105,7 +113,6 @@ export default function AddProduct({ fetchProducts }) {
         variants: newProduct.variants, // Include the variants
         state: "Active",
       };
-      console.log(productData);
       const result = await window.electronAPI.realmOperation(
         "addNewProduct",
         productData,
@@ -130,7 +137,7 @@ export default function AddProduct({ fetchProducts }) {
           variants: [],
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
-          storeNo: wsinfo.storeNo,
+          storeNo: storeNo,
         });
       } else {
         throw new Error(result.error);
