@@ -138,7 +138,7 @@ function setupIpcHandlers(ipcMain, db) {
       case 'archiveTransaction':
         return transactionService.archiveTransaction(db, args[0]);
       case 'getCustomerSales':
-        return customerService.getCustomerSales(db, ...args).map(sale => sale.toJSON());
+        return customerService.getCustomerSales(db, args[0], args[1], args[2]);
       case 'getSaleProducts':
         return saleService.getSaleProducts(db, ...args).map(product => product.toJSON());
       case 'getSalesByPaymentMethod':

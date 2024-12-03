@@ -94,18 +94,27 @@ function deleteCustomer(db, customerId) {
 }
 
 // Query all sales for a specific customer
-function getCustomerSales(db, customerId) {
+function getCustomerSales(db, customerId, fromDate, toDate) {
   return db
     .find({
       selector: {
         customerId: customerId,
-      },
+        type: "sale",
+        createdAt: {
+          $gte: fromDate || '',
+          $lte: toDate || new Date().toISOString()
+        }
+      }
     })
-    .then((result) => result.docs)
-    .catch((error) => {
-      console.error("Error fetching customer sales:", error);
-      return [];
-    });
+    .then((result) => ({
+      success: true,
+      sales: result.docs
+    }))
+    .catch((error) => ({
+      success: false,
+      error: error.message,
+      sales: []
+    }));
 }
 
 module.exports = {
