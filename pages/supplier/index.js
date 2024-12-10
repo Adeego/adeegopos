@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import AddSupplier from '@/components/supplierComps/addSupplier';
 import { useRouter } from 'next/router';
+import Link from 'next/link';
 
 export default function Supplier() {
   const [suppliers, setSuppliers] = useState([]);
@@ -61,7 +62,10 @@ export default function Supplier() {
               Manage your suppliers.
             </CardDescription>
           </div>
-          <AddSupplier fetchSuppliers={fetchSuppliers} />
+          <div className="space-x-2">
+            <Button><Link href={'/supplier/invoices'}>Invoices</Link></Button>
+            <AddSupplier fetchSuppliers={fetchSuppliers} />
+          </div>
         </div>
       </CardHeader>
       <CardContent>

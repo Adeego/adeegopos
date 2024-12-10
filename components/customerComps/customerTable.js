@@ -90,9 +90,14 @@ export default function CustomerTable() {
               Manage your customers and view their contribution.
             </CardDescription>
           </div>
-          {
-            role && (role === 'Admin' || role === 'Operator') && <AddCustomer fetchCustomers={fetchCustomers} />
-          }
+
+          <div className="space-x-2">
+            <Button ><Link href={'/customers/manageCredit'} >Credit Management</Link></Button>
+            {
+              role && (role === 'Admin' || role === 'Operator') && <AddCustomer fetchCustomers={fetchCustomers} />
+            }
+          </div>
+          
         </div>
       </CardHeader>
       <CardContent>

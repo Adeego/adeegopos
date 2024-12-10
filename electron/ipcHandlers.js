@@ -73,6 +73,10 @@ function setupIpcHandlers(ipcMain, db) {
         return customerService.getAllCustomers(db);
       case 'getCustomerById':
         return customerService.getCustomerById(db, args[0]);
+      case 'getTodayCreditSales':
+        return customerService.getTodayCreditSales(db);
+      case 'getTodayCustomerTransactions':
+        return customerService.getTodayCustomerTransactions(db);
       case 'getAllProducts':
         return productService.getAllProducts(db);
       case 'getAllVariants':
@@ -99,6 +103,12 @@ function setupIpcHandlers(ipcMain, db) {
         return saleService.archiveSale(db, args[0]);
       case 'createSupplier':
         return supplierService.createSupplier(db, args[0]);
+      case 'createInvoice':
+        return supplierService.createInvoice(db, args[0]);
+      case 'getTodayInvoices':
+        return supplierService.getTodayInvoices(db);
+      case 'getInvoiceById':
+        return supplierService.getInvoiceById(db, args[0]);
       case 'getAllSuppliers':
         return supplierService.getAllSuppliers(db);
       case 'getSupplierById':
@@ -131,6 +141,8 @@ function setupIpcHandlers(ipcMain, db) {
         return transactionService.createTransaction(db, args[0]);
       case 'getAllTransactions':
         return transactionService.getAllTransactions(db);
+      case 'getTodayTransactions':
+        return transactionService.getTodayTransactions(db);
       case 'getTransactionById':
         return transactionService.getTransactionById(db, args[0]);
       case 'updateTransaction':

@@ -39,7 +39,12 @@ function createSale(db, saleData) {
     const updates = items.map(item => {
       return db.get(item.productId)
         .then(product => {
-          const stockChange = saleType === 'NEW SALE' ? -(item.conversionFactor * item.quantity) : (item.conversionFactor * item.quantity);
+          let stockChange;
+          if (saleType === 'NEW SALE') {
+            stockChange = -(item.conversionFactor * item.quantity);
+          } else if (saleType === 'RETURN SALE') {
+            stockChange = (item.conversionFactor * item.quantity);
+          }
           const updatedProduct = { ...product, stock: product.stock + stockChange };
           return db.put(updatedProduct);
         });
@@ -65,16 +70,61 @@ function createSale(db, saleData) {
     }
     return Promise.resolve();
   };
+  
+  const UpdateAccountBalance = () => {
+    return db
+    .find({
+      selector: { 
+        type: "account",
+        state: "Active"
+      },
+    })
+    .then((response) => {
+      // Filter the response to remain with Cash or Mpesa
+      const filteredAccounts = response.docs.filter(account => account.name === saleData.paymentMethod);
+      
+      // If no matching account found, resolve without changes
+      if (filteredAccounts.length === 0) {
+        return Promise.resolve();
+    }
+      
+      // Get the first (and should be only) matching account
+      const matchingAccount = filteredAccounts[0];
+      
+      // Determine balance change based on sale type
+      let balanceChange;
+      if (saleData.saleType === 'NEW SALE') {
+        balanceChange = saleData.totalAmount;
+      } else if (saleData.saleType === 'RETURN SALE') {
+        balanceChange = -saleData.totalAmount;
+      } else {
+        return Promise.resolve(); // If neither type, resolve without changes
+      }
+      // Update the account balance
+      const updatedAccount = {
+        ...matchingAccount,
+        balance: (matchingAccount.balance || 0) + balanceChange
+      };
+      
+      // Save the updated account back to the database
+      return db.put(updatedAccount);
+    })
+    .catch(error => {
+      console.error('Error updating account balance:', error);
+      throw error;
+    });
+  };
 
   return db.put(sale)
     .then(response => {
       const createdSale = { _id: response.id, ...sale };
-      
+
       // Chain all necessary updates
       return updateCustomerBalance()
+        .then(() => UpdateAccountBalance()) // Added UpdateAccountBalance here
         .then(() => {
           // Update stock if it's a new sale or return
-          if (saleData.saleType === 'NEW SALE' || saleData.saleType === 'return sale') {
+          if (saleData.saleType === 'NEW SALE' || saleData.saleType === 'RETURN SALE') {
             return updateStock(saleData.saleType, saleData.items)
               .then(() => {
                 // Print receipt after successful updates
@@ -84,7 +134,7 @@ function createSale(db, saleData) {
             console.error('Receipt printing failed:', error);
             return { success: true, sale: createdSale, receiptError: error.message };
           });
-    })
+        })
               .catch(error => {
                 console.error('Error updating stock:', error);
                 return { success: true, sale: createdSale, stockUpdateError: error.message };

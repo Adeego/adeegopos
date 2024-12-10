@@ -42,17 +42,40 @@ async function createTransaction(db, transactionData) {
       throw new Error('Insufficient balance in source account');
     }
 
+    if (transactionData.transType === 'deposit' && transactionData.source === 'account' && sourceDoc.balance < transactionData.amount) {
+      throw new Error('Insufficient balance in source account');
+    }
+
     // Update balances
-    if (transactionData.transType === 'deposit') {
-      if (sourceDoc.balance !== undefined) {
-        sourceDoc.balance += transactionData.amount;
-      }
-      destDoc.balance += transactionData.amount;
-    } else { // WITHDRAW
-      sourceDoc.balance -= transactionData.amount;
-      if (destDoc.balance !== undefined) {
+    if (transactionData.transType === 'withdraw') {
+      if (transactionData.destination === 'account') {
+        sourceDoc.balance -= transactionData.amount;
+        destDoc.balance += transactionData.amount;
+      } else if (transactionData.destination !== 'account') {
+        sourceDoc.balance -= transactionData.amount;
         destDoc.balance -= transactionData.amount;
       }
+      // if (transactionData.source === 'account') {
+      //   sourceDoc.balance -= transactionData.amount;
+      // }
+      // if (transactionData.destination === 'account') {
+      // destDoc.balance += transactionData.amount;
+      // }
+    } else if (transactionData.transType === 'deposit') {
+      if (transactionData.source === 'account') {
+        sourceDoc.balance -= transactionData.amount;
+        destDoc.balance += transactionData.amount;
+      } else if (transactionData.source !== 'account') {
+        sourceDoc.balance += transactionData.amount;
+        destDoc.balance += transactionData.amount;
+      }
+
+      // if (transactionData.source === 'account') {
+      //   sourceDoc.balance += transactionData.amount;
+      // }
+      // if (transactionData.destination === 'account') {
+      //   destDoc.balance += transactionData.amount;
+      // }
     }
 
     // Create transaction record
@@ -96,6 +119,31 @@ function getAllTransactions(db) {
       },
     })
     .then((result) => ({ success: true, transactions: result.docs }))
+    .catch((error) => ({ success: false, error: error.message }));
+}
+
+// Get today's transactions
+function getTodayTransactions(db) {
+  // Get today's date in ISO format (just the date part)
+  const today = new Date().toISOString().split('T')[0];
+  
+  return db
+    .find({
+      selector: { 
+        type: "transaction",
+        state: "Active",
+        createdAt: { $regex: `^${today}` }
+      },
+    })
+    .then((result) => {
+      if (!result || !result.docs) {
+        return { success: false, error: "No results found" };
+      }
+      return { 
+        success: true, 
+        transactions: result.docs.filter(trans => trans && trans.destination === "supplier") 
+      };
+    })
     .catch((error) => ({ success: false, error: error.message }));
 }
 
@@ -163,4 +211,5 @@ module.exports = {
   updateTransaction,
   archiveTransaction,
   searchCSS,
+  getTodayTransactions,
 };

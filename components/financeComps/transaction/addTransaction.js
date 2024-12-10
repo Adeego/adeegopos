@@ -232,7 +232,21 @@ export default function AddTransaction() {
                       </div>
                       {
                         source && source === "account" && (
-                          <Label htmlFor="From">From ACC</Label>
+                          <div className="space-y-2">
+                            <Label htmlFor="from">From</Label>
+                            <Select onValueChange={(value) => setFrom(value)}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="select account" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {accounts.map((account) => (
+                                  <SelectItem key={account._id} value={account._id}>
+                                    {account.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
                         )
                       }
                       {
@@ -331,7 +345,7 @@ export default function AddTransaction() {
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="deposit-amount">Deposit Amount</Label>
+                        <Label htmlFor="deposit-amount">Amount</Label>
                         <Input
                           id="deposit-amount"
                           placeholder="Enter amount"
@@ -409,7 +423,7 @@ export default function AddTransaction() {
                       </div>
 
                       <div className="space-y-2">
-                        <Label htmlFor="to">From</Label>
+                        <Label htmlFor="from">From</Label>
                         <Select onValueChange={(value) => setFrom(value)}>
                           <SelectTrigger>
                             <SelectValue placeholder="select account" />
@@ -444,7 +458,21 @@ export default function AddTransaction() {
                       </div>
                       {
                         destination && destination === "account" && (
-                          <Label htmlFor="to">To ACC</Label>
+                          <div className="space-y-2">
+                            <Label htmlFor="to">To</Label>
+                            <Select onValueChange={(value) => setTo(value)}>
+                              <SelectTrigger>
+                                <SelectValue placeholder="select account" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {accounts.map((account) => (
+                                  <SelectItem key={account._id} value={account._id}>
+                                    {account.name}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
                         )
                       }
                       {
@@ -515,7 +543,7 @@ export default function AddTransaction() {
                       }
 
                       <div className="space-y-2">
-                        <Label htmlFor="deposit-amount">Deposit Amount</Label>
+                        <Label htmlFor="deposit-amount">Amount</Label>
                         <Input
                           id="deposit-amount"
                           placeholder="Enter amount"

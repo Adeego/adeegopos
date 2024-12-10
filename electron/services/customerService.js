@@ -117,6 +117,62 @@ function getCustomerSales(db, customerId, fromDate, toDate) {
     }));
 }
 
+// Get today's credit sales
+function getTodayCreditSales(db) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  return db.find({
+    selector: {
+      type: "sale",
+      state: "Active",
+      createdAt: {
+        $gte: today.toISOString(),
+        $lt: tomorrow.toISOString()
+      }
+    }
+  })
+  .then((result) => ({
+    success: true,
+    sales: result.docs.filter(sale => sale.paymentMethod === "CREDIT")
+  }))
+  .catch((error) => ({
+    success: false,
+    error: error.message,
+    sales: []
+  }));
+}
+
+// Get today's transactions where source is customer
+function getTodayCustomerTransactions(db) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+
+  return db.find({
+    selector: {
+      type: "transaction",
+      state: "Active",
+      createdAt: {
+        $gte: today.toISOString(),
+        $lt: tomorrow.toISOString()
+      }
+    }
+  })
+  .then((result) => ({
+    success: true,
+    transactions: result.docs.filter(trans => trans.source === "customer")
+  }))
+  .catch((error) => ({
+    success: false,
+    error: error.message,
+    transactions: []
+  }));
+}
+
 module.exports = {
   createCustomer,
   getAllCustomers,
@@ -125,4 +181,6 @@ module.exports = {
   updateCustomer,
   deleteCustomer,
   getCustomerSales,
+  getTodayCreditSales,
+  getTodayCustomerTransactions,
 };

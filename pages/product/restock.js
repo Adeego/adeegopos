@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react'
+import { v4 as uuidv4 } from "uuid";
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -19,12 +20,14 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { toast } from "@/components/ui/use-toast"
+import useWsinfoStore from '@/stores/wsinfo'
 
 export default function Restock() {
-  const [searchTerm, setSearchTerm] = useState('')
-  const [products, setProducts] = useState([])
-  const [suppliers, setSuppliers] = useState([])
-  const [selectedProducts, setSelectedProducts] = useState([])
+  const [searchTerm, setSearchTerm] = useState('');
+  const [products, setProducts] = useState([]);
+  const [suppliers, setSuppliers] = useState([]);
+  const [selectedProducts, setSelectedProducts] = useState([]);
+  const store = useWsinfoStore((state) => state.wsinfo);
 
   useEffect(() => {
     loadSuppliers()
@@ -37,6 +40,8 @@ export default function Restock() {
       setProducts([])
     }
   }, [searchTerm])
+
+  console.log(store.storeNo)
 
   const loadSuppliers = async () => {
     try {
@@ -106,6 +111,67 @@ export default function Restock() {
     setSelectedProducts(selectedProducts.filter(p => p._id !== productId))
   }
 
+  const generateInvoices = () => {
+    // Group products by supplier
+    const supplierGroups = selectedProducts.reduce((groups, product) => {
+      const supplierId = product.supplierId;
+      if (!groups[supplierId]) {
+        groups[supplierId] = [];
+      }
+      groups[supplierId].push(product);
+      return groups;
+    }, {});
+
+    // Create invoices for each supplier group
+    const generatedInvoices = Object.entries(supplierGroups).map(([supplierId, products]) => {
+      const items = products.map(product => ({
+        productId: product._id,
+        productName: `${product.name} ${product.baseUnit}`,
+        buyPrice: product.newBuyPrice,
+        quantity: product.restockQuantity,
+        subtotal: product.amountOwed
+      }));
+
+      const totalAmount = items.reduce((sum, item) => sum + item.subtotal, 0);
+      const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
+
+      return {
+        _id: `${store.storeNo}:${uuidv4()}`,
+        supplierId,
+        items,
+        totalAmount,
+        totalItems,
+        store: `${store.storeNo}`
+      };
+    });
+
+    return generatedInvoices;
+  };
+
+  const handleCreateInvoice = async () => {
+    try {
+      const generatedInvoices = generateInvoices();
+      console.log(generatedInvoices);
+
+      const result = await window.electronAPI.realmOperation('createInvoice', generatedInvoices);
+      console.log(result);
+      if (result.success) {
+        toast({
+        title: "Success",
+        description: "Invoice created successfully"
+      })
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Error creating invoice",
+        description: error.message
+      })
+    }
+  }
+
   const handleRestock = async () => {
     try {
       // Validate all fields are filled
@@ -125,6 +191,8 @@ export default function Restock() {
         return
       }
 
+      handleCreateInvoice();
+      
       const result = await window.electronAPI.realmOperation('restockProducts', selectedProducts);
       console.log(result);
       

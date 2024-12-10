@@ -10,12 +10,6 @@ import { Wifi, WifiOff, ArrowLeft, Bell, Menu } from "lucide-react";
 import { v4 as uuidv4 } from 'uuid';
 import { Button } from "@/components/ui/button"
 import ProfileDialog from "@/components/staff/profileDialog";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip"
 
 export default function App({ Component, pageProps }) {
   const staff = useStaffStore((state) => state.staff);
