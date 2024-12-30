@@ -6,13 +6,22 @@ const setupIpcHandlers = require("./ipcHandlers");
 const { autoUpdater } = require("electron-updater");
 const fs = require('fs');
 const { execSync } = require('child_process');
+const escpos = require('escpos');
+escpos.Network = require('escpos-network');
 
 let serve;
 let pouch;
 let mainWindow;
+let printer; // Store printer connection
 
 // Disable hardware acceleration
 app.disableHardwareAcceleration();
+
+// Printer configuration
+const PRINTER_IP = '192.168.1.87';
+const PRINTER_PORT = 9100;
+const device = new escpos.Network(PRINTER_IP, PRINTER_PORT);
+const options = { encoding: "GB18030" /* default */ };
 
 if (app.isPackaged) {
   (async () => {
@@ -25,6 +34,18 @@ if (app.isPackaged) {
       { scheme: "app", privileges: { secure: true, standard: true } },
     ]);
   })();
+}
+
+// Function to establish printer connection
+async function connectPrinter() {
+  try {
+    printer = new escpos.Printer(device, options);
+    // Make printer instance available globally
+    global.printer = { printer, device };
+    console.log('Printer connected successfully');
+  } catch (error) {
+    console.error('Error connecting to printer:', error);
+  }
 }
 
 const createWindow = () => {
@@ -141,6 +162,16 @@ function prepareForUpdate() {
     pouch.close();
   }
 
+  // Close printer connection
+  if (printer) {
+    try {
+      device.close();
+      console.log("Printer connection closed");
+    } catch (error) {
+      console.error("Error closing printer connection:", error);
+    }
+  }
+
   // Set a flag to prevent the app from restarting
   app.isQuitting = true;
 
@@ -160,6 +191,9 @@ app.on("ready", async () => {
     console.log("PouchDB opened successfully");
 
     setupIpcHandlers(ipcMain, pouch);
+
+    // Connect to printer
+    await connectPrinter();
 
     checkOnlineStatus();
     setInterval(checkOnlineStatus, 60000);
@@ -186,6 +220,16 @@ app.on("window-all-closed", () => {
 app.on("before-quit", async (event) => {
   if (!app.isQuitting) {
     event.preventDefault();
+
+    // Close printer connection
+    if (printer) {
+      try {
+        device.close();
+        console.log("Printer connection closed");
+      } catch (error) {
+        console.error("Error closing printer connection:", error);
+      }
+    }
 
     if (pouch && !pouch.isClosed) {
       console.log("Closing PouchDB...");

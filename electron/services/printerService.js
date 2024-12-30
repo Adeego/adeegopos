@@ -1,26 +1,14 @@
-const { PosPrinter } = require('@plick/electron-pos-printer');
-
-const printOptions = {
-  preview: false,
-  margin: '0 0 0 0',
-  copies: 1,
-  printerName: 'ADEEGO',
-  timeOutPerLine: 400,
-  pageSize: '80mm',
-  silent: false
-};
+const escpos = require('escpos');
 
 function formatDate(date) {
   if (!date) return '';
-  return new Date(date).toLocaleString();
+  const d = new Date(date);
+  return `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}     ${d.getFullYear()}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getDate().toString().padStart(2, '0')}`;
 }
 
 function formatCurrency(amount) {
-  if (typeof amount !== 'number') return '0.00';
-  return amount.toLocaleString('en-US', {
-    style: 'currency',
-    currency: 'USD'
-  });
+  if (typeof amount !== 'number') return '$0.00';
+  return `$${amount.toFixed(2)}`;
 }
 
 function validateSaleData(sale) {
@@ -34,92 +22,84 @@ function validateSaleData(sale) {
 
 async function printReceipt(sale) {
   try {
-    // Validate sale data
+        // Validate sale data
     validateSaleData(sale);
 
-    const printData = [
-      {
-        type: 'text',
-        value: 'ADEEGO POS',
-        style: { fontWeight: '700', textAlign: 'center', fontSize: '24px' }
-      },
-      {
-        type: 'text',
-        value: '--------------------------------',
-        style: { textAlign: 'center' }
-      },
-      {
-        type: 'text',
-        value: `Sale ID: ${sale._id}`,
-        style: { fontSize: '12px' }
-      },
-      {
-        type: 'text',
-        value: `Date: ${formatDate(sale.createdAt)}`,
-        style: { fontSize: '12px' }
-      },
-      {
-        type: 'text',
-        value: `Payment Method: ${sale.paymentMethod || 'N/A'}`,
-        style: { fontSize: '12px' }
-      },
-      {
-        type: 'text',
-        value: '--------------------------------',
-        style: { textAlign: 'center' }
-      },
-      {
-        type: 'table',
-        style: { border: '1px solid #ddd' },
-        tableHeader: [
-          { type: 'text', value: 'Item' },
-          { type: 'text', value: 'Qty' },
-          { type: 'text', value: 'Price' },
-          { type: 'text', value: 'Total' }
-        ],
-        tableBody: sale.items.map(item => [
-          { type: 'text', value: item.name || 'Unknown Item' },
-          { type: 'text', value: (item.quantity || 0).toString() },
-          { type: 'text', value: formatCurrency(item.unitPrice) },
-          { type: 'text', value: formatCurrency(item.subtotal) }
-        ]),
-        tableFooter: [
-          [
-            { type: 'text', value: 'Total Items:' },
-            { type: 'text', value: sale.totalItems.toString() },
-            { type: 'text', value: 'Total:' },
-            { type: 'text', value: formatCurrency(sale.totalAmount) }
-          ]
-        ],
-        tableHeaderStyle: { backgroundColor: '#000', color: 'white' },
-        tableBodyStyle: { border: '0.5px solid #ddd' },
-        tableFooterStyle: { backgroundColor: '#000', color: 'white' }
-      },
-      {
-        type: 'text',
-        value: '--------------------------------',
-        style: { textAlign: 'center' }
-      },
-      {
-        type: 'text',
-        value: 'Thank you for your business!',
-        style: { textAlign: 'center', fontWeight: '700', fontSize: '14px' }
-      },
-      {
-        type: 'text',
-        value: 'Please come again',
-        style: { textAlign: 'center', fontSize: '12px' }
-      }
-    ];
+    // Get the printer instance from the main process
+    const { printer, device } = global.printer;
+    if (!printer || !device) {
+      throw new Error('Printer not initialized');
+    }
 
-    // Attempt to print
-    await PosPrinter.print(printData, printOptions);
-    return { success: true };
+    return new Promise((resolve, reject) => {
+      device.open(function(error) {
+        if(error) {
+          console.error('Error opening printer:', error);
+          reject({ success: false, error: 'Failed to open printer connection' });
+          return;
+        }
+
+        try {
+          // Store header
+          printer
+            .font('a')
+            .align('ct')
+            .style('b')
+            .size(1, 1)
+            .text('ADEEGO POS')
+            .size(0, 0)
+            .style('normal')
+            .text('123 Main St, Anytown, USA')
+            .text(formatDate(sale.createdAt))
+            .text('') // Empty line for spacing
+
+          // Print items using table
+          sale.items.forEach(item => {
+            const quantity = item.quantity || 0;
+            const name = item.name || 'Unknown Item';
+            const total = formatCurrency(item.subtotal || 0);
+            
+            printer.tableCustom([
+              { text: `${quantity} x ${name}`, width: 0.7, align: 'LEFT' },
+              { text: total, width: 0.3, align: 'RIGHT' }
+            ]);
+          });
+
+          // Print totals
+          const tax = sale.totalAmount * 0.08; // 8% tax
+          const subtotal = sale.totalAmount - tax;
+
+          printer
+            .text('') // Empty line for spacing
+            .tableCustom([
+              { text: 'Subtotal', width: 0.7, align: 'LEFT' },
+              { text: formatCurrency(subtotal), width: 0.3, align: 'RIGHT' }
+            ])
+            .tableCustom([
+              { text: 'Tax (8%)', width: 0.7, align: 'LEFT' },
+              { text: formatCurrency(tax), width: 0.3, align: 'RIGHT' }
+            ])
+            .tableCustom([
+              { text: 'Total', width: 0.7, align: 'LEFT' },
+              { text: formatCurrency(sale.totalAmount), width: 0.3, align: 'RIGHT' }
+            ])
+            .text('') // Empty line for spacing
+            .align('ct')
+            .text('Thank you for shopping with us!')
+            .text('Please come again')
+            .text('') // Empty line for spacing
+            .cut()
+            .close();
+
+          resolve({ success: true });
+        } catch (printError) {
+          console.error('Error during printing:', printError);
+          reject({ success: false, error: 'Failed to print receipt' });
+        }
+      });
+    });
   } catch (error) {
-    // Log the error but don't print it
     console.error('Printing error:', error.message);
-    
-    // Return a user-friendly error message
     return { 
       success: false, 
       error: 'Failed to print receipt. Please check printer connection and try again.'
