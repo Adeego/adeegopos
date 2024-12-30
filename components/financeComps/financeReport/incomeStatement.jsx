@@ -18,16 +18,13 @@ import { ArrowRight, Calendar, Download } from "lucide-react"
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 export default function IncomeStatement({statementData}) {
+  const [expenseType, setExpenseType] = useState([])
+
   // If no data is provided, use default empty structure
   const data = statementData || {
     sales: { cashSales: 0, mpesaSales: 0, creditSales: 0, totalSales: 0 },
     cogs: 0,
     expenses: {
-      "rent&utilities": 0,
-      "Salaries": 0,
-      "transport&fuel": 0,
-      "maintenance&repairs": 0,
-      "otherExpenses": 0,
       totalExpenses: 0
     }
   };
@@ -41,7 +38,7 @@ export default function IncomeStatement({statementData}) {
     <Dialog>
       <DialogTrigger asChild>
         <Button variant="outline">
-          <ArrowRight className="text-" />
+          <ArrowRight className="h-4 w-4" />
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[800px] h-[80vh] flex flex-col">
@@ -147,31 +144,15 @@ export default function IncomeStatement({statementData}) {
                   <TableCell className="text-right"></TableCell>
                   <TableCell className="text-right"></TableCell>
                 </TableRow>
-                <TableRow className="">
-                  <TableCell className="">- Rent and Utilities</TableCell>
-                  <TableCell className="text-right">{data.expenses["rent&utilities"].toLocaleString()}</TableCell>
-                  <TableCell className="text-right">{((data.expenses["rent&utilities"] / totalSales) * 100).toFixed(1)}%</TableCell>
-                </TableRow>
-                <TableRow className="">
-                  <TableCell className="">- Salaries and Wages</TableCell>
-                  <TableCell className="text-right">{data.expenses["Salaries"].toLocaleString()}</TableCell>
-                  <TableCell className="text-right">{((data.expenses["Salaries"] / totalSales) * 100).toFixed(1)}%</TableCell>
-                </TableRow>
-                <TableRow className="">
-                  <TableCell className="">- Transport and Fuel</TableCell>
-                  <TableCell className="text-right">{data.expenses["transport&fuel"].toLocaleString()}</TableCell>
-                  <TableCell className="text-right">{((data.expenses["transport&fuel"] / totalSales) * 100).toFixed(1)}%</TableCell>
-                </TableRow>
-                <TableRow className="">
-                  <TableCell className="">- Maintenance and Repairs</TableCell>
-                  <TableCell className="text-right">{data.expenses["maintenance&repairs"].toLocaleString()}</TableCell>
-                  <TableCell className="text-right">{((data.expenses["maintenance&repairs"] / totalSales) * 100).toFixed(1)}%</TableCell>
-                </TableRow>
-                <TableRow className="">
-                  <TableCell className="">- Other Expenses</TableCell>
-                  <TableCell className="text-right">{data.expenses["otherExpenses"].toLocaleString()}</TableCell>
-                  <TableCell className="text-right">{((data.expenses["otherExpenses"] / totalSales) * 100).toFixed(1)}%</TableCell>
-                </TableRow>
+                {Object.entries(data.expenses)
+                  .filter(([key]) => key !== 'totalExpenses')
+                  .map(([key, value]) => (
+                    <TableRow key={key} className="">
+                      <TableCell className="">- {key.split(/(?=[A-Z])/).map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')}</TableCell>
+                      <TableCell className="text-right">{value.toLocaleString()}</TableCell>
+                      <TableCell className="text-right">{((value / totalSales) * 100).toFixed(1)}%</TableCell>
+                    </TableRow>
+                ))}
                 <TableRow className="bg-muted font-medium">
                   <TableCell className="font-medium">Total Operating Expenses</TableCell>
                   <TableCell className="text-right">{data.expenses.totalExpenses.toLocaleString()}</TableCell>

@@ -8,6 +8,8 @@ import ReportCard from './reportCard'
 import IncomeStatement from './incomeStatement'
 import StatementOfAccount from './statementOfAccount'
 import BalanceSheet from './balanceSheet'
+import ChartOfAccounts from './chartOfAccounts'
+import TrialBalance from './trialBalance'
 import { Banknote, CalendarIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
@@ -24,17 +26,23 @@ export default function ReportDash() {
   const [totalStatement, setTotalStatement] = useState(null)
   const [balanceSheet, setBalanceSheet] = useState(null)
   const [bsAssests, setBsAssets] = useState('')
+  const [chartsOfAccountData, setChartsOfAccountData] = useState([]);
+  const [trialBalance, setTrialBalance] = useState([]);
 
   useEffect(() => {
     fetchStatement();
     fetchTransactions();
     fetchBalanceSheet();
+    fetchChartsOfAccounts();
+    fetchTrialBalance();
   }, [fromDate, toDate])
 
   const handleGenerateReport = () => {
     fetchStatement();
     fetchTransactions();
     fetchBalanceSheet();
+    fetchChartsOfAccounts();
+    fetchTrialBalance();
   }
 
   const fetchStatement = async () => {
@@ -79,15 +87,52 @@ export default function ReportDash() {
     }
   }
 
-  // const handleFromDateSelect = (date) => {
-  //   setFromDate(date)
-  //   setFromOpen(false)
-  // }
+  const fetchChartsOfAccounts = async () => {
+    try {
+      const result = await window.electronAPI.realmOperation('getChartOfAccounts', fromDate, toDate);
+      if (result.success) {
+      const data = result.data;
+      
+      // Function to count accounts in a nested object
+      const countAccounts = (obj) => {
+        let count = 0;
+        if (obj?.accounts) {
+          count += Object.keys(obj.accounts).length;
+      }
+        // Recursively count accounts in nested categories
+        Object.keys(obj).forEach(key => {
+          if (typeof obj[key] === 'object' && key !== 'accounts') {
+            count += countAccounts(obj[key]);
+    }
+        });
+        return count;
+      };
 
-  // const handleToDateSelect = (date) => {
-  //   setToDate(date)
-  //   setToOpen(false)
-  // }
+      // Count total accounts
+      const totalAccounts = {
+        accounts: countAccounts(data),
+        data: data
+      };
+
+      console.log(totalAccounts);
+
+      setChartsOfAccountData(totalAccounts);
+  }
+  } catch (error) {
+    console.error(error);
+  }
+};
+
+  const fetchTrialBalance = async () => {
+    try {
+      const result = await window.electronAPI.realmOperation('getTrialBalance', fromDate, toDate);
+      if (result.success) {
+        setTrialBalance(result.data)
+      }
+    } catch (error) {
+      
+    }
+  }
 
   return (
     <Card>
@@ -158,13 +203,24 @@ export default function ReportDash() {
                 <p className="mt-2 text-xs text-gray-500">Total Sales for the Selected Period</p>
               </CardContent>
             </Card>
-            <ReportCard
-                title={"Chart of Accounts"}
-                value={"KES 3800000"}
-                icon={<Banknote />}
-                description={"This is the chart of Accounts of the store"}
-            />
             <Card className="overflow-hidden">
+              <CardHeader className="flex flex-row justify-between items-center border-b border-gray-200 bg-gray-50 p-4">
+                <CardTitle className="text-xl font-semibold text-gray-500">Chart of Accounts</CardTitle>
+                <ChartOfAccounts data={chartsOfAccountData.data} />
+              </CardHeader>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <span className="rounded-full bg-gray-100 p-2"><Banknote /></span>
+                    <span className="text-2xl font-bold">
+                      {chartsOfAccountData.accounts} Accounts
+                    </span>
+                  </div>
+                </div>
+                <p className="mt-2 text-xs text-gray-500">This is the chart of Accounts of the store</p>
+              </CardContent>
+            </Card>
+            {/* <Card className="overflow-hidden">
               <CardHeader className="flex flex-row justify-between items-center border-b border-gray-200 bg-gray-50 p-4">
                 <CardTitle className="text-xl font-semibold text-gray-500">Statement of Accounts</CardTitle>
                 <StatementOfAccount statements={accountStatements} />
@@ -178,7 +234,7 @@ export default function ReportDash() {
                 </div>
                 <p className="mt-2 text-xs text-gray-500">This is the Statement of Accounts of the store</p>
               </CardContent>
-            </Card>
+            </Card> */}
             <Card className="overflow-hidden">
               <CardHeader className="flex flex-row justify-between items-center border-b border-gray-200 bg-gray-50 p-4">
                 <CardTitle className="text-xl font-semibold text-gray-500">Balance Sheet Summary</CardTitle>
@@ -188,18 +244,27 @@ export default function ReportDash() {
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
                     <span className="rounded-full bg-gray-100 p-2"><Banknote /></span>
-                    <span className="text-2xl font-bold">{bsAssests}</span>
+                    <span className="text-2xl font-bold">KES {bsAssests}</span>
                   </div>
                 </div>
                 <p className="mt-2 text-xs text-gray-500">This is the Statement of Accounts of the store</p>
               </CardContent>
             </Card>
-            <ReportCard
-                title={"Trial Balance"}
-                value={"KES 0"}
-                icon={<Banknote />}
-                description={"This is the Trial Balance of the store"}
-            />
+            <Card className="overflow-hidden">
+              <CardHeader className="flex flex-row justify-between items-center border-b border-gray-200 bg-gray-50 p-4">
+                <CardTitle className="text-xl font-semibold text-gray-500">Trial Balance</CardTitle>
+                <TrialBalance data={trialBalance} />
+              </CardHeader>
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    <span className="rounded-full bg-gray-100 p-2"><Banknote /></span>
+                    <span className="text-2xl font-bold">KES {(trialBalance.totalDebits - trialBalance.totalCredits)}</span>
+                  </div>
+                </div>
+                <p className="mt-2 text-xs text-gray-500">This is the Tial Balance of the store</p>
+              </CardContent>
+            </Card>
         </CardContent>
     </Card>
   )

@@ -9,6 +9,7 @@ import { Eye } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
+import Link from 'next/link'
 
 export default function Invoices() {
   const [invoices, setInvoices] = useState(null)
@@ -37,7 +38,7 @@ export default function Invoices() {
 
   const fetchtrans = async () => {
     try {
-      const result = await window.electronAPI.realmOperation('getTodayTransactions');
+      const result = await window.electronAPI.realmOperation('getTodaySupplierTransactions');
       if (result.success) {
         setPaidInvoices(result.transactions)
       } else {
@@ -187,30 +188,52 @@ export default function Invoices() {
     }
 
     return (
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Transaction ID</TableHead>
-            <TableHead>From</TableHead>
-            <TableHead>To</TableHead>
-            <TableHead>Amount</TableHead>
-            <TableHead>Description</TableHead>
-            <TableHead>Date</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {data.map((transaction) => (
-            <TableRow key={transaction._id}>
-              <TableCell>{transaction._id}</TableCell>
-              <TableCell>{transaction.from}</TableCell>
-              <TableCell>{transaction.to}</TableCell>
-              <TableCell>{(transaction.amount || 0)}</TableCell>
-              <TableCell>{transaction.description || 'No description'}</TableCell>
-              <TableCell>{new Date(transaction.createdAt).toLocaleDateString()}</TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+      <Card className="w-full">
+        <CardHeader>
+          <CardTitle>Transaction History</CardTitle>
+          <CardDescription>A list of your recent transactions</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[200px]">To</TableHead>
+                  <TableHead className="w-[120px]">Amount</TableHead>
+                  <TableHead className="hidden md:table-cell">Description</TableHead>
+                  <TableHead className="w-[120px]">Date</TableHead>
+                  <TableHead className="w-[100px]">Action</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.map((transaction) => (
+                  <TableRow 
+                    key={transaction._id}
+                  >
+                    <TableCell className="font-medium">{transaction.supplier.name}</TableCell>
+                    <TableCell>{new Intl.NumberFormat('en-US', { style: 'currency', currency: 'KES' }).format(transaction.amount || 0)}</TableCell>
+                    <TableCell className="hidden md:table-cell">{transaction.description || 'No description'}</TableCell>
+                    <TableCell>{new Date(transaction.createdAt).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' })}</TableCell>
+                    <TableCell>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full"
+                        asChild
+                      >
+                        <Link href={`/finance/transaction/${transaction._id}`} className="flex items-center justify-center">
+                          <Eye className="mr-2 h-4 w-4" />
+                          <span className="hidden sm:inline">View</span>
+                        </Link>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
     )
   }
 

@@ -50,7 +50,7 @@ export default function BalanceSheet({balanceSheetData}) {
     <Dialog>
       <DialogTrigger asChild>
         <Button variant="outline">
-          <ArrowRight className="text-" />
+          <ArrowRight className="h-4 w-4" />
         </Button>
       </DialogTrigger>
       <DialogContent className="sm:max-w-[800px] h-[80vh] flex flex-col">

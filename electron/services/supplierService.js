@@ -193,6 +193,57 @@ function archiveSupplier(db, supplierId) {
     .catch((error) => ({ success: false, error: error.message }));
 }
                                                                      
+// Get today's supplier transactions
+function getTodaySupplierTransactions(db) {
+  // Get today's date in ISO format (just the date part)
+  const today = new Date().toISOString().split('T')[0];
+  
+  return db
+    .find({
+      selector: { 
+        type: "transaction",
+        state: "Active",
+        destination: "supplier", // Added filter for supplier destination
+        createdAt: { $regex: `^${today}` }
+      },
+    })
+    .then((result) => {
+      // Create an array of unique supplier IDs from the transactions
+      const supplierIds = [...new Set(result.docs.map(transaction => transaction.to))];
+      
+      // Fetch suppliers for these transactions
+      return Promise.all([
+        Promise.resolve(result.docs), 
+        Promise.all(supplierIds.map(supplierId => 
+          db.get(supplierId)
+            .catch(error => ({ supplierId, error: error.message }))
+        ))
+      ]);
+    })
+    .then(([transactions, suppliers]) => {
+      // Create a map of suppliers for easy lookup
+      const suppliersMap = suppliers.reduce((acc, supplier) => {
+        // Handle cases where supplier fetch might have failed
+        if (supplier._id) {
+          acc[supplier._id] = supplier;
+        }
+        return acc;
+      }, {});
+
+      // Attach supplier information to each transaction
+      const transactionsWithSuppliers = transactions.map(transaction => ({
+        ...transaction,
+        supplier: suppliersMap[transaction.to] || null
+      }));
+
+      return { 
+        success: true, 
+        transactions: transactionsWithSuppliers 
+      };
+    })
+    .catch((error) => ({ success: false, error: error.message }));
+}
+
 module.exports = {                                                   
   createSupplier,
   getAllSuppliers,
@@ -202,4 +253,5 @@ module.exports = {
   createInvoice,
   getTodayInvoices,
   getInvoiceById,
+  getTodaySupplierTransactions,
 };

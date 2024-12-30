@@ -1,3 +1,4 @@
+require('dotenv').config(); // Load environment variables
 const { app, BrowserWindow, protocol, ipcMain, net, dialog } = require("electron");
 const path = require("path");
 const { openPouchDB } = require("./pouchSync");

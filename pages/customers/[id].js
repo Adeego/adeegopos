@@ -130,6 +130,10 @@ export default function CustomerDetail() {
     }
   }
 
+  const handlePrint = () => {
+    alert('No printer connected')
+  }
+
   if (!customer) {
     return (
       <div className="text-center py-12">
@@ -170,6 +174,7 @@ export default function CustomerDetail() {
                       <SelectItem value="Good">Good</SelectItem>
                       <SelectItem value="Neutral">Neutral</SelectItem>
                       <SelectItem value="Bad">Bad</SelectItem>
+                      <SelectItem value="Banned">Banned</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -460,7 +465,7 @@ export default function CustomerDetail() {
                                           )}
                                         </ScrollArea>
                                         <DialogFooter>
-                                          <Button className="flex items-center gap-1">
+                                          <Button onClick={handlePrint} className="flex items-center gap-1">
                                             <PrinterIcon className="h-4 w-4" />
                                             Print
                                           </Button>

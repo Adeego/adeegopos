@@ -1,54 +1,53 @@
-// Function to generate a finance report for a specific date range
 function incomeStatement(db, fromDate, toDate) {
-  // Ensure dates are Date objects
   const from = new Date(fromDate);
-  from.setHours(0, 0, 0, 0); // Start of the day
+  from.setHours(0, 0, 0, 0);
   const to = new Date(toDate);
-  to.setHours(23, 59, 59, 999); // End of the day
+  to.setHours(23, 59, 59, 999);
 
-  // Promise for sales within the date range
   const salesPromise = db.find({
     selector: {
-      createdAt: { 
-        $gte: from.toISOString(), 
-        $lte: to.toISOString() 
+      createdAt: {
+        $gte: from.toISOString(),
+        $lte: to.toISOString()
       },
       type: "sale",
       state: "Active"
     }
   });
 
-  // Promise for expenses within the date range
   const expensesPromise = db.find({
     selector: {
       createdAt: {
         $gte: from.toISOString(),
         $lte: to.toISOString()
       },
-      type: "expense",
+      type: "expense", 
       state: "Active"
     }
   });
 
-  // Execute both promises concurrently
-  return Promise.all([salesPromise, expensesPromise])
-    .then(([salesResult, expensesResult]) => {
-      // Calculate sales metrics
+  const expenseTypesPromise = db.find({
+      selector: {
+      type: "expenseType",
+      state: "Active" 
+    }
+  });
+
+  return Promise.all([salesPromise, expensesPromise, expenseTypesPromise])
+    .then(([salesResult, expensesResult, expenseTypesResult]) => {
       let cashSales = 0;
       let mpesaSales = 0;
       let creditSales = 0;
       let totalCOGS = 0;
 
-      // Process sales
       salesResult.docs.forEach(sale => {
         const totalAmount = Number(sale.totalAmount) || 0;
         
-        // Categorize sales by payment method
         switch(sale.paymentMethod) {
           case 'CASH':
             cashSales += totalAmount;
             break;
-          case 'MPESA':
+          case 'MPESA': 
             mpesaSales += totalAmount;
             break;
           case 'CREDIT':
@@ -56,7 +55,6 @@ function incomeStatement(db, fromDate, toDate) {
             break;
         }
 
-        // Calculate COGS
         sale.items.forEach(item => {
           const quantity = Number(item.quantity) || 0;
           const buyPrice = Number(item.buyPrice) || 0;
@@ -64,61 +62,44 @@ function incomeStatement(db, fromDate, toDate) {
         });
       });
 
-      // Calculate total sales
       const totalSales = Number((cashSales + mpesaSales + creditSales).toFixed(2));
 
-      // Calculate expenses
-      const expenses = {
-        "Rent and Utilities": 0,
-        "Salaries and Wages": 0,
-        "Transport and Fuel": 0,
-        "Maintenace and Repairs": 0,
-        "Other Expense": 0
-      };
+      const expenses = {};
+      expenseTypesResult.docs.forEach(expenseType => {
+        expenses[expenseType.name] = 0;
+      });
 
-      // Process expenses
       expensesResult.docs.forEach(expense => {
         const amount = Number(expense.amount) || 0;
-        
-        // Categorize expenses
-        switch(expense.expenseType) {
-          case 'Rent and Utilities':
-            expenses["Rent and Utilities"] += amount;
-            break;
-          case 'Salaries and Wages':
-            expenses["Salaries and Wages"] += amount;
-            break;
-          case 'Transport and Fuel':
-            expenses["Transport and Fuel"] += amount;
-            break;
-          case 'Maintenace and Repairs':
-            expenses["Maintenace and Repairs"] += amount;
-            break;
-          case 'Other Expense':
-            expenses["Other Expense"] += amount;
+        if (expenses.hasOwnProperty(expense.expenseType)) {
+          expenses[expense.expenseType] += amount;
         }
       });
 
-      // Calculate total expenses
       const totalExpenses = Number(Object.values(expenses).reduce((sum, expense) => sum + expense, 0).toFixed(2));
 
-      // Construct and return the finance report
+      const formattedExpenses = {};
+      Object.entries(expenses).forEach(([key, value]) => {
+        const formattedKey = key.toLowerCase()
+          .replace(/[^a-zA-Z0-9 ]/g, '')
+          .replace(/(?:^\w|[A-Z]|\b\w|\s+)/g, (match, index) => {
+            if (+match === 0) return '';
+            return index === 0 ? match.toLowerCase() : match.toUpperCase();
+          });
+        formattedExpenses[formattedKey] = Number(value.toFixed(2));
+      });
       return {
         success: true,
         data: {
           sales: {
             cashSales: Number(cashSales.toFixed(2)),
-            mpesaSales: Number(mpesaSales.toFixed(2)),
+            mpesaSales: Number(mpesaSales.toFixed(2)), 
             creditSales: Number(creditSales.toFixed(2)),
             totalSales: totalSales
           },
           cogs: Number(totalCOGS.toFixed(2)),
           expenses: {
-            "rent&utilities": Number(expenses["Rent and Utilities"].toFixed(2)),
-            "Salaries": Number(expenses["Salaries and Wages"].toFixed(2)),
-            "transport&fuel": Number(expenses["Transport and Fuel"].toFixed(2)),
-            "maintenance&repairs": Number(expenses["Maintenace and Repairs"].toFixed(2)),
-            "otherExpenses": Number(expenses["Other Expense"].toFixed(2)),
+            ...formattedExpenses,
             totalExpenses: totalExpenses
           }
         }
@@ -132,13 +113,13 @@ function incomeStatement(db, fromDate, toDate) {
 
 function getAccountStatement(db, fromDate, toDate) {
   const from = new Date(fromDate);
-  from.setHours(0, 0, 0, 0); // Start of the day
+  from.setHours(0, 0, 0, 0);
   const to = new Date(toDate);
-  to.setHours(23, 59, 59, 999); // End of the day
+  to.setHours(23, 59, 59, 999);
 
   return db
     .find({
-      selector: { 
+      selector: {
         createdAt: {
           $gte: from.toISOString(),
           $lte: to.toISOString()
@@ -148,73 +129,77 @@ function getAccountStatement(db, fromDate, toDate) {
       },
     })
     .then((result) => {
-      // Calculate total amount from transactions
       const totalAmount = result.docs.reduce((sum, transaction) => {
         return sum + (Number(transaction.amount) || 0);
       }, 0);
 
-      return { 
-        success: true, 
+      return {
+        success: true,
         transactions: result.docs,
         totalAmount: Number(totalAmount.toFixed(2))
-      };
+};
     })
     .catch((error) => ({ success: false, error: error.message }));
 }
 
-function getBalanceSheet(db, fromDate, toDate) {
-  // Ensure dates are Date objects
-  const from = new Date(fromDate);
-  from.setHours(0, 0, 0, 0); // Start of the day
+function getBalanceSheet(db, toDate) {
   const to = new Date(toDate);
-  to.setHours(23, 59, 59, 999); // End of the day
-
-  // Promise to find balance sheet entries and account entries
+  to.setHours(23, 59, 59, 999);
   const balanceSheetEntriesPromise = db.find({
       selector: {
         type: { $in: ["asset", "liability", "equity"] },
-        state: "Active"
+      state: "Active",
+      createdAt: {
+        $lte: to.toISOString()
       }
+    }
   });
 
   const accountsPromise = db.find({
     selector: {
       type: "account",
-      state: "Active"
+      state: "Active",
+      createdAt: {
+        $lte: to.toISOString()
+      }
     }
   });
 
-  // Promise to find customers with negative balances
   const customersPromise = db.find({
     selector: {
       type: "customer",
-      state: "Active"
+      state: "Active",
+      createdAt: {
+        $lte: to.toISOString()
+      }
     }
   });
 
-  // Promise to find suppliers with positive balances
-  const suppliersPromise = db.find({
+  const invoicesPromise = db.find({
     selector: {
-      type: "supplier",
-      state: "Active"
+      type: "invoice",
+      state: "Active",
+      createdAt: {
+        $lte: to.toISOString()
+      }
     }
   });
 
-  // Promise to find all products
   const productsPromise = db.find({
     selector: {
       type: "product",
-      state: "Active"
+      state: "Active",
+      createdAt: {
+        $lte: to.toISOString()
+      }
     }
   });
 
-  // Promise to find prepaid expenses
   const prepaidExpensesPromise = db.find({
     selector: {
       type: "expense",
       state: "Active",
       createdAt: {
-        $gte: from.toISOString(),
         $lte: to.toISOString()
         },
       date: {
@@ -223,24 +208,22 @@ function getBalanceSheet(db, fromDate, toDate) {
     }
   });
 
-  // Use Promise.all to run all queries concurrently
   return Promise.all([
-    balanceSheetEntriesPromise, 
-    accountsPromise, 
-    customersPromise, 
-    suppliersPromise,
+    balanceSheetEntriesPromise,
+    accountsPromise,
+    customersPromise,
+    invoicesPromise,
     productsPromise,
     prepaidExpensesPromise
   ])
     .then(([
-      balanceSheetResult, 
-      accountsResult, 
-      customersResult, 
-      suppliersResult,
+      balanceSheetResult,
+      accountsResult,
+      customersResult,
+      invoicesResult,
       productsResult,
       prepaidExpensesResult
     ]) => {
-      // Initialize balance sheet structure
       const balanceSheet = {
         assets: {
           cashAndBankBalances: 0,
@@ -267,7 +250,6 @@ function getBalanceSheet(db, fromDate, toDate) {
         }
       };
 
-      // Calculate inventory value
       let inventoryValue = 0;
       productsResult.docs.forEach(product => {
         const variant = product.variants.find(v => v.conversionFactor === 1);
@@ -277,46 +259,36 @@ function getBalanceSheet(db, fromDate, toDate) {
     });
       balanceSheet.assets.inventory = Number(inventoryValue.toFixed(2));
 
-      // Calculate prepaid expenses
       const prepaidExpensesTotal = prepaidExpensesResult.docs.reduce((sum, expense) => {
         return sum + (Number(expense.amount) || 0);
       }, 0);
       balanceSheet.assets.prepaidExpenses = Number(prepaidExpensesTotal.toFixed(2));
 
-      // Calculate total of negative customer balances
       const negativeCustomerBalancesTotal = customersResult.docs
         .filter(customer => Number(customer.balance) < 0)
         .reduce((sum, customer) => {
           return sum + Math.abs(Number(customer.balance) || 0);
         }, 0);
 
-      // Calculate total of positive supplier balances
-      const positiveSupplierBalancesTotal = suppliersResult.docs
-        .filter(supplier => Number(supplier.balance) > 0)
-        .reduce((sum, supplier) => {
-          return sum + (Number(supplier.balance) || 0);
+      const accountsPayableTotal = invoicesResult.docs
+        .reduce((sum, invoice) => {
+          return sum + (Number(invoice.totalAmount) || 0);
         }, 0);
 
-      // Add negative customer balances to accounts receivable
       balanceSheet.assets.accountsReceivable += Number(negativeCustomerBalancesTotal.toFixed(2));
 
-      // Add positive supplier balances to accounts payable
-      balanceSheet.liabilities.accountsPayable += Number(positiveSupplierBalancesTotal.toFixed(2));
+      balanceSheet.liabilities.accountsPayable += Number(accountsPayableTotal.toFixed(2));
 
-      // Add account balances to cashAndBankBalances
       const accountBalances = accountsResult.docs.reduce((sum, account) => {
         return sum + (Number(account.balance) || 0);
       }, 0);
 
       balanceSheet.assets.cashAndBankBalances += Number(accountBalances.toFixed(2));
 
-      // Process each balance sheet entry
       balanceSheetResult.docs.forEach(entry => {
         const amount = Number(entry.amount) || 0;
 
-        // Map categories to balance sheet structure
         switch(entry.category) {
-          // Assets
           case 'Cash and Bank Balances':
             balanceSheet.assets.cashAndBankBalances += amount;
             break;
@@ -336,10 +308,8 @@ function getBalanceSheet(db, fromDate, toDate) {
             balanceSheet.assets.fixedAssets += amount;
             break;
           case 'Accumulated Depreciation':
-            balanceSheet.assets.fixedAssets -= amount; // Subtract depreciation
+            balanceSheet.assets.fixedAssets -= amount;
             break;
-
-          // Liabilities
           case 'Accounts Payable':
             balanceSheet.liabilities.accountsPayable += amount;
             break;
@@ -352,8 +322,6 @@ function getBalanceSheet(db, fromDate, toDate) {
           case 'Long-Term Loans':
             balanceSheet.liabilities.longTermLoans += amount;
             break;
-
-          // Equity
           case 'Owner\'s Capital':
             balanceSheet.equity.ownerCapital += amount;
             break;
@@ -363,7 +331,6 @@ function getBalanceSheet(db, fromDate, toDate) {
 }
       });
 
-      // Calculate totals
       balanceSheet.assets.totalCurrentAssets = Number((
         balanceSheet.assets.cashAndBankBalances +
         balanceSheet.assets.accountsReceivable +
@@ -393,7 +360,6 @@ function getBalanceSheet(db, fromDate, toDate) {
         balanceSheet.equity.retainedEarnings
       ).toFixed(2));
 
-      // Round all numbers to 2 decimal places
       Object.keys(balanceSheet.assets).forEach(key => {
         balanceSheet.assets[key] = Number(balanceSheet.assets[key].toFixed(2));
       });
@@ -415,9 +381,323 @@ function getBalanceSheet(db, fromDate, toDate) {
     });
 }
 
-// Export the function
+function getChartOfAccounts(db) {
+  return db.find({
+    selector: {
+      type: { $in: ["expenseType"] },
+      state: "Active" 
+    }
+  })
+  .then(result => {
+    const chartOfAccounts = {
+      assets: {
+        currentAssets: {
+          code: "1100",
+          accounts: {
+            cash: { code: "1110", name: "Cash" },
+            bankAccounts: { code: "1120", name: "Bank Accounts" },
+            accountsReceivable: { code: "1130", name: "Accounts Receivable" },
+            inventory: { code: "1140", name: "Inventory" },
+            prepaidExpenses: { code: "1150", name: "Prepaid Expenses" }
+          }
+        },
+        fixedAssets: {
+          code: "1200", 
+          accounts: {
+            accumulatedDepreciation: { code: "1240", name: "Accumulated Depreciation" }
+          }
+        }
+      },
+      liabilities: {
+        currentLiabilities: {
+          code: "2100",
+          accounts: {
+            accountsPayable: { code: "2110", name: "Accounts Payable" },
+            shortTermLoans: { code: "2120", name: "Short Term Loans" }
+          }
+        },
+        longTermLiabilities: {
+          code: "2200",
+          accounts: {
+            longTermLoans: { code: "2210", name: "Long Term Loans" }
+          }
+        }
+      },
+      equity: {
+        code: "3000",
+        accounts: {
+          ownerCapital: { code: "3100", name: "Owner's Capital" },
+          retainedEarnings: { code: "3200", name: "Retained Earnings" }
+        }
+      },
+      revenue: {
+        operatingRevenue: {
+          code: "4100",
+          accounts: {
+            sales: { code: "4110", name: "Sales Revenue" }
+          }
+        }
+      },
+      expenses: {
+        operatingExpenses: {
+          code: "5100",
+          accounts: {
+            costOfGoodsSold: { code: "5110", name: "Cost of Goods Sold" }
+          }
+        }
+      }
+    };
+
+    // Add expense types from database under operating expenses
+    result.docs.forEach((expenseType, index) => {
+      const code = `51${(index + 20).toString().padStart(2, '0')}`; // Generate codes starting from 5120
+      chartOfAccounts.expenses.operatingExpenses.accounts[expenseType.name.toLowerCase()] = {
+        code,
+        name: expenseType.name
+      };
+    });
+
+    return {
+      success: true,
+      data: chartOfAccounts
+    };
+  })
+  .catch(error => {
+    console.error('Error generating chart of accounts:', error);
+    return { success: false, error: error.message };
+  });
+}
+
+function getTrialBalance(db, fromDate, toDate) {
+  const from = new Date(fromDate);
+  from.setHours(0, 0, 0, 0);
+  const to = new Date(toDate);
+  to.setHours(23, 59, 59, 999);
+
+  const salesPromise = db.find({
+    selector: {
+      createdAt: {
+        $gte: from.toISOString(),
+        $lte: to.toISOString()
+      },
+      type: "sale",
+      state: "Active"
+    }
+  });
+
+  const expensesPromise = db.find({
+    selector: {
+      createdAt: {
+        $gte: from.toISOString(),
+        $lte: to.toISOString()
+      },
+      type: "expense",
+      state: "Active"
+    }
+  });
+
+  const expenseTypesPromise = db.find({
+    selector: {
+      type: "expenseType",
+      state: "Active"
+    }
+  });
+
+  const accountsPromise = db.find({
+    selector: {
+      type: "account",
+      state: "Active"
+    }
+  });
+
+  const customersPromise = db.find({
+    selector: {
+      type: "customer",
+      state: "Active"
+    }
+  });
+
+  const productsPromise = db.find({
+    selector: {
+      type: "product",
+      state: "Active"
+    }
+  });
+
+  const balanceSheetEntriesPromise = db.find({
+    selector: {
+      type: { $in: ["asset", "liability", "equity"] },
+      state: "Active"
+    }
+  });
+
+  const invoicesPromise = db.find({
+    selector: {
+      type: "invoice",
+      state: "Active",
+      createdAt: {
+        $gte: from.toISOString(),
+        $lte: to.toISOString()
+      }
+    }
+  });
+
+  return Promise.all([
+    salesPromise,
+    expensesPromise,
+    expenseTypesPromise,
+    accountsPromise,
+    customersPromise,
+    productsPromise,
+    balanceSheetEntriesPromise,
+    getChartOfAccounts(db),
+    invoicesPromise
+  ])
+    .then(([
+      salesResult,
+      expensesResult,
+      expenseTypesResult,
+      accountsResult,
+      customersResult,
+      productsResult,
+      balanceSheetResult,
+      chartOfAccounts,
+      invoicesResult
+    ]) => {
+      if (!chartOfAccounts.success) {
+        throw new Error('Failed to get chart of accounts');
+      }
+
+      const trialBalance = {
+        accounts: [],
+        totalDebits: 0,
+        totalCredits: 0
+      };
+
+      const addToTrialBalance = (code, name, debitAmount = 0, creditAmount = 0) => {
+        trialBalance.accounts.push({
+          code,
+          name,
+          debit: Number(debitAmount.toFixed(2)),
+          credit: Number(creditAmount.toFixed(2))
+        });
+        trialBalance.totalDebits += Number(debitAmount.toFixed(2));
+        trialBalance.totalCredits += Number(creditAmount.toFixed(2));
+      };
+
+      // Cash and Bank Accounts
+      const cashAndBank = accountsResult.docs.reduce((sum, account) => 
+        sum + (Number(account.balance) || 0), 0);
+      if (cashAndBank > 0) {
+        addToTrialBalance('1110', 'Cash and Bank', cashAndBank, 0);
+      } else {
+        addToTrialBalance('1110', 'Cash and Bank', 0, Math.abs(cashAndBank));
+      }
+
+      // Accounts Receivable
+      const accountsReceivable = customersResult.docs
+        .filter(customer => Number(customer.balance) < 0)
+        .reduce((sum, customer) => 
+          sum + Math.abs(Number(customer.balance) || 0), 0);
+      addToTrialBalance('1130', 'Accounts Receivable', accountsReceivable, 0);
+
+      // Inventory
+      const inventoryValue = productsResult.docs.reduce((sum, product) => {
+        const variant = product.variants.find(v => v.conversionFactor === 1);
+        return variant ? 
+          sum + ((Number(product.stock) || 0) * (Number(variant.unitPrice) || 0)) : 
+          sum;
+      }, 0);
+      addToTrialBalance('1140', 'Inventory', inventoryValue, 0);
+
+      // Sales and COGS
+      let totalSales = 0;
+      let totalCOGS = 0;
+
+      salesResult.docs.forEach(sale => {
+        totalSales += Number(sale.totalAmount) || 0;
+        sale.items.forEach(item => {
+          totalCOGS += (Number(item.quantity) || 0) * (Number(item.buyPrice) || 0);
+        });
+      });
+
+      addToTrialBalance('4110', 'Sales Revenue', 0, totalSales);
+      addToTrialBalance('5110', 'Cost of Goods Sold', totalCOGS, 0);
+
+      // Group expenses by expense type
+      const expensesByType = {};
+      expenseTypesResult.docs.forEach(type => {
+        expensesByType[type.name] = 0;
+      });
+
+      expensesResult.docs.forEach(expense => {
+        const amount = Number(expense.amount) || 0;
+        if (expensesByType.hasOwnProperty(expense.expenseType)) {
+          expensesByType[expense.expenseType] += amount;
+        }
+      });
+
+      // Add grouped expenses to trial balance
+      Object.entries(expensesByType).forEach(([expenseType, amount], index) => {
+        if (amount > 0) {
+          const code = `51${(index + 20).toString().padStart(2, '0')}`;
+          addToTrialBalance(code, expenseType, amount, 0);
+        }
+      });
+
+      // Calculate total invoices amount
+      const totalInvoicesAmount = invoicesResult.docs.reduce((sum, invoice) => {
+        return sum + (Number(invoice.totalAmount) || 0);
+      }, 0);
+
+      // Process balance sheet entries
+      balanceSheetResult.docs.forEach(entry => {
+        const amount = Number(entry.amount) || 0;
+        switch(entry.category) {
+          case 'Property & Equipment':
+            addToTrialBalance('1200', 'Fixed Assets', amount, 0);
+            break;
+          case 'Accounts Payable':
+            addToTrialBalance('2110', 'Accounts Payable', 0, amount);
+            break;
+          case 'Short-Term Loans':
+            addToTrialBalance('2120', 'Short Term Loans', 0, amount);
+            break;
+          case 'Long-Term Loans':
+            addToTrialBalance('2210', 'Long Term Loans', 0, amount);
+            break;
+          case 'Owner\'s Capital':
+            addToTrialBalance('3100', 'Owner\'s Capital', 0, amount);
+            break;
+          case 'Retained Earnings':
+            addToTrialBalance('3200', 'Retained Earnings', 0, amount);
+            break;
+        }
+      });
+
+      // Add total invoices amount to Accounts Payable
+      addToTrialBalance('2110', 'Accounts Payable', 0, totalInvoicesAmount);
+
+      // Sort accounts by code and round totals
+      trialBalance.accounts.sort((a, b) => a.code.localeCompare(b.code));
+      trialBalance.totalDebits = Number(trialBalance.totalDebits.toFixed(2));
+      trialBalance.totalCredits = Number(trialBalance.totalCredits.toFixed(2));
+
+      return {
+        success: true,
+        data: trialBalance
+      };
+    })
+    .catch(error => {
+      console.error('Error generating trial balance:', error);
+      return { success: false, error: error.message };
+    });
+}
+
 module.exports = {
   incomeStatement,
   getAccountStatement,
-  getBalanceSheet
+  getBalanceSheet,
+  getChartOfAccounts,
+  getTrialBalance
 };

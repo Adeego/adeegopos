@@ -12,6 +12,9 @@ const dashboardService = require('./services/dashboardService')
 const financeReport = require('./services/finance/financeReportService')
 const balanceSheet = require('./services/finance/balanceSheetServices')
 const reportService = require('./services/reportService')
+const stock = require('./services/stockManagement')
+const message = require('./services/messageService')
+const expenseType = require('./services/finance/expenseTypeService')
 
 function getSyncStatus(db) {
   return db.info()
@@ -61,6 +64,28 @@ function setupIpcHandlers(ipcMain, db) {
     return transactionService.searchCSS(db, searchTerm, type);
   });
 
+  ipcMain.handle('restock', async (event, task, ...args) => {
+    switch (task) {
+      case 'restockCheckup':
+        return stock.getProductsToRestock(db);
+      case 'calculateRestock':
+        return stock.calculateRestock(db, args[0]);
+      default:
+        throw new Error(`Unknown restock task: ${task}`);
+    }  
+  });
+
+  ipcMain.handle('message', async(event, sms, ...args) => {
+    switch (sms) {
+      case 'getAllMessages':
+        return message.getAllMessages(db);
+      case 'updateMessage':
+        return message.updateMessage(db, args[0])
+      default:
+        throw new Error(`Unknown message sms: ${sms}`);
+    }
+  });
+
   ipcMain.handle('realm-operation', async (event, operation, ...args) => {
     switch (operation) {
       case 'createCustomer':
@@ -82,7 +107,7 @@ function setupIpcHandlers(ipcMain, db) {
       case 'getAllVariants':
         return productService.getAllVariants(db);
       case 'getSaleItemsByProductId':
-        return productService.getSaleItemsByProductId(db, args[0], args[1], args[2]);
+        return productService.getSaleItemsByProductId(db, args[0]);
       case 'getProductById':
         return productService.getProductById(db, args[0]);
       case 'updateProduct':
@@ -109,6 +134,8 @@ function setupIpcHandlers(ipcMain, db) {
         return supplierService.getTodayInvoices(db);
       case 'getInvoiceById':
         return supplierService.getInvoiceById(db, args[0]);
+      case 'getTodaySupplierTransactions':
+        return supplierService.getTodaySupplierTransactions(db);
       case 'getAllSuppliers':
         return supplierService.getAllSuppliers(db);
       case 'getSupplierById':
@@ -215,6 +242,10 @@ function setupIpcHandlers(ipcMain, db) {
         return financeReport.getAccountStatement(db, args[0], args[1]);
       case 'getBalanceSheet':
         return financeReport.getBalanceSheet(db, args[0], args[1]);
+      case 'getChartOfAccounts':
+        return financeReport.getChartOfAccounts(db, args[0], args[1]);
+      case 'getTrialBalance':
+        return financeReport.getTrialBalance(db, args[0], args[1]);
       case 'createBalanceSheetEntry':
         return balanceSheet.createBalanceSheetEntry(db, args[0]);
       case 'getAllBalanceSheets':
@@ -225,6 +256,16 @@ function setupIpcHandlers(ipcMain, db) {
         return balanceSheet.archiveBalanceSheet(db, args[0]);
       case 'updateBalanceSheet':
         return balanceSheet.updateBalanceSheet(db, args[0]);
+      case 'createExpenseType':
+        return expenseType.createExpenseType(db, args[0]);
+      case 'getAllExpenseTypes':
+        return expenseType.getAllExpenseTypes(db);
+      case 'getExpenseTypeById':
+        return expenseType.getExpenseTypeById(db, args[0]);
+      case 'updateExpenseType':
+        return expenseType.updateExpenseType(db, args[0]);
+      case 'archiveExpenseType':
+        return expenseType.archiveExpenseType(db, args[0]);
       default:
         throw new Error(`Unknown operation: ${operation}`);
     }

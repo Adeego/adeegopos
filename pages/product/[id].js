@@ -14,6 +14,7 @@ export default function ProductDetails() {
       if (id) {
         fetchSelectedProduct();
         fetchProductSales();
+        handleSaleItems();
       }
     }, [id]);
 
@@ -45,8 +46,19 @@ export default function ProductDetails() {
       }
     }
 
+    const handleSaleItems = async () => {
+      try {
+        const result = await window.electronAPI.realmOperation('getSaleItemsByProductId', id);
+        if (result.success) {
+          setSaleItems(result.saleItems);
+          console.log(result);
+        }
+      } catch (error) {
+        console.error(error);
+      }
+    }
+
     const handleArchiveProduct = async () => {
-      console.log(id)
       const result = await window.electronAPI.realmOperation('archiveProduct', id);
       if (result.success) {
         console.log("product was archived succesifully");

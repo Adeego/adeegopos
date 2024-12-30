@@ -5,8 +5,10 @@ import DatePickerWithPresets from '../generalComps/datePicker'
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Button } from '../ui/button'
+import Link from 'next/link'
 
-export default function ProductSales({ saleItems, onDateRangeChange = () => {} }) {
+export default function ProductSales({ saleItems }) {
     console.log(saleItems);
 
     return (
@@ -20,8 +22,7 @@ export default function ProductSales({ saleItems, onDateRangeChange = () => {} }
                     <Table>
                         <TableHeader>
                             <TableRow className="bg-gray-50">
-                                <TableHead className="font-semibold text-gray-700">Date</TableHead>
-                                <TableHead className="font-semibold text-gray-700">UoM</TableHead>
+                                <TableHead className="font-semibold text-gray-700">Name</TableHead>
                                 <TableHead className="font-semibold text-gray-700">Unit Price</TableHead>
                                 <TableHead className="font-semibold text-gray-700">Quantity</TableHead>
                                 <TableHead className="font-semibold text-gray-700">Subtotal</TableHead>
@@ -30,11 +31,15 @@ export default function ProductSales({ saleItems, onDateRangeChange = () => {} }
                         <TableBody>
                             {saleItems.map((saleItem) => (
                                 <TableRow key={saleItem._id} className="hover:bg-gray-50">
-                                    <TableCell>{formatDate(saleItem.createdAt)}</TableCell>
-                                    <TableCell>{saleItem.productVariantName}</TableCell>
+                                    <TableCell>{saleItem.name}</TableCell>
                                     <TableCell>{saleItem.unitPrice}</TableCell>
                                     <TableCell>{saleItem.quantity}</TableCell>
                                     <TableCell>{saleItem.subtotal}</TableCell>
+                                    <TableCell>
+                                        <Button >
+                                            <Link href={`/pos/${saleItem.saleId}`} passHref >View</Link>
+                                        </Button>
+                                    </TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>

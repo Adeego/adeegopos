@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import RecordExpense from './recordExpense';
 import { useRouter } from 'next/router';
+import Link from 'next/link';
 
 export default function ExpenseTable() {
   const [expenses, setExpenses] = useState([]);
@@ -59,7 +60,10 @@ export default function ExpenseTable() {
               Manage your expenses.
             </CardDescription>
           </div>
-          <RecordExpense fetchExpenses={fetchExpenses} />
+          <div className="space-x-2">
+            <Button ><Link href={'/finance/expense/expenseType'}>Expense Types</Link></Button>
+            <RecordExpense fetchExpenses={fetchExpenses} />
+          </div>
         </div>
       </CardHeader>
       <CardContent>

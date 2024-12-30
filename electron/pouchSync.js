@@ -11,7 +11,7 @@ let currentStoreNo = null;
 let syncHandler;
 
 function openPouchDB() {
-  localDB = new PouchDB("adeegopos");
+  localDB = new PouchDB("adeegopos", { auto_compaction: true });
   setupStoreNoListener();
   return localDB;
 }
@@ -23,6 +23,8 @@ function setupIndexes() {
   const customerIndexFields = ['name', 'phoneNumber', 'state', 'type', 'createdAt'];
   // Define the index fields for general use
   const generalIndexFields = ['createdAt', 'type', 'state'];
+
+  const specificIdIndexFields = ['type', 'state', '_id', 'createdAt'];
 
   // Check if the product index already exists
   localDB.getIndexes().then((result) => {
@@ -97,6 +99,31 @@ function setupIndexes() {
     }
   }).catch((error) => {
     console.error('Error checking general indexes:', error);
+  });
+
+  // Check if the specific ID index already exists
+  localDB.getIndexes().then((result) => {
+    const specificIdIndexExists = result.indexes.some(index => 
+      index.def && index.def.fields && index.def.fields.length === specificIdIndexFields.length &&
+      index.def.fields.every((field, i) => field === specificIdIndexFields[i])
+    );
+
+    if (!specificIdIndexExists) {
+      // Create the specific ID index if it does not exist
+      return localDB.createIndex({
+        index: {
+          fields: specificIdIndexFields
+        }
+      }).then(() => {
+        console.log('Specific ID index created successfully');
+      }).catch((error) => {
+        console.error('Error creating specific ID index:', error);
+      });
+    } else {
+      console.log('Specific ID index already exists');
+    }
+  }).catch((error) => {
+    console.error('Error checking specific ID indexes:', error);
   });
 }
 

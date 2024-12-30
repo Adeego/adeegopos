@@ -104,7 +104,7 @@ export default function ProductTable() {
             <TableHeader>
               <TableRow className="text-base">
                 <TableHead className="text-left">Name</TableHead>
-                <TableHead className="text-left">Base Unit</TableHead>
+                <TableHead className="text-left">UoM</TableHead>
                 <TableHead className="hidden md:table-cell text-left">Buy Price</TableHead>
                 <TableHead className="hidden md:table-cell text-left">Stock</TableHead>
                 <TableHead className="hidden md:table-cell text-left">Status</TableHead>
@@ -115,7 +115,7 @@ export default function ProductTable() {
                 <React.Fragment key={product._id}>
                   <TableRow className="text-sm">
                     <TableCell className="text-left font-medium">{product.name}</TableCell>
-                    <TableCell className="text-left">{product.baseUnit}</TableCell>
+                    <TableCell className="text-left">{product.uom}</TableCell>
                     <TableCell className="hidden md:table-cell text-left">{product.buyPrice}</TableCell>
                     <TableCell className="hidden md:table-cell text-left">{product.stock}</TableCell>
                     <TableCell className="hidden md:table-cell text-left">{product.status}</TableCell>

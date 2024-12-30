@@ -3,7 +3,7 @@ function addNewProduct(db, productData) {
     _id: productData._id,
     type: "product",
     name: productData.name,
-    baseUnit: productData.baseUnit,
+    uom: productData.uom,
     buyPrice: productData.buyPrice,
     stock: productData.stock,
     variants: productData.variants.map((variant) => ({
@@ -15,14 +15,14 @@ function addNewProduct(db, productData) {
       storeNo: variant.storeNo,
     })),
     status: productData.status,
-    category: productData.category,
     restockThreshold: productData.restockThreshold,
     restockPeriod: productData.restockPeriod,
-    createdAt: productData.createdAt,
-    updatedAt: productData.updatedAt,
-    barCode: productData.barCode,
+    restock: productData.restock,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+    barCode: productData.barCode || null,
     storeNo: productData.storeNo,
-    state: productData.state
+    state: "Active"
   };
   return db
     .put(product)
@@ -266,16 +266,43 @@ function searchProducts(db, searchTerm) {
 }
 
 // Get all saleItems related to a specific product
-function getSaleItemsByProductId(db, productId, startDate, endDate) {
+function getSaleItemsByProductId(db, productId) {
+  const endDate = new Date(); // Current date
+  const startDate = new Date();
+  startDate.setDate(endDate.getDate() - 30); // 30 days ago
+
   return db
     .find({
       selector: {
         type: "sale",
-        "items.productId": productId,
-        createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) },
+        createdAt: { $gte: startDate.toISOString(), $lte: endDate.toISOString() },
       },
     })
-    .then((result) => ({ success: true, saleItems: result.docs }))
+    .then((result) => {
+      // Map through sales and include sale ID with matching items
+      const filteredSales = result.docs.reduce((acc, sale) => {
+        const matchingItems = sale.items.filter(item => 
+          item.productId === productId || item.variantId === productId
+        );
+        
+        if (matchingItems.length > 0) {
+          // Add sale ID to each matching item
+          const itemsWithSaleId = matchingItems.map(item => ({
+            ...item,
+            saleId: sale._id,
+            createdAt: sale.createdAt
+          }));
+      
+          acc.push(...itemsWithSaleId);
+        }
+        return acc;
+      }, []);
+      
+      return { 
+        success: true, 
+        saleItems: filteredSales
+      };
+    })
     .catch((error) => {
       console.error("Error fetching sale items for product:", error);
       return { success: false, error: error.message };

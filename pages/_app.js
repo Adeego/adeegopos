@@ -10,6 +10,8 @@ import { Wifi, WifiOff, ArrowLeft, Bell, Menu } from "lucide-react";
 import { v4 as uuidv4 } from 'uuid';
 import { Button } from "@/components/ui/button"
 import ProfileDialog from "@/components/staff/profileDialog";
+import { MessageDialog } from "@/components/wholesalerComps/messages";
+import { manageRestock } from "@/components/stockManagement/stockManager";
 
 export default function App({ Component, pageProps }) {
   const staff = useStaffStore((state) => state.staff);
@@ -31,6 +33,13 @@ export default function App({ Component, pageProps }) {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   });
+
+  useEffect(() => {
+    if (staff.role === ("Admin" || "Operator")) {
+      manageRestock();
+      // console.log(restockData);
+    }
+  }, [staff, isStaffLoaded])
 
   useEffect(() => {
     createDefaultCustomer();
@@ -178,10 +187,7 @@ export default function App({ Component, pageProps }) {
             </div>
             <div className="flex items-center space-x-4">
               <ProfileDialog />
-              <Button variant="ghost" size="icon">
-                <Bell className="h-5 w-5" />
-                <span className="sr-only">Notifications</span>
-              </Button>
+              <MessageDialog />
             </div>
           </header>
         }

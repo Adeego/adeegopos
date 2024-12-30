@@ -45,7 +45,16 @@ function createSale(db, saleData) {
           } else if (saleType === 'RETURN SALE') {
             stockChange = (item.conversionFactor * item.quantity);
           }
-          const updatedProduct = { ...product, stock: product.stock + stockChange };
+          const updatedStock = product.stock + stockChange;
+          const updatedProduct = { 
+            ...product, 
+            stock: updatedStock,
+            // Check if it's a new sale and stock is below threshold
+            restock: saleType === 'NEW SALE' && updatedStock < product.restockThreshold 
+              ? (product.restock || true)  // Set to true if not already set
+              : product.restock  // Keep existing restock status
+          };
+          
           return db.put(updatedProduct);
         });
     });
@@ -198,7 +207,7 @@ function getSalesByPaymentMethod(db, date1, date2) {
 // Total sales for a given time period                               
 function getTotalSales(db, startDate, endDate) {                     
   return db.find({                                                   
-    selector: { createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) } }                                                    
+    selector: { createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) }, limit: 1000 }                                                    
   })                                                                 
     .then(result => {                                                
       const totalSales = result.docs.reduce((sum, sale) => sum + sale.totalAmount, 0);                                                
@@ -384,19 +393,14 @@ function getTopCustomers(db, startDate, endDate, limit = 10) {
 // Function to get all sales between two dates                       
 function getAllSalesBetweenDates(db, startDate, endDate) {           
   // Ensure the index exists
-  return db.createIndex({
-    index: {
-      fields: ['createdAt', 'type', 'state']
-    }
-  }).then(() => {
-    return db.find({                                                   
-      selector: {
-        createdAt: { $gte: new Date(startDate).toISOString(), $lte: new Date(endDate).toISOString() },
-        type: "sale",
-        state: "Active"
-      },
-      sort: [{ createdAt: 'desc' }]
-    });
+  return db.find({                                                   
+    selector: {
+      createdAt: { $gte: new Date(startDate).toISOString(), $lte: new Date(endDate).toISOString() },
+      type: "sale",
+      state: "Active"
+    },
+    sort: [{ createdAt: 'desc' }],
+    limit: 1000
   }).then(result => {
     console.log('Query result:', result);
     if (result.docs.length === 0) {

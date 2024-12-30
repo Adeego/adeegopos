@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import useWsinfoStore from '@/stores/wsinfo';
 import useStaffStore from '@/stores/staffStore';
 import SelectedProductsTable from './SelectedProductsTable';
 import ProductSearch from './ProductSearch';
+import Draft from './sale/draft';
 import { v4 as uuidv4 } from 'uuid';
 import {
     Card,
@@ -12,7 +13,7 @@ import {
     CardTitle
 } from '@/components/ui/card';
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
-import { useToast } from '../ui/use-toast';
+import { useToast } from '@/components/ui/use-toast';
 
 // Import new components
 import TotalAmountCard from './sale/TotalAmountCard';
@@ -20,10 +21,10 @@ import CustomerSelectionDialog from './sale/CustomerSelectionDialog';
 import SaleDetailsDialog from './sale/SaleDetailsDialog';
 import AlertDialogs from './sale/AlertDialogs';
 import NewCustomerDialog from './sale/NewCustomerDialog';
-import { Button } from '../ui/button';
+import { Button } from '@/components/ui/button';
 import { ChevronDown, MapPin, MapPinHouse, PenLine, Search, User } from 'lucide-react';
-import { Input } from '../ui/input';
-import { Label } from '../ui/label';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 function SaleCard() {
   const { toast } = useToast();
@@ -59,7 +60,7 @@ function SaleCard() {
 
   useEffect(() => {
     const handleKeyPress = (event) => {
-    if (event.code === 'F10') {
+    if (event.code === 'F9') {
       event.preventDefault(); // Prevent default F10 behavior
         setSaleDetail(true);
       }
@@ -103,25 +104,25 @@ function SaleCard() {
   }, [amountPaid])
 
   useEffect(() => {
-    const fetchDefaultCustomer = async (storeNumber) => {
-      console.log(store.storeNo)
-      try {
-        const result = await window.electronAPI.searchCustomers(storeNumber);
-        if (result.success && result.customers.length > 0) {
-          console.log(result.customers);
-          setCustomer(result.customers[0]);
-        }
-        return null;
-      } catch (error) {
-        console.error('Error searching for customer:', error);
-        return null;
-      }
-    };
-
     if (store.storeNo) {
       fetchDefaultCustomer(store.storeNo);
     }
   }, [store.storeNo]);
+
+  const fetchDefaultCustomer = async (storeNumber) => {
+    console.log(store.storeNo)
+    try {
+      const result = await window.electronAPI.searchCustomers(storeNumber);
+      if (result.success && result.customers.length > 0) {
+        console.log(result.customers);
+        setCustomer(result.customers[0]);
+      }
+      return null;
+    } catch (error) {
+      console.error('Error searching for customer:', error);
+      return null;
+    }
+  };
 
   const handleNameChange = (e) => {
     setName(e.target.value);
@@ -283,6 +284,15 @@ function SaleCard() {
       return false;
     }
 
+    if (customer.status === 'Banned') {
+      toast({
+        title: "Error",
+        description: "This customer is banned and cannot make purchases",
+        variant: "destructive"
+      });
+      return false;
+    }
+
     if (selectedProducts.length === 0) {
       toast({
         title: "Error",
@@ -308,6 +318,26 @@ function SaleCard() {
 
     return true;
   };
+
+  const handleClearSale = useCallback(() => {
+    setSelectedProducts([]);
+    setCustomer(null);
+    setPaymentMethod('CASH');
+    setSaleType('NEW SALE');
+    setDiscount(0);
+    setAmountPaid(null);
+    setNote('');
+    fetchDefaultCustomer(store.storeNo);
+  }, []);
+
+  const handleLoadDraft = useCallback((draft) => {
+    setSelectedProducts(draft.selectedProducts);
+    setCustomer(draft.customer);
+    setPaymentMethod(draft.paymentMethod);
+    setSaleType(draft.saleType);
+    setFulfillmentType(draft.fulfillmentType);
+    setNote(draft.note);
+  }, []);
 
   const handleCreateSale = async () => {
     if (!validateSale()) {
@@ -348,12 +378,8 @@ function SaleCard() {
       const result = await window.electronAPI.realmOperation('createSale', saleData);
       if (result.success) {
         console.log("Sale created successfully:", result.sale);
-        setSelectedProducts([]);
-        setCustomer(null);
-        setPaymentMethod('CASH');
-        setSaleType('NEW SALE');
+        handleClearSale();
         setSaleDetail(false);
-        setDiscount(0);
         toast({
           title: "Success",
           description: "Sale created successfully!",
@@ -391,15 +417,7 @@ function SaleCard() {
               <CardDescription className="text-sm text-muted-foreground">Create a new sales transaction</CardDescription>
             </div>
             <div>
-              <Dialog>
-                <DialogTrigger className="">Drafted Sale [5]</DialogTrigger>
-                <DialogContent>
-                  <DialogHeader>
-                    <DialogTitle>Drafted Sales</DialogTitle>
-                    <DialogDescription>Drifted item list</DialogDescription>
-                  </DialogHeader>
-                </DialogContent>
-              </Dialog>
+              <Draft onLoadDraft={handleLoadDraft} />
             </div>
           </div>
           
@@ -439,8 +457,15 @@ function SaleCard() {
             </Card>
             <TotalAmountCard 
               totalAmount={totalAmount}
-              onDraft={() => {}}
+              selectedProducts={selectedProducts}
+              customer={customer}
+              paymentMethod={paymentMethod}
+              saleType={saleType}
+              fulfillmentType={fulfillmentType}
+              servedBy={servedBy}
+              note={note}
               onNext={() => setSaleDetail(true)}
+              onClearSale={handleClearSale}
             />
           </div>
           

@@ -63,21 +63,34 @@ async function searchCustomers(db, searchTerm, state = "Active", type = "custome
   }
 }
 
-// Update an existing customer
-function updateCustomer(db, customerData) {
-  const customer = {
-    _id: customerData._id,
-    type: "customer",
-    state: "Active",
-    ...customerData,
-  };
-  return db
-    .put(customer)
-    .then((response) => ({
+// Update an existing customer with revision handling
+async function updateCustomer(db, customerData) {
+  try {
+    // First, get the latest revision of the document
+    const existingCustomer = await db.get(customerData._id);
+
+    // Prepare the updated customer object with the latest revision
+    const customer = {
+      _id: customerData._id,
+      _rev: existingCustomer._rev, // Include the latest revision
+      type: "customer",
+      state: "Active",
+      ...customerData,
+    };
+
+    // Perform the update with the latest revision
+    const response = await db.put(customer);
+    
+    return {
       success: true,
       customer: { _id: response.id, ...customer },
-    }))
-    .catch((error) => ({ success: false, error: error.message }));
+    };
+  } catch (error) {
+    return { 
+      success: false, 
+      error: error.message 
+    };
+  }
 }
 
 // Delete a customer
@@ -146,31 +159,56 @@ function getTodayCreditSales(db) {
 }
 
 // Get today's transactions where source is customer
-function getTodayCustomerTransactions(db) {
+async function getTodayCustomerTransactions(db) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
 
-  return db.find({
+  try {
+    // First, find all today's transactions from customers
+    const transactionsResult = await db.find({
     selector: {
       type: "transaction",
       state: "Active",
       createdAt: {
         $gte: today.toISOString(),
         $lt: tomorrow.toISOString()
-      }
+      },
+      source: "customer"
     }
+    });
+
+    // Now, fetch customer details for each transaction
+    const transactionsWithCustomerDetails = await Promise.all(
+      transactionsResult.docs.map(async (transaction) => {
+        try {
+          const customerDetails = await db.get(transaction.from);
+          return {
+            ...transaction,
+            customerDetails
+          };
+        } catch (error) {
+          console.error(`Could not fetch customer details for transaction ${transaction._id}:`, error);
+          return {
+            ...transaction,
+            customerDetails: null
+          };
+        }
   })
-  .then((result) => ({
+    );
+
+    return {
     success: true,
-    transactions: result.docs.filter(trans => trans.source === "customer")
-  }))
-  .catch((error) => ({
+      transactions: transactionsWithCustomerDetails
+    };
+  } catch (error) {
+    return {
     success: false,
     error: error.message,
     transactions: []
-  }));
+    };
+}
 }
 
 module.exports = {

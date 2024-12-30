@@ -17,6 +17,7 @@ import {
   LogIn,
   BriefcaseBusiness,
   Settings,
+  Store,
 } from "lucide-react";
 
 import {
@@ -34,10 +35,10 @@ const links = [
     allowedRoles: ["admin", "operator"], // Everyone can access home
   },
   {
-    label: "Staff",
-    icon: <BriefcaseBusiness className="h-[18px] w-[18px]" strokeWidth={2} />,
-    pageLink: "/staff",
-    allowedRoles: ["admin"], // Only admin can manage staff
+    label: "Store",
+    icon: <Store className="h-[18px] w-[18px]" strokeWidth={2} />,
+    pageLink: "/productStore",
+    allowedRoles: ["admin", "operator"]
   },
   {
     label: "Products",
@@ -62,6 +63,12 @@ const links = [
     icon: <Cable className="h-[18px] w-[18px]" strokeWidth={2} />,
     pageLink: "/supplier",
     allowedRoles: ["admin", "operator"], // admin and operator can manage suppliers
+  },
+  {
+    label: "Staff",
+    icon: <BriefcaseBusiness className="h-[18px] w-[18px]" strokeWidth={2} />,
+    pageLink: "/staff",
+    allowedRoles: ["admin"], // Only admin can manage staff
   },
   {
     label: "Finance",

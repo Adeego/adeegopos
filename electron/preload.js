@@ -21,6 +21,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     searchVariants: (searchTerm) => ipcRenderer.invoke('search-variants', searchTerm),
     searchProducts: (searchTerm) => ipcRenderer.invoke('search-products', searchTerm),
     searchCSS: (searchTerm, type) => ipcRenderer.invoke('search-css', searchTerm, type),
+    restock: (task, ...args) => ipcRenderer.invoke('restock', task, ...args),
+    message: (sms, ...args) => ipcRenderer.invoke('message', sms, ...args),
     realmOperation: (operation, ...args) => ipcRenderer.invoke('realm-operation', operation, ...args),
     getSyncStatus: () => ipcRenderer.invoke('get-sync-status'),
     onSyncStatusChanged: (callback) => {

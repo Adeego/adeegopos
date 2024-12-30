@@ -97,11 +97,10 @@ export default function ViewProduct({ product, fetchSelectedProduct, saleItems, 
           <CardContent>
             <div className="space-y-4">
               {[
-                { label: 'Base Unit', value: product.baseUnit },
+                { label: 'UoM', value: product.uom },
                 { label: 'Unit Price', value: product.buyPrice },
-                { label: 'Stock', value: `${product.stock} ${product.baseUnit}` },
+                { label: 'Stock', value: `${product.stock} ${product.uom}` },
                 { label: 'Status', value: product.status },
-                { label: 'Category', value: product.category },
                 { label: 'Restock Period', value: `${product.restockPeriod} days` },
               ].map((item, index) => (
                 <div key={index} className="flex items-center justify-between">
@@ -248,7 +247,7 @@ export default function ViewProduct({ product, fetchSelectedProduct, saleItems, 
         </Card>
       </div>
       
-      <ProductSales saleItems={product.saleItems || []} />
+      <ProductSales saleItems={saleItems || []} />
     </div>
   );
 }

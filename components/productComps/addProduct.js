@@ -29,13 +29,14 @@ export default function AddProduct({ fetchProducts }) {
   const [newProduct, setNewProduct] = useState({
     _id: "",
     name: "",
-    baseUnit: "",
+    uom: "",
     buyPrice: "",
     stock: "",
     status: "",
     category: "",
     restockThreshold: "",
     restockPeriod: "",
+    restock: false,
     barCode: "",
     variants: [], // Array to hold product variants
     createdAt: new Date().toISOString(),
@@ -126,7 +127,7 @@ export default function AddProduct({ fetchProducts }) {
         setNewProduct({
           __id: "",
           name: "",
-          baseUnit: "",
+          uom: "",
           buyPrice: "",
           stock: "",
           status: "",
@@ -169,7 +170,7 @@ export default function AddProduct({ fetchProducts }) {
           </SheetHeader>
           <form onSubmit={handleSubmit}>
             <div className="grid gap-4 py-4">
-              {/* Product input fields (name, baseUnit, etc.) */}
+              {/* Product input fields (name, uom, etc.) */}
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="name" className="text-right">
                   Name
@@ -183,14 +184,14 @@ export default function AddProduct({ fetchProducts }) {
                 />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="baseUnit" className="text-right">
+                <Label htmlFor="uom" className="text-right">
                   Base Unit
                 </Label>
                 <Select
-                  name="baseUnit"
-                  value={newProduct.baseUnit}
+                  name="uom"
+                  value={newProduct.uom}
                   onValueChange={(value) =>
-                    setNewProduct((prev) => ({ ...prev, baseUnit: value }))
+                    setNewProduct((prev) => ({ ...prev, uom: value }))
                   }
                 >
                   <SelectTrigger className="col-span-3">

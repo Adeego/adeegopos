@@ -16,19 +16,22 @@ export default function RecordExpense({ fetchExpenses }) {
     amount: '',
     date: '',
     account: '',
+    accountId: '',
     expenseType: '',
+    expenseTypeId: ''
   });
   const [accounts, setAccounts] = useState([])
+  const [expenseType, setExpenseTypes] = useState([])
   const [storeNo, setStoreNo] = useState("")
   const store = useWsinfoStore((state) => state.wsinfo);
 
-  const expenseTypes = [
-    'Rent and Utilities', 
-    'Salaries and Wages', 
-    'Transport and Fuel', 
-    'Maintenace and Repairs', 
-    'Other Expense'
-  ];
+  // const expenseTypes = [
+  //   'Rent and Utilities', 
+  //   'Salaries and Wages', 
+  //   'Transport and Fuel', 
+  //   'Maintenace and Repairs', 
+  //   'Other Expense'
+  // ];
 
   useEffect(() => {
     const storeNo = store.storeNo;
@@ -36,6 +39,7 @@ export default function RecordExpense({ fetchExpenses }) {
       setStoreNo(storeNo)
     }
     fetchAccounts();
+    fetchExpenseTypes();
   }, [store.storeNo]);
 
   const handleInputChange = (e) => {
@@ -53,10 +57,22 @@ export default function RecordExpense({ fetchExpenses }) {
     }));
   };
 
+  const fetchExpenseTypes = async () => {
+    try {
+      const result = await window.electronAPI.realmOperation('getAllExpenseTypes')
+      if (result.success) {
+        setExpenseTypes(result.expenseTypes)
+      }
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
   const fetchAccounts = async () => {
     try {
       const result = await window.electronAPI.realmOperation('getAllAccounts');
       if (result.success) {
+        console.log(result.accounts)
         setAccounts(result.accounts || []); // Ensure accounts is always an array
       } else {
         setAccounts([]); // Set empty array if request fails
@@ -82,18 +98,21 @@ export default function RecordExpense({ fetchExpenses }) {
       console.log(expenseData);
       const result = await window.electronAPI.realmOperation('createExpense', expenseData);
       if (result.success) {
+        console.log(result);
         toast({
           title: "Success",
           description: "Expense recorded successfully!",
         });
         fetchExpenses();
         setNewExpense({
-          _id: uuidv4(),
+          _id: '',
           description: '',
           amount: '',
           date: '',
           account: '',
+          accountId: '',
           expenseType: '',
+          expenseTypeId: ''
         });
       } else {
         throw new Error(result.error);
@@ -169,14 +188,18 @@ export default function RecordExpense({ fetchExpenses }) {
               <Select 
                 name="account"
                 value={newExpense.account} 
-                onValueChange={(value) => handleSelectChange('account', value)}
+                onValueChange={(value) => {
+                  const selectedAccount = accounts.find(a => a.name === value);
+                  handleSelectChange('account', selectedAccount.name);
+                  handleSelectChange('accountId', selectedAccount._id)
+                }}
               >
                 <SelectTrigger className="col-span-3">
                   <SelectValue placeholder="Select an account" />
                 </SelectTrigger>
                 <SelectContent>
                   {accounts.map((account) => (
-                    <SelectItem key={account._id} value={account._id}>
+                    <SelectItem key={account._id} value={account.name}>
                       {account.name}
                     </SelectItem>
                   ))}
@@ -190,15 +213,19 @@ export default function RecordExpense({ fetchExpenses }) {
               <Select 
                 name="expenseType"
                 value={newExpense.expenseType} 
-                onValueChange={(value) => handleSelectChange('expenseType', value)}
+                onValueChange={(value) => {
+                  const selectedType = expenseType.find(t => t.name === value);
+                  handleSelectChange('expenseType', selectedType.name);
+                  handleSelectChange('expenseTypeId', selectedType._id);
+                }}
               >
                 <SelectTrigger className="col-span-3">
                   <SelectValue placeholder="Select expense type" />
                 </SelectTrigger>
                 <SelectContent>
-                  {expenseTypes.map((type) => (
-                    <SelectItem key={type} value={type}>
-                      {type}
+                  {expenseType.map((type) => (
+                    <SelectItem key={type._id} value={type.name}>
+                      {type.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
