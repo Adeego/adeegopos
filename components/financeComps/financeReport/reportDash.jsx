@@ -75,7 +75,7 @@ export default function ReportDash() {
 
   const fetchBalanceSheet = async () => {
     try {
-      const result = await window.electronAPI.realmOperation('getBalanceSheet', fromDate, toDate);
+      const result = await window.electronAPI.realmOperation('getBalanceSheet', toDate);
       if (result.success) {
         setBalanceSheet(result.data);
         setBsAssets(result.data.assets.totalAssets)

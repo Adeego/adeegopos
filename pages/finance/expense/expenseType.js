@@ -352,7 +352,7 @@ export default function ExpenseType() {
                       <AlertDialogHeader>
                         <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
                         <AlertDialogDescription>
-                          This will permanently delete the expense type "{type.name}".
+                          This will permanently delete the expense type {type.name}.
                           This action cannot be undone.
                         </AlertDialogDescription>
                       </AlertDialogHeader>

@@ -46,6 +46,8 @@ export default function BalanceSheet({balanceSheetData}) {
     }
   };
 
+  console.log(balanceSheetData);
+
   return (
     <Dialog>
       <DialogTrigger asChild>
@@ -88,7 +90,7 @@ export default function BalanceSheet({balanceSheetData}) {
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">KES {data.equity.totalEquity.toLocaleString()}</div>
-                  <p className="text-xs text-muted-foreground">Owner's Investment</p>
+                  <p className="text-xs text-muted-foreground">Owner Investment</p>
                 </CardContent>
               </Card>
             </div>
@@ -218,7 +220,7 @@ export default function BalanceSheet({balanceSheetData}) {
                   <TableCell className="text-right"></TableCell>
                 </TableRow>
                 <TableRow>
-                  <TableCell>Owner's Capital</TableCell>
+                  <TableCell>Owner Capital</TableCell>
                   <TableCell className="text-right">{data.equity.ownerCapital.toLocaleString()}</TableCell>
                   <TableCell className="text-right">{((data.equity.ownerCapital / data.assets.totalAssets) * 100).toFixed(1)}%</TableCell>
                 </TableRow>

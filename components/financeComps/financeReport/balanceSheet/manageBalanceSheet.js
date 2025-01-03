@@ -278,7 +278,7 @@ export default function ManageBalanceSheet({ fetchBalanceSheets, initialData = n
             <h3 className="text-lg font-semibold mb-2">Equity</h3>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <Label>Owner's Capital</Label>
+                <Label>Owner Capital</Label>
                 <Input 
                   type="number" 
                   value={balanceSheetData.equity.ownerCapital}

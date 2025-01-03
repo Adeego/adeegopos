@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from '@/components/ui/input'
 import { ArrowRight, FileText } from 'lucide-react'
 
-export default function filteredStatements({ statements }) {
+export default function FilteredStatements({ statements }) {
     const [isOpen, onOpenChange] = useState(false)
 
     // Calculate summary

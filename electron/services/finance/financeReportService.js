@@ -12,7 +12,8 @@ function incomeStatement(db, fromDate, toDate) {
       },
       type: "sale",
       state: "Active"
-    }
+    },
+    limit: 10000
   });
 
   const expensesPromise = db.find({
@@ -40,6 +41,8 @@ function incomeStatement(db, fromDate, toDate) {
       let creditSales = 0;
       let totalCOGS = 0;
 
+      console.log(salesResult.docs)
+
       salesResult.docs.forEach(sale => {
         const totalAmount = Number(sale.totalAmount) || 0;
         
@@ -47,7 +50,7 @@ function incomeStatement(db, fromDate, toDate) {
           case 'CASH':
             cashSales += totalAmount;
             break;
-          case 'MPESA': 
+          case 'MPESA':
             mpesaSales += totalAmount;
             break;
           case 'CREDIT':
@@ -144,10 +147,19 @@ function getAccountStatement(db, fromDate, toDate) {
 
 function getBalanceSheet(db, toDate) {
   const to = new Date(toDate);
-  to.setHours(23, 59, 59, 999);
   const balanceSheetEntriesPromise = db.find({
       selector: {
         type: { $in: ["asset", "liability", "equity"] },
+      state: "Active",
+      createdAt: {
+        $lte: to.toISOString()
+      }
+    }
+  });
+
+  const invoicesPromise = db.find({
+    selector: {
+      type: "invoice",
       state: "Active",
       createdAt: {
         $lte: to.toISOString()
@@ -168,16 +180,6 @@ function getBalanceSheet(db, toDate) {
   const customersPromise = db.find({
     selector: {
       type: "customer",
-      state: "Active",
-      createdAt: {
-        $lte: to.toISOString()
-      }
-    }
-  });
-
-  const invoicesPromise = db.find({
-    selector: {
-      type: "invoice",
       state: "Active",
       createdAt: {
         $lte: to.toISOString()
@@ -224,6 +226,8 @@ function getBalanceSheet(db, toDate) {
       productsResult,
       prepaidExpensesResult
     ]) => {
+      console.log(invoicesResult.docs);
+
       const balanceSheet = {
         assets: {
           cashAndBankBalances: 0,
@@ -270,6 +274,7 @@ function getBalanceSheet(db, toDate) {
           return sum + Math.abs(Number(customer.balance) || 0);
         }, 0);
 
+      // Calculate accounts payable from unpaid invoices
       const accountsPayableTotal = invoicesResult.docs
         .reduce((sum, invoice) => {
           return sum + (Number(invoice.totalAmount) || 0);
@@ -277,7 +282,7 @@ function getBalanceSheet(db, toDate) {
 
       balanceSheet.assets.accountsReceivable += Number(negativeCustomerBalancesTotal.toFixed(2));
 
-      balanceSheet.liabilities.accountsPayable += Number(accountsPayableTotal.toFixed(2));
+      balanceSheet.liabilities.accountsPayable = Number(accountsPayableTotal.toFixed(2));
 
       const accountBalances = accountsResult.docs.reduce((sum, account) => {
         return sum + (Number(account.balance) || 0);
@@ -328,7 +333,7 @@ function getBalanceSheet(db, toDate) {
           case 'Retained Earnings':
             balanceSheet.equity.retainedEarnings += amount;
             break;
-}
+        }
       });
 
       balanceSheet.assets.totalCurrentAssets = Number((

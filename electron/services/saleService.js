@@ -130,33 +130,31 @@ function createSale(db, saleData) {
 
       // Chain all necessary updates
       return updateCustomerBalance()
-        .then(() => UpdateAccountBalance()) // Added UpdateAccountBalance here
+        .then(() => UpdateAccountBalance())
         .then(() => {
           // Update stock if it's a new sale or return
           if (saleData.saleType === 'NEW SALE' || saleData.saleType === 'RETURN SALE') {
             return updateStock(saleData.saleType, saleData.items)
               .then(() => {
-                // Print receipt after successful updates
-        return printReceipt(createdSale)
-          .then(() => ({ success: true, sale: createdSale }))
-          .catch(error => {
-            console.error('Receipt printing failed:', error);
-            return { success: true, sale: createdSale, receiptError: error.message };
-          });
-        })
+                // Attempt to print receipt but don't wait for it
+                printReceipt(createdSale).catch(error => {
+                    console.error('Receipt printing failed:', error);
+                  });
+                // Return success regardless of printer status
+                return { success: true, sale: createdSale };
+              })
               .catch(error => {
                 console.error('Error updating stock:', error);
                 return { success: true, sale: createdSale, stockUpdateError: error.message };
               });
           } else {
-            // If no stock update is needed, just print the receipt
-            return printReceipt(createdSale)
-              .then(() => ({ success: true, sale: createdSale }))
-              .catch(error => {
+            // If no stock update is needed, attempt to print but don't wait
+            printReceipt(createdSale).catch(error => {
                 console.error('Receipt printing failed:', error);
-                return { success: true, sale: createdSale, receiptError: error.message };
               });
-}
+            // Return success regardless of printer status
+            return { success: true, sale: createdSale };
+          }
         })
         .catch(error => {
           console.error('Error processing sale:', error);
