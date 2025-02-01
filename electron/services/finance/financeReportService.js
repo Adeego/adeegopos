@@ -13,7 +13,7 @@ function incomeStatement(db, fromDate, toDate) {
       type: "sale",
       state: "Active"
     },
-    limit: 10000
+    limit: 100000
   });
 
   const expensesPromise = db.find({
@@ -487,7 +487,8 @@ function getTrialBalance(db, fromDate, toDate) {
       },
       type: "sale",
       state: "Active"
-    }
+    },
+    limit: 100000
   });
 
   const expensesPromise = db.find({
@@ -498,42 +499,48 @@ function getTrialBalance(db, fromDate, toDate) {
       },
       type: "expense",
       state: "Active"
-    }
+    },
+    limit: 100000
   });
 
   const expenseTypesPromise = db.find({
     selector: {
       type: "expenseType",
       state: "Active"
-    }
+    },
+    limit: 100000
   });
 
   const accountsPromise = db.find({
     selector: {
       type: "account",
       state: "Active"
-    }
+    },
+    limit: 100000
   });
 
   const customersPromise = db.find({
     selector: {
       type: "customer",
       state: "Active"
-    }
+    },
+    limit: 100000
   });
 
   const productsPromise = db.find({
     selector: {
       type: "product",
       state: "Active"
-    }
+    },
+    limit: 100000
   });
 
   const balanceSheetEntriesPromise = db.find({
     selector: {
       type: { $in: ["asset", "liability", "equity"] },
       state: "Active"
-    }
+    },
+    limit: 100000
   });
 
   const invoicesPromise = db.find({
@@ -544,7 +551,8 @@ function getTrialBalance(db, fromDate, toDate) {
         $gte: from.toISOString(),
         $lte: to.toISOString()
       }
-    }
+    },
+    limit: 100000
   });
 
   return Promise.all([
@@ -610,7 +618,7 @@ function getTrialBalance(db, fromDate, toDate) {
       const inventoryValue = productsResult.docs.reduce((sum, product) => {
         const variant = product.variants.find(v => v.conversionFactor === 1);
         return variant ? 
-          sum + ((Number(product.stock) || 0) * (Number(variant.unitPrice) || 0)) : 
+          sum + ((Number(product.stock)) * (Number(variant.unitPrice))) : 
           sum;
       }, 0);
       addToTrialBalance('1140', 'Inventory', inventoryValue, 0);

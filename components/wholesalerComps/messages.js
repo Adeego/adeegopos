@@ -17,7 +17,25 @@ export function MessageDialog() {
   const { toast } = useToast();
 
   useEffect(() => {
+    let unsubscribe;
+
     fetchAllMessages();
+    
+    if (typeof window !== "undefined" && window.electronAPI) {
+      // Subscribe to message creation events
+      unsubscribe = window.electronAPI.onMessageCreated(() => {
+        console.log("sms event triggered")
+        fetchAllMessages();
+        const audio = new Audio('/assets/alertSound/alert.wav');
+        audio.play().catch(error => console.error('Error playing sound:', error));
+      });
+    }
+    
+
+    // Cleanup subscription on component unmount
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
   }, [])
 
   const fetchAllMessages = async () => {

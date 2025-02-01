@@ -1,7 +1,7 @@
 const { printReceipt } = require('./printerService');
 
 // Create a sale
-function createSale(db, saleData) {
+function createSale(db, saleData, mainWindow) {
   const sale = {
     _id: saleData._id,
     type: 'sale',
@@ -46,14 +46,27 @@ function createSale(db, saleData) {
             stockChange = (item.conversionFactor * item.quantity);
           }
           const updatedStock = product.stock + stockChange;
+          
+          // Only set restock to true if:
+          // 1. It's a new sale
+          // 2. Updated stock is below threshold
+          // 3. Current stock was NOT already below threshold
+          const wasAboveThreshold = product.stock >= product.restockThreshold;
+          const isNowBelowThreshold = updatedStock < product.restockThreshold;
+          const shouldTriggerRestock = saleType === 'NEW SALE' && 
+                                     wasAboveThreshold && 
+                                     isNowBelowThreshold;
+          
           const updatedProduct = { 
             ...product, 
             stock: updatedStock,
-            // Check if it's a new sale and stock is below threshold
-            restock: saleType === 'NEW SALE' && updatedStock < product.restockThreshold 
-              ? (product.restock || true)  // Set to true if not already set
-              : product.restock  // Keep existing restock status
+            restock: shouldTriggerRestock || product.restock
           };
+          
+          // If restock is triggered, send an event
+          if (shouldTriggerRestock && mainWindow && mainWindow.webContents) {
+            mainWindow.webContents.send('restock-triggered', updatedProduct);
+          }
           
           return db.put(updatedProduct);
         });
@@ -72,10 +85,10 @@ function createSale(db, saleData) {
           };
           return db.put(updatedCustomer);
         })
-              .catch(error => {
+        .catch(error => {
           console.error('Error updating customer balance:', error);
           throw error;
-              });
+        });
     }
     return Promise.resolve();
   };
@@ -95,7 +108,7 @@ function createSale(db, saleData) {
       // If no matching account found, resolve without changes
       if (filteredAccounts.length === 0) {
         return Promise.resolve();
-    }
+      }
       
       // Get the first (and should be only) matching account
       const matchingAccount = filteredAccounts[0];
@@ -163,7 +176,7 @@ function createSale(db, saleData) {
     })
     .catch(error => ({ success: false, error: error.message }));
 }
-                                                                     
+
 // Query all products in a specific sale                             
 function getSaleProducts(db, saleId) {                               
   return db.get(saleId)                                              
@@ -351,7 +364,7 @@ function getTotalSalesRevenueAndProfit(db, startDate, endDate) {
       };                                                             
     })                                                               
     .catch(error => {                                                
-      console.error('Error getting total sales, revenue, and profit: error');                                                              
+      console.error('Error getting total sales, revenue, and profit:', error);                                                              
       return { success: false, error: error.message };               
     });                                                              
 }                                                                    

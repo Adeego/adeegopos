@@ -15,6 +15,7 @@ const reportService = require('./services/reportService')
 const stock = require('./services/stockManagement')
 const message = require('./services/messageService')
 const expenseType = require('./services/finance/expenseTypeService')
+const aiAnalysis = require('./services/aiAnalysisService')
 
 function getSyncStatus(db) {
   return db.info()
@@ -35,7 +36,7 @@ function checkNetworkConnection() {
   });
 }
 
-function setupIpcHandlers(ipcMain, db) {
+function setupIpcHandlers(ipcMain, db, mainWindow) {
   ipcMain.handle('get-online-status', async () => {
     return checkNetworkConnection();
   });
@@ -69,10 +70,20 @@ function setupIpcHandlers(ipcMain, db) {
       case 'restockCheckup':
         return stock.getProductsToRestock(db);
       case 'calculateRestock':
-        return stock.calculateRestock(db, args[0]);
+        return stock.calculateRestock(db, args[0], mainWindow);
       default:
         throw new Error(`Unknown restock task: ${task}`);
     }  
+  });
+
+  ipcMain.on('aiAnalysis-start', (event, metrics) => {
+    aiAnalysis.aiAnalysis(event, metrics)
+      .then(() => {
+        event.reply('aiAnalysis-data', { done: true });
+      })
+      .catch(error => {
+        event.reply('aiAnalysis-error', error);
+      });
   });
 
   ipcMain.handle('message', async(event, sms, ...args) => {
@@ -123,7 +134,7 @@ function setupIpcHandlers(ipcMain, db) {
       case 'restockProducts':
         return productService.restockProducts(db, args[0]);
       case 'createSale':
-        return saleService.createSale(db, ...args);
+        return saleService.createSale(db, args[0], mainWindow);
       case 'archiveSale':
         return saleService.archiveSale(db, args[0]);
       case 'createSupplier':

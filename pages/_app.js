@@ -12,6 +12,8 @@ import { Button } from "@/components/ui/button"
 import ProfileDialog from "@/components/staff/profileDialog";
 import { MessageDialog } from "@/components/wholesalerComps/messages";
 import { manageRestock } from "@/components/stockManagement/stockManager";
+import Image from 'next/image';
+import posLogo from '@/assets/pos.png';
 
 export default function App({ Component, pageProps }) {
   const staff = useStaffStore((state) => state.staff);
@@ -33,12 +35,30 @@ export default function App({ Component, pageProps }) {
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
   });
+  const [isSubscriptionValid, setIsSubscriptionValid] = useState(true);
 
   useEffect(() => {
-    if (staff.role === ("Admin" || "Operator")) {
+    let removeListener;
+
+    if ((staff.role === "Admin" || staff.role === "Operator") && isStaffLoaded) {
       manageRestock();
       // console.log(restockData);
     }
+    
+    if (typeof window !== "undefined" && window.electronAPI) {
+      removeListener = window.electronAPI.onRestockTriggered((productData) => {
+        if ((staff.role === "Admin" || staff.role === "Operator")) {
+          console.log('Restock triggered for product:', productData);
+          manageRestock();
+        }
+      });
+    }
+
+    return () => {
+      if (removeListener) {
+        removeListener();
+      }
+    };
   }, [staff, isStaffLoaded])
 
   useEffect(() => {
@@ -87,13 +107,16 @@ export default function App({ Component, pageProps }) {
       const publicPaths = ['/auth/login', '/auth/wsSignin', '/auth/register'];
       const isPublicPath = publicPaths.includes(router.pathname);
 
+      // Ensure splash screen is shown for at least 2 seconds
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
       // First, check workspace signin
       if (wsinfo._id === null && router.pathname !== "/auth/wsSignin") {
         await router.replace("/auth/wsSignin");
         return;
       }
 
-      // If workspace is signed in, handle staff authentication
+    // If workspace is signed in, handle staff authentication and subscription
       if (wsinfo._id !== null) {
         // If not on a public path and no staff is logged in, redirect to login
         if (staff._id === null && !isPublicPath) {
@@ -101,12 +124,12 @@ export default function App({ Component, pageProps }) {
           return;
         }
 
-        // If staff is logged in and trying to access login/wsSignin, redirect to home
+        // If staff is logged in and trying to access public paths, redirect to home
         if (staff._id !== null && isPublicPath) {
           await router.replace("/");
           return;
-        }
       }
+    }
 
       setIsLoading(false);
     };
@@ -168,13 +191,27 @@ export default function App({ Component, pageProps }) {
     }
   }
 
-  if (!isStaffLoaded || !isWsinfoLoaded || isLoading) {
-    return <div>Loading...</div>; // You can replace this with a proper loading component
-  }
+  const SplashScreen = () => {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-white">
+      <Image 
+        src={posLogo} 
+        alt="POS Logo" 
+        width={200} 
+        height={200} 
+        className="animate-pulse rounded-3xl"
+      />
+    </div>
+  );
+};
+
+if (!isStaffLoaded || !isWsinfoLoaded || isLoading) {
+  return <SplashScreen />; 
+}
 
   return (
     <div className="flex">
-      {wsinfo._id && staff._id && <Sidebar />}
+      {wsinfo._id && staff._id && isSubscriptionValid && <Sidebar />}
       <div className="p-4 flex-1 bg-muted/50">
         {
           wsinfo._id && staff._id && 

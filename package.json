@@ -1,7 +1,7 @@
 {
   "name": "claude",
   "description": "POS App",
-  "version": "0.2.9",
+  "version": "0.4.4",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
@@ -16,6 +16,7 @@
     "electron-builder": "electron-builder",
     "pack": "next build && electron-builder",
     "dist": "next build && electron-builder",
+    "dist:lin": "dotenv -e .env -- next build && dotenv -e .env -- electron-builder",
     "publish": "dotenv -e .env -- next build && electron-builder --publish always",
     "pack:publish": "dotenv -e .env -- next build && dotenv -e .env -- electron-builder --publish always"
   },
@@ -50,16 +51,22 @@
         "owner": "Adeego"
       }
     ],
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "CLAUDE",
-      "uninstallDisplayName": "Uninstall CLAUDE",
-      "artifactName": "${productName}-Setup-${version}.${ext}",
-      "deleteAppDataOnUninstall": true
+  "extraResources": [
+    {
+      "from": ".env",
+      "to": ".env"
     }
+  ],
+  "nsis": {
+    "oneClick": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "CLAUDE",
+    "uninstallDisplayName": "Uninstall CLAUDE",
+    "artifactName": "${productName}-Setup-${version}.${ext}",
+    "deleteAppDataOnUninstall": true
+  }
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
@@ -89,6 +96,7 @@
     "clsx": "^2.1.1",
     "cmdk": "^1.0.0",
     "date-fns": "^3.6.0",
+    "dotenv": "^16.4.7",
     "electron-log": "^5.2.0",
     "electron-serve": "^2.0.0",
     "electron-updater": "^6.1.8",

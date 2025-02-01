@@ -33,6 +33,31 @@ export default function Dashboard() {
     setYesterdayCashflow(YesterdayGrossCashflow);
   }, [salesData, expense, transaction])
 
+  const [metrics, setMetrics] = useState({
+    revenue: 0,
+    numberOfSales: 0,
+    profit: 0,
+    expense: 0,
+    customerCredit: 0,
+    customerCredits: 0,
+    supplierPayments: 0,
+    cashflow: 0
+  });
+
+  useEffect(() => {
+    const updatedMetrics = {
+      revenue: salesData.revenue || 0,
+      numberOfSales: salesData.numberOfSales || 0,
+      profit: salesData.profit || 0,
+      expense: expense || 0,
+      customerCredit: salesData.customerCredit || 0,
+      customerCredits: transaction.customerCredits || 0,
+      supplierPayments: transaction.supplierPayments || 0,
+      cashflow: cashflow || 0
+    };
+    setMetrics(updatedMetrics);
+  }, [salesData, expense, transaction, cashflow])
+
   // Helper function to calculate percentage change
   const calculatePercentageChange = (today, yesterday) => {
     if (yesterday === 0 || yesterday === undefined) return 0;

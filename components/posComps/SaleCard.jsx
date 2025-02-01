@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import useWsinfoStore from '@/stores/wsinfo';
 import useStaffStore from '@/stores/staffStore';
+import useDraftSalesStore from '@/stores/draftSales';
 import SelectedProductsTable from './SelectedProductsTable';
 import ProductSearch from './ProductSearch';
 import Draft from './sale/draft';
@@ -57,6 +58,7 @@ function SaleCard() {
   const [discount, setDiscount] = useState(0)
   const store = useWsinfoStore((state) => state.wsinfo);
   const staff = useStaffStore((state) => state.staff)
+  const addDraft = useDraftSalesStore(state => state.addDraft);
 
   useEffect(() => {
     const handleKeyPress = (event) => {
@@ -331,13 +333,37 @@ function SaleCard() {
   }, []);
 
   const handleLoadDraft = useCallback((draft) => {
+    // Check if there's an unfinished sale
+    if (selectedProducts.length > 0) {
+      // Save current sale as draft
+      const currentDraft = {
+        id: uuidv4(),
+        selectedProducts,
+        customer,
+        paymentMethod,
+        saleType,
+        fulfillmentType,
+        note,
+        totalAmount,
+        servedBy
+      };
+
+      addDraft(currentDraft);
+      
+      toast({
+        title: "Draft Saved",
+        description: "Current sale has been saved as a draft"
+      });
+    }
+
+    // Load the selected draft
     setSelectedProducts(draft.selectedProducts);
     setCustomer(draft.customer);
     setPaymentMethod(draft.paymentMethod);
     setSaleType(draft.saleType);
     setFulfillmentType(draft.fulfillmentType);
     setNote(draft.note);
-  }, []);
+  }, [selectedProducts, customer, paymentMethod, saleType, fulfillmentType, note, totalAmount]);
 
   const handleCreateSale = async () => {
     if (!validateSale()) {

@@ -14,6 +14,7 @@ import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import SalesHistory from '../pos/salesHistory'
 import Link from 'next/link'
+import AiAnalysis from '@/components/dashboardComps/aiAnalysis'
 
 export default function Report() {
   const [salesData, setSalesData] = useState([])
@@ -120,6 +121,74 @@ export default function Report() {
     }
   };
 
+  // Group data before return statement
+  const groupedData = {
+    currentPeriod: {
+      sales: {
+        revenue: salesData.revenue,
+        numberOfSales: salesData.numberOfSales,
+        profit: salesData.profit,
+        customerCredit: salesData.customerCredit
+      },
+      expenses: {
+        total: expense
+      },
+      transactions: {
+        customerCredits: transaction.customerCredits,
+        supplierPayments: transaction.supplierPayments
+      },
+      cashflow: cashflow
+    },
+    previousPeriod: {
+      sales: {
+        revenue: yesterdaySalesData.revenue,
+        numberOfSales: yesterdaySalesData.numberOfSales,
+        profit: yesterdaySalesData.profit,
+        customerCredit: yesterdaySalesData.customerCredit
+      },
+      expenses: {
+        total: yesterdayExpense
+      },
+      transactions: {
+        customerCredits: yesterdayTransaction.customerCredits,
+        supplierPayments: yesterdayTransaction.supplierPayments
+      },
+      cashflow: yesterdayCashflow
+    },
+    trends: {
+      sales: {
+        revenue: determineTrend(salesData.revenue, yesterdaySalesData.revenue),
+        numberOfSales: determineTrend(salesData.numberOfSales, yesterdaySalesData.numberOfSales),
+        profit: determineTrend(salesData.profit, yesterdaySalesData.profit)
+      },
+      expenses: {
+        total: determineTrend(expense, yesterdayExpense)
+      },
+      transactions: {
+        customerCredits: determineTrend(transaction.customerCredits, yesterdayTransaction.customerCredits),
+        supplierPayments: determineTrend(transaction.supplierPayments, yesterdayTransaction.supplierPayments)
+      },
+      cashflow: determineTrend(cashflow, yesterdayCashflow)
+    },
+    percentageChanges: {
+      sales: {
+        revenue: calculatePercentageChange(salesData.revenue, yesterdaySalesData.revenue),
+        numberOfSales: calculatePercentageChange(salesData.numberOfSales, yesterdaySalesData.numberOfSales),
+        profit: calculatePercentageChange(salesData.profit, yesterdaySalesData.profit)
+      },
+      expenses: {
+        total: calculatePercentageChange(expense, yesterdayExpense)
+      },
+      transactions: {
+        customerCredits: calculatePercentageChange(transaction.customerCredits, yesterdayTransaction.customerCredits),
+        supplierPayments: calculatePercentageChange(transaction.supplierPayments, yesterdayTransaction.supplierPayments)
+      },
+      cashflow: calculatePercentageChange(cashflow, yesterdayCashflow)
+    }
+  };
+
+  console.log(groupedData);
+
   return (
     <Card >
       <CardHeader >
@@ -129,6 +198,7 @@ export default function Report() {
             <CardDescription >Check how the store has been performing within a specific time</CardDescription>
           </div>
           <div className=" space-x-2">
+            <AiAnalysis metrics={groupedData} />
             <Button >
               <Link href={'/pos/salesHistory'} >Sales History</Link>
             </Button>

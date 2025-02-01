@@ -9,11 +9,11 @@ import ReportDash from '@/components/financeComps/financeReport/reportDash'
 export default function Finance() {
   return (
     <Tabs defaultValue="accounts" className="w-full">
-      <TabsList className="grid w-full grid-cols-2 md:grid-cols-5">
+      <TabsList className="grid w-full grid-cols-2 md:grid-cols-4">
         <TabsTrigger value="accounts">ACCOUNTS</TabsTrigger>
         <TabsTrigger value="transaction">TRANSACTION</TabsTrigger>
         <TabsTrigger value="expense">EXPENSE</TabsTrigger>
-        <TabsTrigger value="journal">JOURNAL</TabsTrigger>
+        {/* <TabsTrigger value="journal">JOURNAL</TabsTrigger> */}
         <TabsTrigger value="report">REPORT</TabsTrigger>
       </TabsList>
       <TabsContent value="accounts">
@@ -25,7 +25,7 @@ export default function Finance() {
       <TabsContent value="transaction">
         <TransactionTable />
       </TabsContent>
-      <TabsContent value="journal">
+      {/* <TabsContent value="journal">
         <Card>
           <CardHeader>
             <CardTitle>Journal</CardTitle>
@@ -35,7 +35,7 @@ export default function Finance() {
             <p>Journal entries content goes here.</p>
           </CardContent>
         </Card>
-      </TabsContent>
+      </TabsContent> */}
       <TabsContent value="report">
         <ReportDash/>
       </TabsContent>

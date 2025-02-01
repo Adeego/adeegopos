@@ -1,8 +1,10 @@
 import React, { useState } from "react";
+import Image from 'next/image';
 import Link from "next/link";
 import { usePathname } from 'next/navigation'
 import WsDropdownMenu from "./wholesalerComps/wsDropdownMenu";
 import useStaffStore from "../stores/staffStore";
+import posLogo from '@/assets/pos.png';
 
 // Icons
 import {
@@ -109,11 +111,17 @@ const Sidebar = () => {
         >
           <div className="flex flex-col w-full">
             <div className="h-14 flex items-center justify-center lg:justify-start border-b w-full lg:p-3 lg:flex gap-2">
-              <div className="rounded-[0.3rem] overflow-hidden h-9 aspect-square shrink-0">
-                {/* Add your logo here */}
+              <div className="rounded-[0.5rem] overflow-hidden h-9 aspect-square shrink-0">
+                <Image 
+                  src={posLogo}
+                  alt="Adeego POS Logo" 
+                  width={36} 
+                  height={36} 
+                  className="object-cover"
+                />
               </div>
               {isSideBarEnlarged && (
-                <p className="font-bold text-emerald-600 hidden lg:block">Adeego</p>
+                <p className="font-bold text-lg text-[#0D1B2C] hidden lg:block">ADEEGO POS</p>
               )}
             </div>
             <div className={`w-full hidden lg:flex md:flex ${

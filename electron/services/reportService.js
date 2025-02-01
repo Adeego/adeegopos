@@ -55,7 +55,8 @@ function getSalesMetricsReport(db, fromDate, toDate) {
       },
       type: "sale",
       state: "Active"
-    }
+    },
+    limit: 100000
   });
 
   // Promise for previous period's data
@@ -67,7 +68,8 @@ function getSalesMetricsReport(db, fromDate, toDate) {
       },
       type: "sale",
       state: "Active"
-    }
+    },
+    limit: 100000
   });
 
   // Execute both promises concurrently
@@ -109,7 +111,8 @@ function getExpensesReport(db, fromDate, toDate) {
       },
       type: "expense",
       state: "Active"
-    }
+    },
+    limit: 100000
   });
 
   // Promise for previous period's expenses
@@ -121,7 +124,8 @@ function getExpensesReport(db, fromDate, toDate) {
       },
       type: "expense",
       state: "Active"
-    }
+    },
+    limit: 100000
   });
 
   // Calculate total expenses from documents
@@ -167,7 +171,8 @@ function getDailySalesReport(db, fromDate, toDate) {
       },
       type: "sale",
       state: "Active"
-    }
+    },
+    limit: 100000
   }).then(result => {
     // Initialize daily sales data
     const dailyData = [];
@@ -222,7 +227,8 @@ function getTransactionMetricsReport(db, fromDate, toDate) {
       },
       type: "transaction", 
       state: "Active"
-    }
+    },
+    limit: 100000
   });
 
   // Promise for previous period's transactions
@@ -234,7 +240,8 @@ function getTransactionMetricsReport(db, fromDate, toDate) {
       },
       type: "transaction",
       state: "Active"
-    }
+    },
+    limit: 100000
   });
 
   // Function to calculate transaction metrics from documents

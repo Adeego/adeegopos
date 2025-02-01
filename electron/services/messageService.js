@@ -1,5 +1,5 @@
 // Create a new message
-function createMessage(db, messageData) {
+function createMessage(db, messageData, mainWindow) {
   const message = {
     _id: messageData._id,
     sender: messageData.sender,
@@ -18,7 +18,13 @@ function createMessage(db, messageData) {
       success: true,
       message: { _id: response.id, ...message },
     }))
-    .catch((error) => ({ success: false, error: error.message }));
+    .catch((error) => ({ success: false, error: error.message }))
+    .then((result) => {
+      if (result.success && mainWindow) {
+        mainWindow.webContents.send('message-created');
+      }
+      return result;
+    });
 }
 
 // Get all messages

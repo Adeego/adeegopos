@@ -1,6 +1,13 @@
-require('dotenv').config(); // Load environment variables
 const { app, BrowserWindow, protocol, ipcMain, net, dialog } = require("electron");
 const path = require("path");
+const dotenv = require('dotenv');
+
+// Load environment variables
+if (app.isPackaged) {
+  dotenv.config({ path: path.join(process.resourcesPath, '.env') });
+} else {
+  dotenv.config();
+}
 const { openPouchDB } = require("./pouchSync");
 const setupIpcHandlers = require("./ipcHandlers");
 const { autoUpdater } = require("electron-updater");
@@ -190,7 +197,7 @@ app.on("ready", async () => {
     pouch = openPouchDB();
     console.log("PouchDB opened successfully");
 
-    setupIpcHandlers(ipcMain, pouch);
+    setupIpcHandlers(ipcMain, pouch, mainWindow);
 
     // Connect to printer
     await connectPrinter();

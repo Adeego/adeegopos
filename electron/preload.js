@@ -22,6 +22,27 @@ contextBridge.exposeInMainWorld("electronAPI", {
     searchProducts: (searchTerm) => ipcRenderer.invoke('search-products', searchTerm),
     searchCSS: (searchTerm, type) => ipcRenderer.invoke('search-css', searchTerm, type),
     restock: (task, ...args) => ipcRenderer.invoke('restock', task, ...args),
+    aiAnalysis: (metrics, onData, onComplete, onError) => {
+      const responseHandler = (_event, data) => {
+        if (data.done) {
+          onComplete();
+          ipcRenderer.removeListener('aiAnalysis-data', responseHandler);
+          ipcRenderer.removeListener('aiAnalysis-error', errorHandler);
+        } else {
+          onData(data.chunk);
+        }
+      };
+
+      const errorHandler = (_event, error) => {
+        onError(error);
+        ipcRenderer.removeListener('aiAnalysis-data', responseHandler);
+        ipcRenderer.removeListener('aiAnalysis-error', errorHandler);
+      };
+
+      ipcRenderer.on('aiAnalysis-data', responseHandler);
+      ipcRenderer.on('aiAnalysis-error', errorHandler);
+      ipcRenderer.send('aiAnalysis-start', metrics);
+    },
     message: (sms, ...args) => ipcRenderer.invoke('message', sms, ...args),
     realmOperation: (operation, ...args) => ipcRenderer.invoke('realm-operation', operation, ...args),
     getSyncStatus: () => ipcRenderer.invoke('get-sync-status'),
@@ -30,6 +51,22 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.on('sync-status-changed', subscription);
       return () => {
         ipcRenderer.removeListener('sync-status-changed', subscription);
+      };
+    },
+
+    onMessageCreated: (callback) => {
+      const subscription = (_event, status) => callback(status);
+      ipcRenderer.on('message-created', subscription);
+      return () => {
+        ipcRenderer.removeListener('message-created', subscription);
+      };
+    },
+
+    onRestockTriggered: (callback) => {
+      const subscription = (_event, productData) => callback(productData);
+      ipcRenderer.on('restock-triggered', subscription);
+      return () => {
+        ipcRenderer.removeListener('restock-triggered', subscription);
       };
     },
 

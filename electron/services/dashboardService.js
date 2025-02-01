@@ -54,7 +54,8 @@ function getTodaysSalesMetrics(db) {
       },
       type: "sale",
       state: "Active"
-}
+    },
+    limit: 100000
   });
 
   // Promise for yesterday's data
@@ -66,7 +67,8 @@ function getTodaysSalesMetrics(db) {
       },
       type: "sale",
       state: "Active"
-    }
+    },
+    limit: 100000
   });
 
   // Execute both promises concurrently
@@ -107,7 +109,8 @@ function getTodaysExpenses(db) {
       },
       type: "expense",
       state: "Active"
-    }
+    },
+    limit: 100000
   });
 
   // Promise for yesterday's expenses
@@ -119,7 +122,8 @@ function getTodaysExpenses(db) {
       },
       type: "expense",
       state: "Active"
-    }
+    },
+    limit: 100000
   });
 
   // Calculate total expenses from documents
@@ -164,7 +168,8 @@ function getHourlySalesData(db) {
       },
       type: "sale",
       state: "Active"
-    }
+    },
+    limit: 100000
   }).then(result => {
     // Initialize hourly sales data
     const hourlyData = [];
@@ -225,7 +230,8 @@ function transactionMetrics(db) {
       },
       type: "transaction", 
       state: "Active"
-    }
+    },
+    limit: 100000
   });
 
   // Promise for yesterday's transactions
@@ -237,7 +243,8 @@ function transactionMetrics(db) {
       },
       type: "transaction",
       state: "Active"
-    }
+    },
+    limit: 100000
   });
 
   // Function to calculate transaction metrics from documents

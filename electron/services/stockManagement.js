@@ -39,14 +39,15 @@ const openai = new OpenAI({
 
 // Function to generate a user-friendly restocking message
 async function generateRestockingMessage(productDetails, restockDetails) {
+  console.log(`The restock detail. Check if stock; ${restockDetails.currentStock}`)
   // Validate inputs and API key
   if (!process.env.OPENAI_API_KEY) {
     console.error("OpenAI API key is not set in environment variables");
-    return `Automated restocking recommendation: OpenAI API key is missing.`;
+    return generateDefaultMessage(productDetails, restockDetails);
   }
 
   if (!productDetails || !restockDetails) {
-    return `Automated restocking recommendation: Invalid product or restock details.`;
+    return generateDefaultMessage(productDetails, restockDetails);
   }
 
   try {
@@ -60,34 +61,39 @@ async function generateRestockingMessage(productDetails, restockDetails) {
       messages: [
         {
           role: "system", 
-          content: "You are a helpful inventory management assistant. Let the message be in paragraph form and without a subject. Generate the message in Kiswahili language"
+          content: "You are a helpful inventory management assistant. Let the message be in paragraph form and without a subject."
         },
         {
           role: "user", 
-          content: `Generate a user-friendly restocking recommendation message. 
-          Product Name: ${productDetails.name}
-          Current Stock: ${productDetails.currentStock}
-          Restock Amount: ${restockDetails.restockAmount}
-          Order Date: ${new Date(restockDetails.dates.orderDate).toLocaleDateString()}
-          Restocked Date: ${new Date(restockDetails.dates.restockedDate).toLocaleDateString()}
-          Stock End Date: ${new Date(restockDetails.dates.stockEndDate).toLocaleDateString()}
-          Historical Average Demand: ${restockDetails.metrics.historicalAvgDemand.toFixed(2)}`
+          content: `Generate a user-friendly restocking recommendation message in Somali language.
+          Based on the inventory analysis for ${productDetails.name}, we recommend restocking ${restockDetails.restockAmount} units. The current stock level stands at ${restockDetails.currentStock} units. To maintain optimal inventory levels through ${new Date(restockDetails.dates.stockEndDate).toLocaleDateString()}, please submit your order today for delivery by ${new Date(restockDetails.dates.restockedDate).toLocaleDateString()}. Historical data indicates an average daily demand of ${restockDetails.metrics.historicalAvgDemand.toFixed(2)} units.`
         }
       ],
       max_tokens: 200
     });
 
-    return response.choices[0].message.content || "No recommendation generated.";
+    // If OpenAI returns an empty or invalid response, use default message
+    if (!response?.choices?.[0]?.message?.content) {
+      return generateDefaultMessage(productDetails, restockDetails);
+    }
+    return response.choices[0].message.content;
   } catch (error) {
     console.error("OpenAI API Error:", error.message);
-    // Fallback response in case of API errors
-    return `Automated restocking recommendation for ${productDetails.name}. Restock ${restockDetails.restockAmount} units by ${new Date(restockDetails.dates.restockedDate).toLocaleDateString()}.`;
+    return generateDefaultMessage(productDetails, restockDetails);
   }
 }
 
-async function calculateRestock(db, productIds) {
+// Helper function to generate a default message
+function generateDefaultMessage(productDetails, restockDetails) {
+  if (!productDetails || !restockDetails) {
+    return "Unable to generate restocking recommendation due to missing product details.";
+  }
+
+  return `Based on the inventory analysis for ${productDetails.name}, we recommend restocking ${restockDetails.restockAmount} units. The current stock level stands at ${restockDetails.currentStock} units. To maintain optimal inventory levels through ${new Date(restockDetails.dates.stockEndDate).toLocaleDateString()}, please submit your order today for delivery by ${new Date(restockDetails.dates.restockedDate).toLocaleDateString()}. Historical data indicates an average daily demand of ${restockDetails.metrics.historicalAvgDemand.toFixed(2)} units.`;
+}
+
+async function calculateRestock(db, productIds, mainWindow) {
   // Validate inputs
-  console.log(productIds);
   if (!productIds || !Array.isArray(productIds) || productIds.length === 0) {
     return {
       success: false,
@@ -142,7 +148,8 @@ async function calculateRestock(db, productIds) {
                 'productId': productId
               }
             }
-          }
+          },
+          limit: 150000
         });
 
         const sales = salesResult.docs;
@@ -249,17 +256,22 @@ async function calculateRestock(db, productIds) {
         };
 
         await db.put(messageDoc);
+        
+        // Emit message-created event
+        if (mainWindow) {
+          mainWindow.webContents.send('message-created');
+        }
 
         // Update product with retry mechanism
         retryCount = 0;
         while (retryCount < maxRetries) {
           try {
-            // Get latest version of product
             const currentProduct = await db.get(productId);
             const updatedProduct = {
               ...currentProduct,
-                restockThreshold: Math.ceil(restockQuantity * 0.15),
-              restock: false
+              restockThreshold: Math.ceil(restockQuantity * 0.15),
+              restock: false,  // Clear the restock flag only after message is saved
+              lastRestockMessageDate: new Date().toISOString()  // Add tracking of last message date
             };
             await db.put(updatedProduct);
             break;

@@ -1,7 +1,6 @@
 'use client'
 
-import { useState } from 'react'
-import OpenAI from 'openai'
+import { useEffect, useState } from 'react'
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -15,70 +14,35 @@ import {
 export default function AiAnalysis({ metrics }) {
   const [isOpen, setIsOpen] = useState(false)
   const [analysis, setAnalysis] = useState("")
+  const [streamedAnalysis, setStreamedAnalysis] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
 
-  // This is the structure of metrics data
-  // const metrics = {
-  //   revenue: salesData.revenue,
-  //   numberOfSales: salesData.numberOfSales,
-  //   profit: salesData.profit,
-  //   expense: expense,
-  //   customerCredit: salesData.customerCredit,
-  //   customerCredits: transaction.customerCredits,
-  //   supplierPayments: transaction.supplierPayments,
-  //   cashflow: cashflow
-  // }
+  const performAiAnalysis = async () => {
+    setIsLoading(true);
+    setStreamedAnalysis("");
+    setError("");
 
-  // Initialize OpenAI client
-
-  const generateAnalysis = async () => {
-    setError('')
-    setIsLoading(true)
-    setAnalysis("")
-    setIsOpen(true)
-
-    try {
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "system",
-            content: `You are a retail business analyst. Analyze the provided store data and provide actionable insights. The currency is KES (Kenya shillings).The analysis should be in 200 words not more. The analysis should be in English language`
-          },
-          {
-            role: "user",
-            content: `Analyze these store metrics:
-              Revenue: ${metrics.revenue}
-              Number of Sales: ${metrics.numberOfSales}
-              Profit: ${metrics.profit}
-              Expenses: ${metrics.expense}
-              Customer Credits: ${metrics.customerCredit}
-              Credits Paid: ${metrics.customerCredits}
-              Supplier Payments: ${metrics.supplierPayments}
-              Cashflow: ${metrics.cashflow}`
-          }
-        ],
-        stream: true
-      })
-
-      for await (const chunk of completion) {
-        const content = chunk.choices[0]?.delta?.content || ""
-        setAnalysis((prev) => prev + content)
+    window.electronAPI.aiAnalysis(
+      metrics,
+      (chunk) => {
+        setStreamedAnalysis((prev) => prev + chunk);
+      },
+      () => {
+        setIsLoading(false);
+      },
+      (error) => {
+        console.error('Error generating AI analysis:', error);
+        setError('Failed to generate AI analysis');
+        setIsLoading(false);
       }
-
-    } catch (error) {
-      setError('Failed to generate analysis. Please try again.')
-      console.error('Error generating analysis:', error)
-    } finally {
-      setIsLoading(false)
-    }
+    );
   }
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
-        <Button onClick={generateAnalysis} disabled={isLoading}>
+        <Button onClick={performAiAnalysis} disabled={isLoading}>
           {isLoading ? "Analyzing..." : "Generate AI Analysis"}
         </Button>
       </DialogTrigger>
@@ -94,7 +58,11 @@ export default function AiAnalysis({ metrics }) {
             <p className="text-red-500">{error}</p>
           ) : (
             <div className="prose prose-sm">
-              {analysis}
+              {isLoading ? (
+                <p className="animate-pulse">Generating analysis...</p>
+              ) : (
+                <p>{streamedAnalysis}</p>
+              )}
             </div>
           )}
         </div>
