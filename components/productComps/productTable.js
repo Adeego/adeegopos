@@ -47,12 +47,12 @@ export default function ProductTable() {
     }
   };
 
-  // const toggleProductExpansion = (productId) => {
-  //   setExpandedProducts(prev => ({
-  //     ...prev,
-  //     [productId]: !prev[productId]
-  //   }));
-  // };
+  const toggleProductExpansion = (productId) => {
+    setExpandedProducts(prev => ({
+      ...prev,
+      [productId]: !prev[productId]
+    }));
+  };
 
   const indexOfLastProduct = currentPage * rowsPerPage;
   const indexOfFirstProduct = indexOfLastProduct - rowsPerPage;

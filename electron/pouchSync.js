@@ -4,7 +4,7 @@ const PouchDB = require("pouchdb");
 const { ipcMain } = require('electron');
 PouchDB.plugin(require("pouchdb-find"));
 
-const COUCHDB_URL = "http://admin:Adeego2025@64.227.129.110:5984//adeegopos";
+const COUCHDB_URL = "http://admin:Adeego2025@139.59.91.36:5984//adeegopos";
 
 let localDB;
 let currentStoreNo = null;
@@ -161,7 +161,7 @@ function setupStoreNoListener() {
 
       try {
         // Setup indexes
-        await setupIndexes();
+        setupIndexes();
         console.log("Indexes set up successfully");
 
         // Setup new sync with new storeNo

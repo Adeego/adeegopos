@@ -323,15 +323,31 @@ function archiveProduct(db, productId) {
 }
 
 function getAllProducts(db) {
+  console.log("Starting getAllProducts function");
   return db
     .find({
       selector: { 
         type: "product",
         state: "Active" 
       },
+      limit: 9999
     })
-    .then((result) => ({ success: true, products: result.docs }))
-    .catch((error) => ({ success: false, error: error.message }));
+    .then((result) => {
+      console.log("getAllProducts raw result:", JSON.stringify(result, null, 2));
+      console.log("Number of docs found:", result.docs ? result.docs.length : 0);
+      if (result.docs) {
+        result.docs.forEach((doc, index) => {
+          console.log(`Document ${index} _id:`, doc._id);
+          console.log(`Document ${index} full content:`, JSON.stringify(doc, null, 2));
+        });
+      }
+      return { success: true, products: result.docs };
+    })
+    .catch((error) => {
+      console.error("Error in getAllProducts:", error);
+      console.error("Error stack:", error.stack);
+      return { success: false, error: error.message };
+    });
 }
 
 // Get all products grouped in Variants

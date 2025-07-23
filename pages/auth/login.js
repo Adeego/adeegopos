@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import axios from 'axios';
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -27,15 +28,31 @@ export default function Login() {
     }
   
     try {
-      const response = await window.electronAPI.signInStaff(phoneNumber, passcode)
-      if (response.success) {
-        addStaff(response.staff)
+      const response = await axios.post('http://139.59.91.36:8000/signin/staff', {
+        phone: phoneNumber,
+        passcode: passcode
+      }, {
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const result = response.data;
+      if (result.staff) {
+        addStaff(result.staff)
         router.push('/')
       } else {
-        setError(response.error || 'Invalid credentials')
+        setError('Invalid credentials')
       }
     } catch (error) {
-      setError('An error occurred during sign-in')
+      console.error('Error during submission:', error);
+      if (error.response) {
+        setError(error.response.data.message || 'Invalid credentials')
+      } else if (error.request) {
+        setError('No response from server. Check your connection.')
+      } else {
+        setError('An error occurred during sign-in')
+      }
       console.error('Sign-in error:', error)
     }
   }  

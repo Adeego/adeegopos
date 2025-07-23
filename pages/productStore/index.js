@@ -344,7 +344,7 @@ export default function Store() {
   useEffect(() => {
     const fetchProducts = async () => {
       try {
-        const response = await axios.get('http://64.227.129.110:8000/products?skip=0&limit=500')
+        const response = await axios.get('http://139.59.91.36:8000/products?skip=0&limit=500')
         const productsWithDefaults = response.data.products.map(product => {
           const _id = `${storeNo}:${uuidv4()}`;
           return {
