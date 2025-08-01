@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from '@/components/ui/use-toast';
+import useWsinfoStore from '@/stores/wsinfo';
 import { Edit3, Save, X, Trash2, User, Phone, Briefcase, DollarSign } from 'lucide-react'
 
 export default function StaffDetail() {
@@ -14,16 +15,25 @@ export default function StaffDetail() {
   const {toast} = useToast();
   const [staff, setStaff] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
+  const store = useWsinfoStore((state) => state.wsinfo);
+  const [storeNo, setStoreNo] = useState('');
 
   useEffect(() => {
-    if (id) {
+    if (store && store.storeNo) {
+      setStoreNo(store.storeNo);
+    }
+  }, [store]);
+
+  useEffect(() => {
+    if (id && storeNo) {
       fetchStaffDetail();
     }
-  }, [id]);
+  }, [id, storeNo]);
 
   const fetchStaffDetail = async () => {
+    if (!storeNo) return;
     try {
-      const result = await window.electronAPI.realmOperation('getStaffById', id);
+      const result = await window.electronAPI.realmOperation('getStaffById', id, storeNo);
       if (result.success) {
         setStaff(result.staff);
       } else {
@@ -51,11 +61,13 @@ export default function StaffDetail() {
   };
 
   const handleSave = async () => {
+    if (!storeNo) return;
     try {
       const result = await window.electronAPI.realmOperation('updateStaff', {
         ...staff,
         salary: parseFloat(staff.salary),
         updatedAt: new Date().toISOString(),
+        storeNo
       });
       if (result.success) {
         setIsEditing(false);
@@ -77,9 +89,10 @@ export default function StaffDetail() {
   };
 
   const handleDelete = async () => {
+    if (!storeNo) return;
     if (window.confirm('Are you sure you want to delete this staff member?')) {
       try {
-        const result = await window.electronAPI.realmOperation('archiveStaff', id);
+        const result = await window.electronAPI.realmOperation('archiveStaff', { id, storeNo });
         if (result.success) {
           toast({
             description: 'Staff member deleted successfully'

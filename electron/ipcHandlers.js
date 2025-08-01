@@ -45,20 +45,20 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
     return getSyncStatus(db);
   });
 
-  ipcMain.handle('sign-in-staff', async (event, phoneNumber, passcode) => {
-    return staffService.signInStaff(db, phoneNumber, passcode);
+  ipcMain.handle('sign-in-staff', async (event, storeNo, phoneNumber, passcode) => {
+    return staffService.signInStaff(db, storeNo, phoneNumber, passcode);
   });
 
-  ipcMain.handle('search-customers', async (event, name) => {
-    return customerService.searchCustomers(db, name);
+  ipcMain.handle('search-customers', async (event, name, storeNo) => {
+    return customerService.searchCustomers(db, name, storeNo);
   });
 
-  ipcMain.handle('search-products', async (event, searchTerm) => {
-    return productService.searchProducts(db, searchTerm);
+  ipcMain.handle('search-products', async (event, storeNo, searchTerm) => {
+    return productService.searchProducts(db, storeNo, searchTerm);
   });
 
-  ipcMain.handle('search-variants', async (event, searchTerm) => {
-    return productService.searchVariants(db, searchTerm);
+  ipcMain.handle('search-variants', async (event, storeNo, searchTerm) => {
+    return productService.searchVariants(db, storeNo, searchTerm);
   });
 
   ipcMain.handle('search-css', async (event, searchTerm, type) => {
@@ -68,7 +68,7 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
   ipcMain.handle('restock', async (event, task, ...args) => {
     switch (task) {
       case 'restockCheckup':
-        return stock.getProductsToRestock(db);
+        return stock.getProductsToRestock(db, args[0]);
       case 'calculateRestock':
         return stock.calculateRestock(db, args[0], mainWindow);
       default:
@@ -89,7 +89,7 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
   ipcMain.handle('message', async(event, sms, ...args) => {
     switch (sms) {
       case 'getAllMessages':
-        return message.getAllMessages(db);
+        return message.getAllMessages(db, args[0]);
       case 'updateMessage':
         return message.updateMessage(db, args[0])
       default:
@@ -106,19 +106,19 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
       case 'deleteCustomer':
         return customerService.deleteCustomer(db, args[0]);
       case 'getAllCustomers':
-        return customerService.getAllCustomers(db);
+        return customerService.getAllCustomers(db, args[0]);
       case 'getCustomerById':
         return customerService.getCustomerById(db, args[0]);
       case 'getTodayCreditSales':
-        return customerService.getTodayCreditSales(db);
+        return customerService.getTodayCreditSales(db, args[0]);
       case 'getTodayCustomerTransactions':
-        return customerService.getTodayCustomerTransactions(db);
+        return customerService.getTodayCustomerTransactions(db, args[0]);
       case 'getAllProducts':
-        return productService.getAllProducts(db);
+        return productService.getAllProducts(db, args[0]);
       case 'getAllVariants':
-        return productService.getAllVariants(db);
+        return productService.getAllVariants(db, args[0]);
       case 'getSaleItemsByProductId':
-        return productService.getSaleItemsByProductId(db, args[0]);
+        return productService.getSaleItemsByProductId(db, args[0], args[1]);
       case 'getProductById':
         return productService.getProductById(db, args[0]);
       case 'updateProduct':
@@ -142,13 +142,13 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
       case 'createInvoice':
         return supplierService.createInvoice(db, args[0]);
       case 'getTodayInvoices':
-        return supplierService.getTodayInvoices(db);
+        return supplierService.getTodayInvoices(db, args[0]);
       case 'getInvoiceById':
         return supplierService.getInvoiceById(db, args[0]);
       case 'getTodaySupplierTransactions':
-        return supplierService.getTodaySupplierTransactions(db);
+        return supplierService.getTodaySupplierTransactions(db, args[0]);
       case 'getAllSuppliers':
-        return supplierService.getAllSuppliers(db);
+        return supplierService.getAllSuppliers(db, args[0]);
       case 'getSupplierById':
         return supplierService.getSupplierById(db, args[0]);
       case 'updateSupplier':
@@ -158,7 +158,7 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
       case 'createAccount':
         return accountService.createAccount(db, args[0]);
       case 'getAllAccounts':
-        return accountService.getAllAccounts(db);
+        return accountService.getAllAccounts(db, args[0]);
       case 'getAccountById':
         return accountService.getAccountById(db, args[0]);
       case 'updateAccount':
@@ -168,7 +168,7 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
       case 'createExpense':
         return expenseService.createExpense(db, args[0]);
       case 'getAllExpenses':
-        return expenseService.getAllExpenses(db);
+        return expenseService.getAllExpenses(db, args[0]);
       case 'getExpenseById':
         return expenseService.getExpenseById(db, args[0]);
       case 'updateExpense':
@@ -178,9 +178,9 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
       case 'createTransaction':
         return transactionService.createTransaction(db, args[0]);
       case 'getAllTransactions':
-        return transactionService.getAllTransactions(db);
+        return transactionService.getAllTransactions(db, args[0]);
       case 'getTodayTransactions':
-        return transactionService.getTodayTransactions(db);
+        return transactionService.getTodayTransactions(db, args[0]);
       case 'getTransactionById':
         return transactionService.getTransactionById(db, args[0]);
       case 'updateTransaction':
@@ -188,21 +188,21 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
       case 'archiveTransaction':
         return transactionService.archiveTransaction(db, args[0]);
       case 'getCustomerSales':
-        return customerService.getCustomerSales(db, args[0], args[1], args[2]);
+        return customerService.getCustomerSales(db, args[0], args[1], args[2], args[3]);
       case 'getSaleProducts':
         return saleService.getSaleProducts(db, ...args).map(product => product.toJSON());
       case 'getSalesByPaymentMethod':
-        return saleService.getSalesByPaymentMethod(db, args[0], args[1]);
+        return saleService.getSalesByPaymentMethod(db, args[0], args[1], args[2]);
       case 'getTotalSales':
-        return saleService.getTotalSales(db, args[0], args[1]);
+        return saleService.getTotalSales(db, args[0], args[1], args[2]);
       case 'getAverageTransactionValue':
-        return saleService.getAverageTransactionValue(db, args[0], args[1]);
+        return saleService.getAverageTransactionValue(db, args[0], args[1], args[2]);
       case 'getSalesByCategory':
-        return saleService.getSalesByCategory(db, args[0], args[1]);
+        return saleService.getSalesByCategory(db, args[0], args[1], args[2]);
       case 'getTopSellingItems':
-        return saleService.getTopSellingItems(db, args[0], args[1], args[2]);
+        return saleService.getTopSellingItems(db, args[0], args[1], args[2], args[3]);
       case 'getGrossProfitMargin':
-        return saleService.getGrossProfitMargin(db, args[0], args[1]);
+        return saleService.getGrossProfitMargin(db, args[0], args[1], args[2]);
       case 'createWholeSaler':
         return wholeSalerService.createWholeSaler(db, args[0]);
       case 'updateWholeSaler':
@@ -222,13 +222,13 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
       case 'getStaffById':
         return staffService.getStaffById(db, args[0]);
       case 'getAllStaff':
-        return staffService.getAllStaff(db);
+        return staffService.getAllStaff(db, args[0]);
       case 'getTotalSalesRevenueAndProfit':
-        return saleService.getTotalSalesRevenueAndProfit(db, args[0], args[1]);
+        return saleService.getTotalSalesRevenueAndProfit(db, args[0], args[1], args[2]);
       case 'getTopCustomers':
-        return saleService.getTopCustomers(db, args[0], args[1], args[2]);
+        return saleService.getTopCustomers(db, args[0], args[1], args[2], args[3]);
       case 'getAllSalesBetweenDates':
-        return saleService.getAllSalesBetweenDates(db, args[0], args[1]);
+        return saleService.getAllSalesBetweenDates(db, args[0], args[1], args[2]);
       case 'getSaleById':
         return saleService.getSaleById(db, args[0]);
       case 'getSalesMetricsReport':
@@ -240,13 +240,13 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
       case 'getTransactionMetricsReport':
         return reportService.getTransactionMetricsReport(db, args[0], args[1]);
       case 'getTodaysSalesMetrics':
-        return dashboardService.getTodaysSalesMetrics(db);
+        return dashboardService.getTodaysSalesMetrics(db, args[0]);
       case 'getTodaysExpenses':
-        return dashboardService.getTodaysExpenses(db);
+        return dashboardService.getTodaysExpenses(db, args[0]);
       case 'getHourlySalesData':
-        return dashboardService.getHourlySalesData(db);
+        return dashboardService.getHourlySalesData(db, args[0]);
       case 'transactionMetrics':
-        return dashboardService.transactionMetrics(db);
+        return dashboardService.transactionMetrics(db, args[0]);
       case 'incomeStatement':
         return financeReport.incomeStatement(db, args[0], args[1]);
       case 'getAccountStatement':
@@ -260,7 +260,7 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
       case 'createBalanceSheetEntry':
         return balanceSheet.createBalanceSheetEntry(db, args[0]);
       case 'getAllBalanceSheets':
-        return balanceSheet.getAllBalanceSheets(db);
+        return balanceSheet.getAllBalanceSheets(db, args[0]);
       case 'getBalanceSheetById':
         return balanceSheet.getBalanceSheetById(db, args[0]);
       case 'archiveBalanceSheet':
@@ -270,7 +270,7 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
       case 'createExpenseType':
         return expenseType.createExpenseType(db, args[0]);
       case 'getAllExpenseTypes':
-        return expenseType.getAllExpenseTypes(db);
+        return expenseType.getAllExpenseTypes(db, args[0]);
       case 'getExpenseTypeById':
         return expenseType.getExpenseTypeById(db, args[0]);
       case 'updateExpenseType':

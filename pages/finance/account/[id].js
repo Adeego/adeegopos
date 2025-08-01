@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from '@/components/ui/use-toast';
+import useWsinfoStore from '@/stores/wsinfo';
 
 export default function AccountDetail() {
   const router = useRouter();
@@ -14,16 +15,25 @@ export default function AccountDetail() {
   const { toast } = useToast();
   const [account, setAccount] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
+  const store = useWsinfoStore((state) => state.wsinfo);
+  const [storeNo, setStoreNo] = useState('');
 
   useEffect(() => {
-    if (id) {
+    if (store && store.storeNo) {
+      setStoreNo(store.storeNo);
+    }
+  }, [store]);
+
+  useEffect(() => {
+    if (id && storeNo) {
       fetchAccountDetail();
     }
-  }, [id]);
+  }, [id, storeNo]);
 
   const fetchAccountDetail = async () => {
+    if (!storeNo) return;
     try {
-      const result = await window.electronAPI.realmOperation('getAccountById', id);
+      const result = await window.electronAPI.realmOperation('getAccountById', id, storeNo);
       if (result.success) {
         setAccount(result.account);
       } else {

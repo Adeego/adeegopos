@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import useWsinfoStore from '@/stores/wsinfo';
 
 export default function Home() {
   const [newCustomer, setNewCustomer] = useState(null);
@@ -8,6 +9,14 @@ export default function Home() {
   const [balance, setBalance] = useState(0);
   const [credit, setCredit] = useState(false);
   const [disciplinary, setDisciplinary] = useState('Neutral');
+  const store = useWsinfoStore((state) => state.wsinfo);
+  const [storeNo, setStoreNo] = useState('');
+
+  useEffect(() => {
+    if (store && store.storeNo) {
+      setStoreNo(store.storeNo);
+    }
+  }, [store]);
 
   const handleInputChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -38,13 +47,18 @@ export default function Home() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!storeNo) {
+      alert('Store not selected. Please select a store first.');
+      return;
+    }
     const customerData = {
       name: name,
       phoneNumber: parseInt(phoneNumber),
       address: address,
       balance: parseInt(balance),
       credit: credit,
-      disciplinery: disciplinary
+      disciplinery: disciplinary,
+      storeNo: storeNo
     }
     console.log(customerData)
     try {

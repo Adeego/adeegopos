@@ -4,6 +4,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Link from 'next/link'
 import { CalendarIcon, CreditCardIcon, EyeIcon } from 'lucide-react'
 import { Button } from "@/components/ui/button"
+import useWsinfoStore from '@/stores/wsinfo'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Table,
@@ -21,18 +22,28 @@ export default function ManageCredit() {
   const [error, setError] = useState(null)
   const [sortColumn, setSortColumn] = useState('createdAt')
   const [sortDirection, setSortDirection] = useState('desc')
+  const store = useWsinfoStore((state) => state.wsinfo);
+  const [storeNo, setStoreNo] = useState('');
 
   useEffect(() => {
+    if (store && store.storeNo) {
+      setStoreNo(store.storeNo);
+    }
+  }, [store]);
+
+  useEffect(() => {
+    if (!storeNo) return;
     setLoading(true)
     Promise.all([
       fetchTodayCreditSales(),
       fetchTodayCustomerTransactions()
     ]).finally(() => setLoading(false))
-  }, [])
+  }, [storeNo])
 
   const fetchTodayCreditSales = async () => {
+    if (!storeNo) return;
     try {
-      const result = await window.electronAPI.realmOperation('getTodayCreditSales');
+      const result = await window.electronAPI.realmOperation('getTodayCreditSales', { storeNo });
       if (result.success) {
         setSales(result.sales)
         console.log('Today\'s Sales (Excluding Credit):', result.sales);
@@ -47,8 +58,9 @@ export default function ManageCredit() {
   }
 
   const fetchTodayCustomerTransactions = async () => {
+    if (!storeNo) return;
     try {
-      const result = await window.electronAPI.realmOperation('getTodayCustomerTransactions');
+      const result = await window.electronAPI.realmOperation('getTodayCustomerTransactions', { storeNo });
       if (result.success) {
         setTransactions(result.transactions)
         console.log('Today\'s Customer Transactions:', result.transactions);

@@ -6,6 +6,7 @@ function createMessage(db, messageData, mainWindow) {
     recipient: messageData.recipient,
     content: messageData.content,
     subject: messageData.subject,
+    storeNo: messageData.storeNo,
     timestamp: messageData.timestamp || new Date().toISOString(),
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -28,12 +29,13 @@ function createMessage(db, messageData, mainWindow) {
 }
 
 // Get all messages
-function getAllMessages(db) {
+function getAllMessages(db, storeNo) {
   return db
     .find({
       selector: { 
         type: "message",
         state: "Active",
+        storeNo: storeNo,
         createdAt: { "$gt": null }
       },
       sort: [{ createdAt: "desc" }]

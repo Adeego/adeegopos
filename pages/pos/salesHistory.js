@@ -14,6 +14,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardDescription, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
 import ArchiveSale from '@/components/posComps/archiveSale';
 import { Eye } from 'lucide-react';
+import useWsinfoStore from '@/stores/wsinfo';
 
 function DatePickerWithPresets({ date, setDate }) {
   return (
@@ -58,6 +59,7 @@ function DatePickerWithPresets({ date, setDate }) {
 }
 
 export default function SalesHistory() {
+  const storeNo = useWsinfoStore((state) => state.wsinfo.storeNo);
   const [sales, setSales] = useState([]);
   const [filteredSales, setFilteredSales] = useState([]);
   const [startDate, setStartDate] = useState(() => {
@@ -89,7 +91,7 @@ export default function SalesHistory() {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await window.electronAPI.realmOperation('getAllSalesBetweenDates', startDate.toISOString(), endDate.toISOString());
+      const result = await window.electronAPI.realmOperation('getAllSalesBetweenDates', storeNo, startDate.toISOString(), endDate.toISOString());
       console.log('Fetch sales result:', result);
       if (result.success) {
         setSales(result.data);
@@ -273,7 +275,7 @@ export default function SalesHistory() {
               <TableRow key={sale._id}>
                 <TableCell>{new Date(sale.createdAt).toLocaleDateString()}</TableCell>
                 <TableCell>{new Date(sale.createdAt).toLocaleTimeString()}</TableCell>
-                <TableCell>{sale.totalAmount.toFixed(2)}</TableCell>
+                                <TableCell>{(sale.totalAmount || 0).toFixed(2)}</TableCell>
                 <TableCell>{sale.totalItems}</TableCell>
                 <TableCell>{sale.paymentMethod}</TableCell>
                 <TableCell>{sale.saleType}</TableCell>

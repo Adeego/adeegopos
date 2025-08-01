@@ -9,6 +9,8 @@ import { Dialog, DialogTrigger, DialogContent, DialogTitle, DialogDescription } 
 import { Button } from "@/components/ui/button"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
+import useWsinfoStore from '@/stores/wsinfo'
+import BalanceSheet from '@/components/dashboardComps/balanceSheet'
 
 export default function Dashboard() {
   const [salesData, setSalesData] = useState([])
@@ -19,12 +21,21 @@ export default function Dashboard() {
   const [yesterdayExpense, setYesterdayExpense] = useState([])
   const [yesterdayTransaction, setYesterdayTransaction] = useState([])
   const [yesterdayCashflow, setYesterdayCashflow] = useState(0)
+  const store = useWsinfoStore((state) => state.wsinfo);
+  const [storeNo, setStoreNo] = useState('');
 
   useEffect(() => {
+    if (store && store.storeNo) {
+      setStoreNo(store.storeNo);
+    }
+  }, [store]);
+
+  useEffect(() => {
+    if (!storeNo) return;
     fetchSalesData();
     fetchExpenseData();
     transactionMetrics();
-  }, [])
+  }, [storeNo])
 
   useEffect(() => {
     const grossCashflow = (salesData.revenue + transaction.customerCredits) - (expense + salesData.customerCredit + transaction.supplierPayments);
@@ -83,8 +94,9 @@ export default function Dashboard() {
   }
 
   const fetchSalesData = async () => {
+    if (!storeNo) return;
     try {
-      const result = await window.electronAPI.realmOperation('getTodaysSalesMetrics');
+      const result = await window.electronAPI.realmOperation('getTodaysSalesMetrics', storeNo);
       if (result.success) {
         setSalesData(result.data.today);
         setYesterdaySalesData(result.data.yesterday);
@@ -97,8 +109,9 @@ export default function Dashboard() {
   };
 
   const transactionMetrics = async () => {
+    if (!storeNo) return;
     try {
-      const result = await window.electronAPI.realmOperation('transactionMetrics');
+      const result = await window.electronAPI.realmOperation('transactionMetrics', storeNo);
       console.log(result)
       if (result.success) {
         setTransaction(result.data.today);
@@ -112,8 +125,9 @@ export default function Dashboard() {
   };
 
   const fetchExpenseData = async () => {
+    if (!storeNo) return;
     try {
-      const result = await window.electronAPI.realmOperation('getTodaysExpenses');
+      const result = await window.electronAPI.realmOperation('getTodaysExpenses', storeNo);
       if (result.success) {
         setExpense(result.data.today.totalExpenses);
         setYesterdayExpense(result.data.yesterday.totalExpenses);
@@ -140,34 +154,11 @@ export default function Dashboard() {
           </p>
         </div>
         <div>
-          {/* <Dialog>
-            <DialogTrigger><Button><Store /> <span className="text-base ml-2">Close Store</span></Button></DialogTrigger>
-            <DialogContent>
-              <DialogTitle>Closing Operations of Today</DialogTitle>
-              <DialogDescription>Check and confirm the numbers add up</DialogDescription>
-              <Card>
-                <CardContent>
-                  <div className="my-4">
-                    <h1>Opening Cash Balance</h1>
-                    <p>KES 25000</p>
-                  </div>
-                  <div className="my-4">
-                    <p>Cash = KES 51000</p>
-                    <p>Mpesa  = KES 44000</p>
-                    <h1>closing cash balance</h1>
-                    <p>KES 95000</p>
-                  </div>
-                  <div className="my-4">
-                    <Label>Tomorrow Opening Cash Balance</Label>
-                    <Input type="number" placeholder="The amount of money for tomorrow opening cash balance" />
-                  </div>
-                  <div className="flex justify-end">
-                    <Button >Close Operations</Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </DialogContent>
-          </Dialog> */}
+          <BalanceSheet 
+            sales={salesData.revenue || 0}
+            creditsGiven={salesData.customerCredit || 0}
+            creditsPaid={transaction.customerCredits || 0}
+          />
         </div>
       </div>
       <div className="">

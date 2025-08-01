@@ -25,6 +25,9 @@ export default function EditProduct({ product, handleEditState, fetchSelectedPro
       const editFields = {
         ...formData,
         buyPrice: parseFloat(formData.buyPrice.toString()),
+        stock: parseInt(formData.stock, 10),
+        restockThreshold: parseInt(formData.restockThreshold, 10),
+        restockPeriod: parseInt(formData.restockPeriod, 10),
       }
       console.log(editFields)
       const result = await window.electronAPI.realmOperation('updateProduct', editFields)
@@ -102,6 +105,20 @@ export default function EditProduct({ product, handleEditState, fetchSelectedPro
             <div className="space-y-2">
               <Label htmlFor="category">Category</Label>
               <Input id="category" name="category" value={formData.category} onChange={handleInputChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="stockLevel">Stock Level</Label>
+              <Input id="stockLevel" name="stock" type="number" value={formData.stock} onChange={handleInputChange} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label htmlFor="restockThreshold">Restock Threshold</Label>
+              <Input id="restockThreshold" name="restockThreshold" type="number" value={formData.restockThreshold} onChange={handleInputChange} />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="restockPeriod">Restock Period (days)</Label>
+              <Input id="restockPeriod" name="restockPeriod" type="number" value={formData.restockPeriod} onChange={handleInputChange} />
             </div>
           </div>
         </CardContent>

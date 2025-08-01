@@ -89,6 +89,7 @@ async function createTransaction(db, transactionData) {
       amount: transactionData.amount,
       date: transactionData.date,
       transType: transactionData.transType,
+      storeNo: transactionData.storeNo,
       type: "transaction",
       state: "Active",
       createdAt: new Date().toISOString(),
@@ -110,12 +111,16 @@ async function createTransaction(db, transactionData) {
 }
   
 // Get all transactions
-function getAllTransactions(db) {
+function getAllTransactions(db, { storeNo }) {
+  if (!storeNo) {
+    return Promise.resolve({ success: false, error: "storeNo is required" });
+  }
   return db
     .find({
       selector: { 
         type: "transaction",
-        state: "Active"
+        state: "Active",
+        storeNo: storeNo
       },
     })
     .then((result) => ({ success: true, transactions: result.docs }))
@@ -123,7 +128,10 @@ function getAllTransactions(db) {
 }
 
 // Get today's transactions
-function getTodayTransactions(db) {
+function getTodayTransactions(db, { storeNo }) {
+  if (!storeNo) {
+    return Promise.resolve({ success: false, error: "storeNo is required" });
+  }
   // Get today's date in ISO format (just the date part)
   const today = new Date().toISOString().split('T')[0];
   
@@ -132,6 +140,7 @@ function getTodayTransactions(db) {
       selector: { 
         type: "transaction",
         state: "Active",
+        storeNo: storeNo,
         createdAt: { $regex: `^${today}` }
       },
     })

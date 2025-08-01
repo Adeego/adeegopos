@@ -20,12 +20,16 @@ function createExpenseType(db, expenseTypeData) {
 }
 
 // Get all expense types
-function getAllExpenseTypes(db) {
+function getAllExpenseTypes(db, { storeNo }) {
+  if (!storeNo) {
+    return Promise.resolve({ success: false, error: "storeNo is required" });
+  }
   return db
     .find({
       selector: { 
         type: "expenseType",
-        state: "Active"
+        state: "Active",
+        storeNo: storeNo
       },
     })
     .then((result) => ({ success: true, expenseTypes: result.docs }))

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/router';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import useWsinfoStore from '@/stores/wsinfo';
 import { useToast } from '@/components/ui/use-toast';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
@@ -40,6 +41,8 @@ export default function BalanceSheetDetail() {
   const { toast } = useToast();
   const [balanceSheet, setBalanceSheet] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
+  const store = useWsinfoStore((state) => state.wsinfo);
+  const [storeNo, setStoreNo] = useState('');
   
   // Edit form state
   const [editType, setEditType] = useState('');
@@ -48,14 +51,21 @@ export default function BalanceSheetDetail() {
   const [editDescription, setEditDescription] = useState('');
 
   useEffect(() => {
-    if (id) {
+    if (store && store.storeNo) {
+      setStoreNo(store.storeNo);
+    }
+  }, [store]);
+
+  useEffect(() => {
+    if (id && storeNo) {
       fetchBalanceSheetDetail();
     }
-  }, [id]);
+  }, [id, storeNo]);
 
   const fetchBalanceSheetDetail = async () => {
+    if (!storeNo) return;
     try {
-      const result = await window.electronAPI.realmOperation('getBalanceSheetById', id);
+      const result = await window.electronAPI.realmOperation('getBalanceSheetById', { id, storeNo });
       if (result.success) {
         setBalanceSheet(result.balanceSheet);
         // Initialize edit form with current values
@@ -112,8 +122,9 @@ export default function BalanceSheetDetail() {
   };
 
   const handleDelete = async () => {
+    if (!storeNo) return;
     try {
-      const result = await window.electronAPI.realmOperation('archiveBalanceSheet', id);
+      const result = await window.electronAPI.realmOperation('archiveBalanceSheet', { id, storeNo });
       if (result.success) {
         toast({
           title: "Success",

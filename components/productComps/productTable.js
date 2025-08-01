@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import useWsinfoStore from '@/stores/wsinfo';
 
 export default function ProductTable() {
   const [products, setProducts] = useState([]);
@@ -19,11 +20,20 @@ export default function ProductTable() {
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [searchTerm, setSearchTerm] = useState('');
   const router = useRouter();
-  // const [expandedProducts, setExpandedProducts] = useState({});
+  const store = useWsinfoStore((state) => state.wsinfo);
+  const [storeNo, setStoreNo] = useState('');
 
   useEffect(() => {
-    fetchProducts();
-  }, []);
+    if (store && store.storeNo) {
+      setStoreNo(store.storeNo);
+    }
+  }, [store]);
+
+  useEffect(() => {
+    if (storeNo) {
+      fetchProducts();
+    }
+  }, [storeNo]);
 
   useEffect(() => {
     const filtered = products.filter(product =>
@@ -35,7 +45,7 @@ export default function ProductTable() {
 
   const fetchProducts = async () => {
     try {
-      const result = await window.electronAPI.realmOperation('getAllProducts');
+      const result = await window.electronAPI.realmOperation('getAllProducts', storeNo);
       if (result.success) {
         setProducts(result.products);
         setFilteredProducts(result.products);
@@ -60,6 +70,18 @@ export default function ProductTable() {
 
   const paginate = (pageNumber) => setCurrentPage(pageNumber);
 
+  const handleDownload = () => {
+    const dataStr = JSON.stringify(products, null, 2);
+    const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
+
+    const exportFileDefaultName = 'products.json';
+
+    let linkElement = document.createElement('a');
+    linkElement.setAttribute('href', dataUri);
+    linkElement.setAttribute('download', exportFileDefaultName);
+    linkElement.click();
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -71,6 +93,7 @@ export default function ProductTable() {
             </CardDescription>
           </div>
           <div className=''>
+            <Button className='mr-2' onClick={handleDownload}>Download</Button>
             <Button className='mr-2' ><Link href={`/product/restock`} >Restock</Link></Button>
             <AddProduct fetchProducts={fetchProducts} />
           </div>

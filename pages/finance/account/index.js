@@ -6,6 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import CreateAccount from '@/components/financeComps/account/createAccount';
+import useWsinfoStore from '@/stores/wsinfo';
 import { useRouter } from 'next/router';
 
 export default function Account() {
@@ -15,10 +16,20 @@ export default function Account() {
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [searchTerm, setSearchTerm] = useState('');
   const router = useRouter();
+  const store = useWsinfoStore((state) => state.wsinfo);
+  const [storeNo, setStoreNo] = useState('');
 
   useEffect(() => {
-    fetchAccounts();
-  }, []);
+    if (store && store.storeNo) {
+      setStoreNo(store.storeNo);
+    }
+  }, [store]);
+
+  useEffect(() => {
+    if (storeNo) {
+      fetchAccounts();
+    }
+  }, [storeNo]);
 
   useEffect(() => {
     if (accounts && accounts.length > 0) {
@@ -32,8 +43,9 @@ export default function Account() {
   }, [accounts, searchTerm]);   
 
   const fetchAccounts = async () => {
+    if (!storeNo) return;
     try {
-      const result = await window.electronAPI.realmOperation('getAllAccounts');
+      const result = await window.electronAPI.realmOperation('getAllAccounts', { storeNo });
       if (result.success) {
         setAccounts(result.accounts);
         setFilteredAccounts(result.accounts);

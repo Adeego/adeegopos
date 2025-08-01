@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from '@/components/ui/use-toast';
+import useWsinfoStore from '@/stores/wsinfo';
 
 export default function SupplierDetail() {
   const router = useRouter();
@@ -13,16 +14,25 @@ export default function SupplierDetail() {
   const {toast} = useToast();
   const [supplier, setSupplier] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
+  const store = useWsinfoStore((state) => state.wsinfo);
+  const [storeNo, setStoreNo] = useState('');
 
   useEffect(() => {
-    if (id) {
+    if (store && store.storeNo) {
+      setStoreNo(store.storeNo);
+    }
+  }, [store]);
+
+  useEffect(() => {
+    if (id && storeNo) {
       fetchSupplierDetail();
     }
-  }, [id]);
+  }, [id, storeNo]);
 
   const fetchSupplierDetail = async () => {
+    if (!storeNo) return;
     try {
-      const result = await window.electronAPI.realmOperation('getSupplierById', id);
+      const result = await window.electronAPI.realmOperation('getSupplierById', id, storeNo);
       if (result.success) {
         setSupplier(result.supplier);
       } else {
@@ -50,10 +60,12 @@ export default function SupplierDetail() {
   };
 
   const handleSave = async () => {
+    if (!storeNo) return;
     try {
       const result = await window.electronAPI.realmOperation('updateSupplier', {
         ...supplier,
         updatedAt: new Date().toISOString(),
+        storeNo
       });
       if (result.success) {
         setIsEditing(false);
@@ -75,9 +87,10 @@ export default function SupplierDetail() {
   };
 
   const handleDelete = async () => {
+    if (!storeNo) return;
     if (window.confirm('Are you sure you want to delete this supplier?')) {
       try {
-        const result = await window.electronAPI.realmOperation('archiveSupplier', id);
+        const result = await window.electronAPI.realmOperation('archiveSupplier', id, storeNo);
         if (result.success) {
           toast({
             description: 'Supplier deleted successfully'

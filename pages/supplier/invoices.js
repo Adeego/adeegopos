@@ -9,7 +9,8 @@ import { Eye } from 'lucide-react'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { ScrollArea } from '@/components/ui/scroll-area'
-import Link from 'next/link'
+import Link from 'next/link';
+import useWsinfoStore from '@/stores/wsinfo';
 
 export default function Invoices() {
   const [invoices, setInvoices] = useState(null)
@@ -17,15 +18,26 @@ export default function Invoices() {
   const [selectedInvoice, setSelectedInvoice] = useState(null)
   const [supplier, setSupplier] = useState(null)
   const [isInvoiceDialogOpen, setIsInvoiceDialogOpen] = useState(false)
+  const store = useWsinfoStore((state) => state.wsinfo);
+  const [storeNo, setStoreNo] = useState('');
 
   useEffect(() => {
-    fetchinvoices();
-    fetchtrans();
-  }, [])
+    if (store && store.storeNo) {
+      setStoreNo(store.storeNo);
+    }
+  }, [store]);
+
+  useEffect(() => {
+    if (storeNo) {
+      fetchinvoices();
+      fetchtrans();
+    }
+  }, [storeNo]);
 
   const fetchinvoices = async () => {
+    if (!storeNo) return;
     try {
-      const result = await window.electronAPI.realmOperation('getTodayInvoices');
+      const result = await window.electronAPI.realmOperation('getTodayInvoices', storeNo);
       if (result.success) {
         setInvoices(result.invoices)
       } else {
@@ -37,8 +49,9 @@ export default function Invoices() {
   };
 
   const fetchtrans = async () => {
+    if (!storeNo) return;
     try {
-      const result = await window.electronAPI.realmOperation('getTodaySupplierTransactions');
+      const result = await window.electronAPI.realmOperation('getTodaySupplierTransactions', storeNo);
       if (result.success) {
         setPaidInvoices(result.transactions)
       } else {
@@ -50,8 +63,9 @@ export default function Invoices() {
   };
 
   const fetchSelectedInvoice = async (invoiceId) => {
+    if (!storeNo) return;
     try {
-      const result = await window.electronAPI.realmOperation('getInvoiceById', invoiceId);
+      const result = await window.electronAPI.realmOperation('getInvoiceById', invoiceId, storeNo);
       if (result.success) {
         setSelectedInvoice(result.invoice);
         setSupplier(result.supplier);

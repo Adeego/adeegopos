@@ -8,6 +8,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import useWsinfoStore from '@/stores/wsinfo';
 
 export default function TotalSalesChart() {
   const [salesData, setSalesData] = useState({
@@ -15,13 +16,22 @@ export default function TotalSalesChart() {
     totalRevenue: 0,
     grossProfit: 0
   });
+  const store = useWsinfoStore((state) => state.wsinfo);
+  const [storeNo, setStoreNo] = useState('');
+
+  useEffect(() => {
+    if (store && store.storeNo) {
+      setStoreNo(store.storeNo);
+    }
+  }, [store]);
 
   useEffect(() => {
     const fetchSalesData = async () => {
+      if (!storeNo) return;
       try {
         const startDate = new Date(new Date().setDate(new Date().getDate() - 30)).toISOString();
         const endDate = new Date().toISOString();
-        const result = await window.electronAPI.realmOperation('getTotalSalesRevenueAndProfit', startDate, endDate);
+        const result = await window.electronAPI.realmOperation('getTotalSalesRevenueAndProfit', { startDate, endDate, storeNo });
   
         if (result.success) {
           setSalesData({
@@ -40,7 +50,7 @@ export default function TotalSalesChart() {
     };
   
     fetchSalesData();
-  }, []);
+  }, [storeNo]);
 
   // Helper function to format numbers safely
   const formatNumber = (num) => {

@@ -1,6 +1,6 @@
-export const manageRestock = async () => {
+export const manageRestock = async (storeNo) => {
     try {
-        const result = await window.electronAPI.restock('restockCheckup');
+        const result = await window.electronAPI.restock('restockCheckup', storeNo);
         if (result.success) {
             const productIds = result.products.map(product => product._id);
             console.log(productIds)

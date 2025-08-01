@@ -63,7 +63,7 @@ export default function ViewSale() {
           <CardContent className="p-6">
             <div className="grid grid-cols-2 gap-6">
               <InfoItem icon={<UserIcon className="w-5 h-5" />} label="Sale Type" value={sale.saleType} />
-              <InfoItem icon={<CreditCardIcon className="w-5 h-5" />} label="Total Amount" value={`KES ${sale.totalAmount.toFixed(2)}`} />
+              <InfoItem icon={<CreditCardIcon className="w-5 h-5" />} label="Total Amount" value={`KES ${(sale.totalAmount || 0).toFixed(2)}`} />
               <InfoItem icon={<CreditCardIcon className="w-5 h-5" />} label="Payment Method" value={sale.paymentMethod} />
               <InfoItem icon={<CalendarIcon className="w-5 h-5" />} label="Date" value={new Date(sale.createdAt).toLocaleString()} />
               <InfoItem icon={<ShoppingBasketIcon className="w-5 h-5" />} label="Items" value={sale.totalItems.toString()} />

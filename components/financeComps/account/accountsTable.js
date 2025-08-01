@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import CreateAccount from './createAccount';
 import { useRouter } from 'next/router';
+import useWsinfoStore from '@/stores/wsinfo';
 
 export default function AccountsTable() {
   const [accounts, setAccounts] = useState([]);
@@ -15,10 +16,20 @@ export default function AccountsTable() {
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [searchTerm, setSearchTerm] = useState('');
   const router = useRouter();
+  const store = useWsinfoStore((state) => state.wsinfo);
+  const [storeNo, setStoreNo] = useState('');
 
   useEffect(() => {
-    fetchAccounts();
-  }, []);
+    if (store && store.storeNo) {
+      setStoreNo(store.storeNo);
+    }
+  }, [store]);
+
+  useEffect(() => {
+    if (storeNo) {
+      fetchAccounts();
+    }
+  }, [storeNo]);
 
   useEffect(() => {
     const filtered = accounts.filter(a =>
@@ -31,7 +42,7 @@ export default function AccountsTable() {
 
   const fetchAccounts = async () => {
     try {
-      const result = await window.electronAPI.realmOperation('getAllAccounts');
+      const result = await window.electronAPI.realmOperation('getAllAccounts', storeNo);
       if (result.success) {
         setAccounts(result.accounts);
         setFilteredAccounts(result.accounts);

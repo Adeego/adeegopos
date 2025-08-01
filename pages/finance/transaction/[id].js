@@ -4,6 +4,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import useWsinfoStore from '@/stores/wsinfo';
 import { useToast } from '@/components/ui/use-toast';
 import DeleteTransaction from '@/components/financeComps/transaction/deleteTransaction';
 
@@ -13,16 +14,25 @@ export default function TransactionDetail() {
   const { toast } = useToast();
   const [transaction, setTransaction] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
+  const store = useWsinfoStore((state) => state.wsinfo);
+  const [storeNo, setStoreNo] = useState('');
 
   useEffect(() => {
-    if (id) {
+    if (store && store.storeNo) {
+      setStoreNo(store.storeNo);
+    }
+  }, [store]);
+
+  useEffect(() => {
+    if (id && storeNo) {
       fetchTransactionDetail();
     }
-  }, [id]);
+  }, [id, storeNo]);
 
   const fetchTransactionDetail = async () => {
+    if (!storeNo) return;
     try {
-      const result = await window.electronAPI.realmOperation('getTransactionById', id);
+      const result = await window.electronAPI.realmOperation('getTransactionById', id, storeNo);
       if (result.success) {
         setTransaction(result.transaction);
       } else {
@@ -127,7 +137,7 @@ export default function TransactionDetail() {
             ) : (
               <>
                 <Button onClick={() => setIsEditing(true)}>Edit</Button>
-                <DeleteTransaction transactionId={transaction._id} transactionDescription={transaction.description} />
+                <DeleteTransaction transactionId={transaction._id} transactionDescription={transaction.description} storeNo={storeNo} />
               </>
             )}
           </div>

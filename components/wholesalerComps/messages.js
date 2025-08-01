@@ -9,23 +9,36 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Search, Mail, Bell, Inbox, Archive } from 'lucide-react'
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/components/ui/use-toast"
+import useWsinfoStore from '@/stores/wsinfo';
 
 export function MessageDialog() {
   const [messages, setMessages] = useState([]);
   const [selectedMessage, setSelectedMessage] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
   const { toast } = useToast();
+  const store = useWsinfoStore((state) => state.wsinfo);
+  const [storeNo, setStoreNo] = useState('');
+
+  useEffect(() => {
+    if (store && store.storeNo) {
+      setStoreNo(store.storeNo);
+    }
+  }, [store]);
 
   useEffect(() => {
     let unsubscribe;
 
-    fetchAllMessages();
+    if (storeNo) {
+      fetchAllMessages(storeNo);
+    }
     
     if (typeof window !== "undefined" && window.electronAPI) {
       // Subscribe to message creation events
       unsubscribe = window.electronAPI.onMessageCreated(() => {
         console.log("sms event triggered")
-        fetchAllMessages();
+        if (storeNo) {
+          fetchAllMessages(storeNo);
+        }
         const audio = new Audio('/assets/alertSound/alert.wav');
         audio.play().catch(error => console.error('Error playing sound:', error));
       });
@@ -36,11 +49,11 @@ export function MessageDialog() {
     return () => {
       if (unsubscribe) unsubscribe();
     };
-  }, [])
+  }, [storeNo])
 
-  const fetchAllMessages = async () => {
+  const fetchAllMessages = async (storeNo) => {
     try {
-      const result = await window.electronAPI.message('getAllMessages');
+      const result = await window.electronAPI.message('getAllMessages', storeNo);
       if (result.success) {
           setMessages(result.messages);
       }

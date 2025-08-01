@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import AddSupplier from '@/components/supplierComps/addSupplier';
 import { useRouter } from 'next/router';
+import useWsinfoStore from '@/stores/wsinfo';
 import Link from 'next/link';
 
 export default function Supplier() {
@@ -16,10 +17,20 @@ export default function Supplier() {
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [searchTerm, setSearchTerm] = useState('');
   const router = useRouter();
+  const store = useWsinfoStore((state) => state.wsinfo);
+  const [storeNo, setStoreNo] = useState('');
 
   useEffect(() => {
-    fetchSuppliers();
-  }, []);
+    if (store && store.storeNo) {
+      setStoreNo(store.storeNo);
+    }
+  }, [store]);
+
+  useEffect(() => {
+    if (storeNo) {
+      fetchSuppliers();
+    }
+  }, [storeNo]);
 
   useEffect(() => {
     if (suppliers && suppliers.length > 0) {
@@ -33,8 +44,11 @@ export default function Supplier() {
   }, [suppliers, searchTerm]);   
 
   const fetchSuppliers = async () => {
+    if (!storeNo) return;
+    console.log(storeNo);
     try {
-      const result = await window.electronAPI.realmOperation('getAllSuppliers');
+      const result = await window.electronAPI.realmOperation('getAllSuppliers', storeNo);
+      console.log(result);
       if (result.success) {
         setSuppliers(result.suppliers);
         setFilteredSuppliers(result.suppliers);

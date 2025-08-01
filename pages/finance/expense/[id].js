@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from '@/components/ui/use-toast';
+import useWsinfoStore from '@/stores/wsinfo';
 import DeleteExpense from '@/components/financeComps/expense/deleteExpense';
 
 export default function ExpenseDetail() {
@@ -15,6 +16,8 @@ export default function ExpenseDetail() {
   const [expense, setExpense] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [accounts, setAccounts] = useState([]);
+  const store = useWsinfoStore((state) => state.wsinfo);
+  const [storeNo, setStoreNo] = useState('');
 
   const expenseTypes = [
     'Rent and Utilities', 
@@ -25,15 +28,22 @@ export default function ExpenseDetail() {
   ];
 
   useEffect(() => {
-    if (id) {
+    if (store && store.storeNo) {
+      setStoreNo(store.storeNo);
+    }
+  }, [store]);
+
+  useEffect(() => {
+    if (id && storeNo) {
       fetchExpenseDetail();
       fetchAccounts();
     }
-  }, [id]);
+  }, [id, storeNo]);
 
   const fetchAccounts = async () => {
+    if (!storeNo) return;
     try {
-      const result = await window.electronAPI.realmOperation('getAllAccounts');
+      const result = await window.electronAPI.realmOperation('getAllAccounts', storeNo);
       if (result.success) {
         setAccounts(result.accounts || []); 
       } else {
@@ -47,8 +57,9 @@ export default function ExpenseDetail() {
   };
 
   const fetchExpenseDetail = async () => {
+    if (!storeNo) return;
     try {
-      const result = await window.electronAPI.realmOperation('getExpenseById', id);
+      const result = await window.electronAPI.realmOperation('getExpenseById', { id, storeNo });
       if (result.success) {
         setExpense(result.expense);
       } else {
@@ -205,7 +216,7 @@ export default function ExpenseDetail() {
             ) : (
               <>
                 <Button onClick={() => setIsEditing(true)}>Edit</Button>
-                <DeleteExpense expenseId={expense._id} expenseDescription={expense.description} />
+                <DeleteExpense expenseId={expense._id} expenseDescription={expense.description} storeNo={storeNo} />
               </>
             )}
           </div>

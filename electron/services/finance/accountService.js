@@ -22,12 +22,16 @@ function createAccount(db, accountData) {
 }
 
 // Get all accounts
-function getAllAccounts(db) {
+function getAllAccounts(db, storeNo) {
+  if (!storeNo) {
+    return Promise.resolve({ success: false, error: "storeNo is required" });
+  }
   return db
     .find({
       selector: { 
         type: "account",
-        state: "Active"
+        state: "Active",
+        storeNo: storeNo
       },
     })
     .then((result) => ({ success: true, accounts: result.docs }))

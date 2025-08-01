@@ -211,7 +211,7 @@ export default function ViewProduct({ product, fetchSelectedProduct, saleItems, 
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {product.variants.map((variant) => (
+                {product.variants && product.variants.map((variant) => (
                   <TableRow key={variant._id}>
                     <TableCell className="font-medium">{variant.name}</TableCell>
                     <TableCell>{variant.unitPrice}</TableCell>

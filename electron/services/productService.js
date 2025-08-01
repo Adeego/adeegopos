@@ -207,14 +207,16 @@ async function restockProducts(db, productsData) {
 }
 
 // Added a new function for product search
-function searchVariants(db, searchTerm) {
+function searchVariants(db, searchTerm, storeNo) {
   console.log("Searching products with term:", searchTerm);
   return db.find({
       selector: {
         name: { $regex: new RegExp(searchTerm, 'i') }, // Create regex directly
         state: "Active",
-        type: "product"
-      }
+        type: "product",
+        storeNo: storeNo
+      },
+      limit: 999
     })
     .then((result) => {
       console.log("Search result:", result);
@@ -246,13 +248,14 @@ function searchVariants(db, searchTerm) {
     });
 }
 
-function searchProducts(db, searchTerm) {
+function searchProducts(db, searchTerm, storeNo) {
   console.log("Searching products with term:", searchTerm);
   return db.find({
       selector: {
         name: { $regex: new RegExp(searchTerm, 'i') },
         state: "Active",
-        type: "product"
+        type: "product",
+        storeNo: storeNo
       }
     })
     .then((result) => {
@@ -266,7 +269,7 @@ function searchProducts(db, searchTerm) {
 }
 
 // Get all saleItems related to a specific product
-function getSaleItemsByProductId(db, productId) {
+function getSaleItemsByProductId(db, productId, storeNo) {
   const endDate = new Date(); // Current date
   const startDate = new Date();
   startDate.setDate(endDate.getDate() - 30); // 30 days ago
@@ -275,6 +278,7 @@ function getSaleItemsByProductId(db, productId) {
     .find({
       selector: {
         type: "sale",
+        storeNo: storeNo,
         createdAt: { $gte: startDate.toISOString(), $lte: endDate.toISOString() },
       },
     })
@@ -322,13 +326,14 @@ function archiveProduct(db, productId) {
     .catch((error) => ({ success: false, error: error.message }));
 }
 
-function getAllProducts(db) {
+function getAllProducts(db, storeNo) {
   console.log("Starting getAllProducts function");
   return db
     .find({
       selector: { 
         type: "product",
-        state: "Active" 
+        state: "Active",
+        storeNo: storeNo
       },
       limit: 9999
     })
@@ -351,12 +356,13 @@ function getAllProducts(db) {
 }
 
 // Get all products grouped in Variants
-function getAllVariants(db) {
+function getAllVariants(db, storeNo) {
   return db
     .find({
       selector: { 
         type: "product",
-        state: "Active" 
+        state: "Active",
+        storeNo: storeNo
       },
     })
     .then((result) => {

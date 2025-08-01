@@ -24,6 +24,7 @@ export default function AddStaff({ fetchStaff }) {
     role: '',
     salary: '',
     passcode: '',
+    storeNo: '',
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
   });
@@ -51,6 +52,7 @@ export default function AddStaff({ fetchStaff }) {
         ...newStaff,
         _id: `${storeNo}:${uuidv4()}`,
         salary: parseFloat(newStaff.salary),
+        storeNo: storeNo,
       };
       console.log(staffData)
       const result = await window.electronAPI.realmOperation('createStaff', staffData);
@@ -61,13 +63,15 @@ export default function AddStaff({ fetchStaff }) {
         });
         fetchStaff();
         setNewStaff({
-          _id: `${storeNo}:${uuidv4()}`,
+          _id: '',
           firstName: '',
           lastName: '',
           phoneNumber: '',
+          balance: 0,
           role: '',
           salary: '',
           passcode: '',
+          storeNo: '',
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
         });

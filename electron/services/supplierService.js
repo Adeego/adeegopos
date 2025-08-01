@@ -71,7 +71,7 @@ function createInvoice(db, invoices) {
 }
 
 // Get today's invoices
-function getTodayInvoices(db) {
+function getTodayInvoices(db, storeNo) {
   // Get today's date in ISO format (just the date part)
   const today = new Date().toISOString().split('T')[0];
   
@@ -80,6 +80,7 @@ function getTodayInvoices(db) {
       selector: { 
         type: "invoice",
         state: "Active",
+        storeNo: storeNo,
         createdAt: { $regex: `^${today}` }
       },
     })
@@ -143,7 +144,7 @@ function getInvoiceById(db, invoiceId) {
 }
 
 // Get all suppliers
-function getAllSuppliers(db) {
+function getAllSuppliers(db, storeNo) {
   return db
     .find({
       selector: { 
@@ -194,7 +195,7 @@ function archiveSupplier(db, supplierId) {
 }
                                                                      
 // Get today's supplier transactions
-function getTodaySupplierTransactions(db) {
+function getTodaySupplierTransactions(db, storeNo) {
   // Get today's date in ISO format (just the date part)
   const today = new Date().toISOString().split('T')[0];
   
@@ -203,6 +204,7 @@ function getTodaySupplierTransactions(db) {
       selector: { 
         type: "transaction",
         state: "Active",
+        storeNo: storeNo,
         destination: "supplier", // Added filter for supplier destination
         createdAt: { $regex: `^${today}` }
       },

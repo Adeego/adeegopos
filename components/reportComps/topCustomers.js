@@ -1,15 +1,25 @@
 import React, { useEffect, useState } from 'react';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Card, CardHeader, CardContent, CardTitle } from '../ui/card';
+import useWsinfoStore from '@/stores/wsinfo';
 
 export default function TopCustomers() {
   const [topCustomers, setTopCustomers] = useState([]);
+  const store = useWsinfoStore((state) => state.wsinfo);
+  const [storeNo, setStoreNo] = useState('');
+
+  useEffect(() => {
+    if (store && store.storeNo) {
+      setStoreNo(store.storeNo);
+    }
+  }, [store]);
 
   useEffect(() => {
     async function fetchTopCustomers() {
+      if (!storeNo) return;
       const startDate = new Date(new Date().setDate(new Date().getDate() - 30)).toISOString();
       const endDate = new Date().toISOString();
-      const result = await window.electronAPI.realmOperation('getTopCustomers', startDate, endDate);
+      const result = await window.electronAPI.realmOperation('getTopCustomers', { startDate, endDate, storeNo });
       if (result.success) {
         setTopCustomers(result.data);
       } else {
@@ -18,7 +28,7 @@ export default function TopCustomers() {
     }
 
     fetchTopCustomers();
-  }, []);
+  }, [storeNo]);
 
   return (
     <Card>

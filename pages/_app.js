@@ -41,7 +41,9 @@ export default function App({ Component, pageProps }) {
     let removeListener;
 
     if ((staff.role === "Admin" || staff.role === "Operator") && isStaffLoaded) {
-      manageRestock();
+      if (wsinfo && wsinfo.storeNo) {
+        manageRestock(wsinfo.storeNo);
+      }
       // console.log(restockData);
     }
     
@@ -49,7 +51,9 @@ export default function App({ Component, pageProps }) {
       removeListener = window.electronAPI.onRestockTriggered((productData) => {
         if ((staff.role === "Admin" || staff.role === "Operator")) {
           console.log('Restock triggered for product:', productData);
-          manageRestock();
+          if (wsinfo && wsinfo.storeNo) {
+            manageRestock(wsinfo.storeNo);
+          }
         }
       });
     }
@@ -61,9 +65,9 @@ export default function App({ Component, pageProps }) {
     };
   }, [staff, isStaffLoaded])
 
-  useEffect(() => {
-    createDefaultCustomer();
-  }, [wsinfo, isWsinfoLoaded])
+  // useEffect(() => {
+  //   createDefaultCustomer();
+  // }, [wsinfo, isWsinfoLoaded])
 
   useEffect(() => {
     const storeNo = wsinfo.storeNo;
@@ -153,43 +157,43 @@ export default function App({ Component, pageProps }) {
     }
   };
 
-  const createDefaultCustomer = async () => {
-    const storeNo = wsinfo.storeNo;
+  // const createDefaultCustomer = async () => {
+  //   const storeNo = wsinfo.storeNo;
     
-    // First, check if a default customer already exists
-    const existingCustomer = await findDefaultCustomer(storeNo);
+  //   // First, check if a default customer already exists
+  //   const existingCustomer = await findDefaultCustomer(storeNo);
     
-    // If customer exists, do nothing
-    if (existingCustomer) {
-      console.log('Default customer already exists');
-      return existingCustomer;
-    }
+  //   // If customer exists, do nothing
+  //   if (existingCustomer) {
+  //     console.log('Default customer already exists');
+  //     return existingCustomer;
+  //   }
 
-    // If no existing customer, create a new one
-    const newCustomerData = {
-      ...newCustomer,
-      _id: `${storeNo}:${uuidv4()}`,
-      phoneNumber: `${storeNo}`,
-      balance: 0,
-      storeNo: `${storeNo}`
-    };
+  //   // If no existing customer, create a new one
+  //   const newCustomerData = {
+  //     ...newCustomer,
+  //     _id: `${storeNo}:${uuidv4()}`,
+  //     phoneNumber: `${storeNo}`,
+  //     balance: 0,
+  //     storeNo: `${storeNo}`
+  //   };
 
-    console.log(newCustomerData);
+  //   console.log(newCustomerData);
 
-    try {
-      const result = await window.electronAPI.realmOperation('createCustomer', newCustomerData);
-      if (result.success) {
-        setNewCustomer({ name: '', phoneNumber: '', address: '' });
-        return result.customer;
-      } else {
-        console.error('Failed to create customer:', result.error);
-        return null;
-      }
-    } catch (error) {
-      console.error('Error creating customer:', error);
-      return null;
-    }
-  }
+  //   try {
+  //     const result = await window.electronAPI.realmOperation('createCustomer', newCustomerData);
+  //     if (result.success) {
+  //       setNewCustomer({ name: '', phoneNumber: '', address: '' });
+  //       return result.customer;
+  //     } else {
+  //       console.error('Failed to create customer:', result.error);
+  //       return null;
+  //     }
+  //   } catch (error) {
+  //     console.error('Error creating customer:', error);
+  //     return null;
+  //   }
+  // }
 
   const SplashScreen = () => {
   return (

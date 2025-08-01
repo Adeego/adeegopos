@@ -13,7 +13,8 @@ import { Sheet, SheetClose, SheetContent, SheetDescription, SheetFooter, SheetHe
 import { Label } from '@/components/ui/label'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import SalesHistory from '../pos/salesHistory'
-import Link from 'next/link'
+import Link from 'next/link';
+import useWsinfoStore from '@/stores/wsinfo';
 import AiAnalysis from '@/components/dashboardComps/aiAnalysis'
 
 export default function Report() {
@@ -26,6 +27,7 @@ export default function Report() {
   const [yesterdayTransaction, setYesterdayTransaction] = useState([])
   const [yesterdayCashflow, setYesterdayCashflow] = useState(0)
   const [activeTab, setActiveTab] = useState("from")
+  const storeNo = useWsinfoStore((state) => state.wsinfo.storeNo);
   
   // New state for date range selection
   const [fromDate, setFromDate] = useState(() => {
@@ -35,11 +37,15 @@ export default function Report() {
   });
   const [toDate, setToDate] = useState(new Date())
 
+
+
   useEffect(() => {
-    fetchSalesData();
-    fetchExpenseData();
-    transactionMetrics();
-  }, [])
+    if (storeNo) {
+      fetchSalesData();
+      fetchExpenseData();
+      transactionMetrics();
+    }
+  }, [storeNo, fromDate, toDate]);
 
   useEffect(() => {
     const grossCashflow = (salesData.revenue + transaction.customerCredits) - (expense + salesData.customerCredit + transaction.supplierPayments);
@@ -49,9 +55,11 @@ export default function Report() {
   }, [salesData, expense, transaction])
 
   const handleGenerateReport = () => {
-    fetchSalesData();
-    fetchExpenseData();
-    transactionMetrics();
+    if (storeNo) {
+      fetchSalesData();
+      fetchExpenseData();
+      transactionMetrics();
+    }
   }
 
   // Helper function to calculate percentage change
@@ -79,8 +87,9 @@ export default function Report() {
   }
 
   const fetchSalesData = async () => {
+    if (!storeNo) return;
     try {
-      const result = await window.electronAPI.realmOperation('getSalesMetricsReport', fromDate.toISOString(), toDate.toISOString() );
+      const result = await window.electronAPI.realmOperation('getSalesMetricsReport', fromDate.toISOString(), toDate.toISOString(), storeNo );
       if (result.success) {
         setSalesData(result.data.currentPeriod);
         setYesterdaySalesData(result.data.previousPeriod);
@@ -93,8 +102,9 @@ export default function Report() {
   };
 
   const transactionMetrics = async () => {
+    if (!storeNo) return;
     try {
-      const result = await window.electronAPI.realmOperation('getTransactionMetricsReport', fromDate.toISOString(), toDate.toISOString());
+      const result = await window.electronAPI.realmOperation('getTransactionMetricsReport', fromDate.toISOString(), toDate.toISOString(), storeNo);
       console.log(result)
       if (result.success) {
         setTransaction(result.data.currentPeriod);
@@ -108,8 +118,9 @@ export default function Report() {
   };
 
   const fetchExpenseData = async () => {
+    if (!storeNo) return;
     try {
-      const result = await window.electronAPI.realmOperation('getExpensesReport', fromDate.toISOString(), toDate.toISOString());
+      const result = await window.electronAPI.realmOperation('getExpensesReport', fromDate.toISOString(), toDate.toISOString(), storeNo);
       if (result.success) {
         setExpense(result.data.currentPeriod.totalExpenses);
         setYesterdayExpense(result.data.previousPeriod.totalExpenses);

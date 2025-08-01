@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import DeleteCustomer from './deleteCustomer';
 import useStaffStore from '@/stores/staffStore';
+import useWsinfoStore from '@/stores/wsinfo';
 import EditCustomer from './editCustomer';
 import AddCustomer from './addCustomer';
 import Edit from './edit';
@@ -26,20 +27,14 @@ export default function CustomerTable() {
   const [searchTerm, setSearchTerm] = useState('');
   const [role, setRole] = useState(null)
   const staff = useStaffStore((state) => state.staff);
-  // const [isAddingCustomer, setIsAddingCustomer] = useState(false);
+  const store = useWsinfoStore((state) => state.wsinfo);
+  const [storeNo, setStoreNo] = useState('');
 
-  // // New customer state
-  // const [newCustomer, setNewCustomer] = useState({
-  //   _id: uuidv4(),
-  //   name: '',
-  //   phoneNumber: '',
-  //   address: '',
-  //   balance: '',
-  //   credit: false,
-  //   status: '',
-  // });
-
-  console.log(staff);
+  useEffect(() => {
+    if (store && store.storeNo) {
+      setStoreNo(store.storeNo);
+    }
+  }, [store]);
 
   useEffect(() => {
     if (staff.role) {
@@ -48,8 +43,10 @@ export default function CustomerTable() {
   }, [staff.role])
 
   useEffect(() => {
-    fetchCustomers();
-  }, []);
+    if (storeNo) {
+      fetchCustomers();
+    }
+  }, [storeNo]);
 
   useEffect(() => {
     const filtered = customers.filter(customer =>
@@ -62,7 +59,7 @@ export default function CustomerTable() {
 
   const fetchCustomers = async () => {
     try {
-      const result = await window.electronAPI.realmOperation('getAllCustomers');
+      const result = await window.electronAPI.realmOperation('getAllCustomers', storeNo);
       if (result.success) {
         setCustomers(result.customers);
         setFilteredCustomers(result.customers);

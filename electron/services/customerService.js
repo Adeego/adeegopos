@@ -24,12 +24,13 @@ function createCustomer(db, customerData) {
 }
 
 // Get all customers
-function getAllCustomers(db) {
+function getAllCustomers(db, storeNo) {
   return db
     .find({
       selector: { 
         type: "customer",
-        state: "Active"
+        state: "Active",
+        storeNo: storeNo
       },
     })
     .then((result) => ({ success: true, customers: result.docs }))
@@ -45,7 +46,7 @@ function getCustomerById(db, customerId) {
 }
 
 // Added a new function for customer search
-async function searchCustomers(db, searchTerm, state = "Active", type = "customer") {
+async function searchCustomers(db, searchTerm, storeNo, state = "Active", type = "customer") {
   try {
     const result = await db.find({
       selector: {
@@ -54,7 +55,8 @@ async function searchCustomers(db, searchTerm, state = "Active", type = "custome
           { phoneNumber: { $regex: new RegExp(searchTerm, 'i') } }
         ],
         state: state,
-        type: type
+        type: type,
+        storeNo: storeNo
       }
     });
     return { success: true, customers: result.docs };
@@ -107,12 +109,13 @@ function deleteCustomer(db, customerId) {
 }
 
 // Query all sales for a specific customer
-function getCustomerSales(db, customerId, fromDate, toDate) {
+function getCustomerSales(db, customerId, storeNo, fromDate, toDate) {
   return db
     .find({
       selector: {
         customerId: customerId,
         type: "sale",
+        storeNo: storeNo,
         createdAt: {
           $gte: fromDate || '',
           $lte: toDate || new Date().toISOString()
@@ -131,7 +134,7 @@ function getCustomerSales(db, customerId, fromDate, toDate) {
 }
 
 // Get today's credit sales
-function getTodayCreditSales(db) {
+function getTodayCreditSales(db, storeNo) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const tomorrow = new Date(today);
@@ -141,6 +144,7 @@ function getTodayCreditSales(db) {
     selector: {
       type: "sale",
       state: "Active",
+      storeNo: storeNo,
       createdAt: {
         $gte: today.toISOString(),
         $lt: tomorrow.toISOString()
@@ -159,7 +163,7 @@ function getTodayCreditSales(db) {
 }
 
 // Get today's transactions where source is customer
-async function getTodayCustomerTransactions(db) {
+async function getTodayCustomerTransactions(db, storeNo) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const tomorrow = new Date(today);
@@ -175,7 +179,8 @@ async function getTodayCustomerTransactions(db) {
         $gte: today.toISOString(),
         $lt: tomorrow.toISOString()
       },
-      source: "customer"
+      source: "customer",
+      storeNo: storeNo
     }
     });
 

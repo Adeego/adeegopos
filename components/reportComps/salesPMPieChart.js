@@ -18,18 +18,28 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart"
+import useWsinfoStore from '@/stores/wsinfo';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d'];
 
 export default function SalesPMPieChart() {
   const [data, setData] = useState([]);
+  const store = useWsinfoStore((state) => state.wsinfo);
+  const [storeNo, setStoreNo] = useState('');
+
+  useEffect(() => {
+    if (store && store.storeNo) {
+      setStoreNo(store.storeNo);
+    }
+  }, [store]);
 
   useEffect(() => {
     const fetchSalesData = async () => {
+      if (!storeNo) return;
       try {
         const date1 = new Date('2023-01-01').toISOString();
         const date2 = new Date().toISOString();
-        const result = await window.electronAPI.realmOperation('getSalesByPaymentMethod', date1, date2);
+        const result = await window.electronAPI.realmOperation('getSalesByPaymentMethod', { date1, date2, storeNo });
         
         if (result.success) {
           setData(result.data);
@@ -42,7 +52,7 @@ export default function SalesPMPieChart() {
     };
 
     fetchSalesData();
-  }, []);
+  }, [storeNo]);
 
   const chartConfig = data.reduce((config, item) => {
     config[item.pmethod] = {

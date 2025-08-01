@@ -18,13 +18,13 @@ function openPouchDB() {
 
 function setupIndexes() {
   // Define the index fields for products
-  const productIndexFields = ['name', 'state', 'type'];
+  const productIndexFields = ['name', 'state', 'type', 'storeNo'];
   // Define the index fields for customers
-  const customerIndexFields = ['name', 'phoneNumber', 'state', 'type', 'createdAt'];
+  const customerIndexFields = ['name', 'phoneNumber', 'state', 'type', 'createdAt', 'storeNo'];
   // Define the index fields for general use
-  const generalIndexFields = ['createdAt', 'type', 'state'];
+  const generalIndexFields = ['createdAt', 'type', 'state', 'storeNo'];
 
-  const specificIdIndexFields = ['type', 'state', '_id', 'createdAt'];
+  const specificIdIndexFields = ['type', 'state', '_id', 'createdAt', 'storeNo'];
 
   // Check if the product index already exists
   localDB.getIndexes().then((result) => {

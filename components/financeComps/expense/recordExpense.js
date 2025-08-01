@@ -34,13 +34,17 @@ export default function RecordExpense({ fetchExpenses }) {
   // ];
 
   useEffect(() => {
-    const storeNo = store.storeNo;
-    if (storeNo) {
-      setStoreNo(storeNo)
+    if (store && store.storeNo) {
+      setStoreNo(store.storeNo);
     }
-    fetchAccounts();
-    fetchExpenseTypes();
-  }, [store.storeNo]);
+  }, [store]);
+
+  useEffect(() => {
+    if (storeNo) {
+      fetchAccounts();
+      fetchExpenseTypes();
+    }
+  }, [storeNo]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -69,10 +73,10 @@ export default function RecordExpense({ fetchExpenses }) {
   }
 
   const fetchAccounts = async () => {
+    if (!storeNo) return;
     try {
-      const result = await window.electronAPI.realmOperation('getAllAccounts');
+      const result = await window.electronAPI.realmOperation('getAllAccounts', storeNo);
       if (result.success) {
-        console.log(result.accounts)
         setAccounts(result.accounts || []); // Ensure accounts is always an array
       } else {
         setAccounts([]); // Set empty array if request fails

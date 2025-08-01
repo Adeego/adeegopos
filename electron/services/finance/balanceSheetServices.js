@@ -23,7 +23,10 @@ function createBalanceSheetEntry(db, balanceSheetData) {
 }
 
 // Get all balance sheet entries
-function getAllBalanceSheets(db) {
+function getAllBalanceSheets(db, { storeNo }) {
+  if (!storeNo) {
+    return Promise.resolve({ success: false, error: "storeNo is required" });
+  }
   const types = ["asset", "liability", "equity"];
   
   return Promise.all(
@@ -31,7 +34,8 @@ function getAllBalanceSheets(db) {
       db.find({
       selector: { 
           type: type,
-        state: "Active"
+        state: "Active",
+        storeNo: storeNo
 }
       })
     )

@@ -9,6 +9,7 @@ function createStaff(db, staffData) {
     passcode: staffData.passcode,
     salary: staffData.salary,
     role: staffData.role,
+    storeNo: staffData.storeNo,
     createdAt: staffData.createdAt,
     updatedAt: staffData.updatedAt,
     type: "staff",
@@ -24,12 +25,13 @@ function createStaff(db, staffData) {
 }
 
 // Get all active staff members
-function getAllStaff(db) {
+function getAllStaff(db, storeNo) {
   return db
     .find({
       selector: {
         type: "staff",
-        state: "Active"
+        state: "Active",
+        storeNo: storeNo
       }
     })
     .then(result => ({ success: true, staff: result.docs }))
@@ -75,14 +77,15 @@ function archiveStaff(db, staffId) {
 }
 
 // Sign in a staff member
-function signInStaff(db, phoneNumber, passcode) {
+function signInStaff(db, phoneNumber, passcode, storeNo) {
   return db
     .find({
       selector: {
         type: "staff",
         state: "Active",
         phoneNumber: phoneNumber,
-        passcode: passcode
+        passcode: passcode,
+        storeNo: storeNo
       }
     })
     .then(result => {

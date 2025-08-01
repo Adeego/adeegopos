@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/router'
 import ViewProduct from '@/components/productComps/viewProduct';
 import EditProduct from '@/components/productComps/editProduct';
+import useWsinfoStore from '@/stores/wsinfo';
 
 export default function ProductDetails() {
     const [product, setProduct] = useState(null);
@@ -9,16 +10,24 @@ export default function ProductDetails() {
     const [isEditing, setIsEditing] = useState(false);
     const router = useRouter()
     const {id} = router.query
+    const store = useWsinfoStore((state) => state.wsinfo);
+    const [storeNo, setStoreNo] = useState('');
 
     useEffect(() => {
-      if (id) {
+      if (store && store.storeNo) {
+        setStoreNo(store.storeNo);
+      }
+    }, [store]);
+
+    useEffect(() => {
+      if (id && storeNo) {
         fetchSelectedProduct();
         fetchProductSales();
-        handleSaleItems();
       }
-    }, [id]);
+    }, [id, storeNo]);
 
     const fetchSelectedProduct = async () => {
+        // if (!storeNo) return;
         try {
           const result = await window.electronAPI.realmOperation('getProductById', id);
           if (result.success) {
@@ -32,10 +41,11 @@ export default function ProductDetails() {
     }
 
     const fetchProductSales = async () => {
+      // if (!storeNo) return;
       const startDate = new Date(new Date().setDate(new Date().getDate() - 30));
       const endDate = new Date();
       try {
-        const result = await window.electronAPI.realmOperation('getSaleItemsByProductId', id, startDate, endDate);
+        const result = await window.electronAPI.realmOperation('getSaleItemsByProductId', id, storeNo);
         if (result.success) {
           setSaleItems(result.saleItems);
         } else {
@@ -47,8 +57,9 @@ export default function ProductDetails() {
     }
 
     const handleSaleItems = async () => {
+      if (!storeNo) return;
       try {
-        const result = await window.electronAPI.realmOperation('getSaleItemsByProductId', id);
+        const result = await window.electronAPI.realmOperation('getSaleItemsByProductId', id, storeNo);
         if (result.success) {
           setSaleItems(result.saleItems);
           console.log(result);
@@ -59,9 +70,11 @@ export default function ProductDetails() {
     }
 
     const handleArchiveProduct = async () => {
-      const result = await window.electronAPI.realmOperation('archiveProduct', id);
+      if (!storeNo) return;
+      const result = await window.electronAPI.realmOperation('archiveProduct', id, storeNo);
       if (result.success) {
         console.log("product was archived succesifully");
+        router.push('/product');
       } else {
         console.error('Failed to archive product');
       }
@@ -92,6 +105,7 @@ export default function ProductDetails() {
           fetchSelectedProduct={fetchSelectedProduct} 
           saleItems={saleItems} 
           fetchProductSales={fetchProductSales}
+          handleSaleItems={handleSaleItems}
           handleArchiveProduct={handleArchiveProduct}
           handleEditState={handleEditState}
         />}

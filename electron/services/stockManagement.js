@@ -2,11 +2,13 @@ const OpenAI = require('openai');
 const { v4: uuidv4 } = require('uuid');
 
 // Function to fetch products that need restocking
-function getProductsToRestock(db) {
+function getProductsToRestock(db, storeNo) {
   return db.find({
     selector: {
       type: 'product',
-      state: 'Active'
+      state: 'Active',
+      storeNo: storeNo,
+      restock: true
     }
   })
   .then((result) => {
@@ -18,12 +20,9 @@ function getProductsToRestock(db) {
       };
     }
 
-    // Filter products that need restocking after fetching
-    const productsToRestock = result.docs.filter(product => product.restock === true);
-    
     return {
       success: true,
-      products: productsToRestock
+      products: result.docs
     };
   })
   .catch((error) => ({
@@ -65,7 +64,7 @@ async function generateRestockingMessage(productDetails, restockDetails) {
         },
         {
           role: "user", 
-          content: `Generate a user-friendly restocking recommendation message in Somali language.
+          content: `Generate a user-friendly restocking recommendation message.
           Based on the inventory analysis for ${productDetails.name}, we recommend restocking ${restockDetails.restockAmount} units. The current stock level stands at ${restockDetails.currentStock} units. To maintain optimal inventory levels through ${new Date(restockDetails.dates.stockEndDate).toLocaleDateString()}, please submit your order today for delivery by ${new Date(restockDetails.dates.restockedDate).toLocaleDateString()}. Historical data indicates an average daily demand of ${restockDetails.metrics.historicalAvgDemand.toFixed(2)} units.`
         }
       ],
@@ -139,6 +138,7 @@ async function calculateRestock(db, productIds, mainWindow) {
           selector: {
             type: 'sale',
             state: 'Active',
+            storeNo: product.storeNo,
             createdAt: {
               $gte: startDate,
               $lte: endDate

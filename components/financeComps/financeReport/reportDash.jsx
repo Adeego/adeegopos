@@ -14,6 +14,7 @@ import { Banknote, CalendarIcon } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import useWsinfoStore from '@/stores/wsinfo';
 
 export default function ReportDash() {
   const [fromDate, setFromDate] = useState(subDays(new Date(), 30))
@@ -28,26 +29,38 @@ export default function ReportDash() {
   const [bsAssests, setBsAssets] = useState('')
   const [chartsOfAccountData, setChartsOfAccountData] = useState([]);
   const [trialBalance, setTrialBalance] = useState([]);
+  const store = useWsinfoStore((state) => state.wsinfo);
+  const [storeNo, setStoreNo] = useState('');
 
   useEffect(() => {
-    fetchStatement();
-    fetchTransactions();
-    fetchBalanceSheet();
-    fetchChartsOfAccounts();
-    fetchTrialBalance();
-  }, [fromDate, toDate])
+    if (store && store.storeNo) {
+      setStoreNo(store.storeNo);
+    }
+  }, [store]);
+
+  useEffect(() => {
+    if (storeNo) {
+      fetchStatement();
+      fetchTransactions();
+      fetchBalanceSheet();
+      fetchChartsOfAccounts();
+      fetchTrialBalance();
+    }
+  }, [fromDate, toDate, storeNo]);
 
   const handleGenerateReport = () => {
-    fetchStatement();
-    fetchTransactions();
-    fetchBalanceSheet();
-    fetchChartsOfAccounts();
-    fetchTrialBalance();
+    if (storeNo) {
+      fetchStatement();
+      fetchTransactions();
+      fetchBalanceSheet();
+      fetchChartsOfAccounts();
+      fetchTrialBalance();
+    }
   }
 
   const fetchStatement = async () => {
     try {
-      const result = await window.electronAPI.realmOperation('incomeStatement', fromDate, toDate)
+      const result = await window.electronAPI.realmOperation('incomeStatement', fromDate, toDate, storeNo)
       if (result.success) {
         setStatementData(result.data)
       } else {
@@ -61,7 +74,7 @@ export default function ReportDash() {
 
   const fetchTransactions = async () => {
     try {
-      const result = await window.electronAPI.realmOperation('getAccountStatement', fromDate, toDate);
+      const result = await window.electronAPI.realmOperation('getAccountStatement', fromDate, toDate, storeNo);
       if (result.success) {
         setAccountStatements(result.transactions);
         setTotalStatement(result.totalAmount)
@@ -75,7 +88,7 @@ export default function ReportDash() {
 
   const fetchBalanceSheet = async () => {
     try {
-      const result = await window.electronAPI.realmOperation('getBalanceSheet', toDate);
+      const result = await window.electronAPI.realmOperation('getBalanceSheet', toDate, storeNo);
       if (result.success) {
         setBalanceSheet(result.data);
         setBsAssets(result.data.assets.totalAssets)
@@ -89,7 +102,7 @@ export default function ReportDash() {
 
   const fetchChartsOfAccounts = async () => {
     try {
-      const result = await window.electronAPI.realmOperation('getChartOfAccounts', fromDate, toDate);
+      const result = await window.electronAPI.realmOperation('getChartOfAccounts', fromDate, toDate, storeNo);
       if (result.success) {
       const data = result.data;
       
@@ -125,7 +138,7 @@ export default function ReportDash() {
 
   const fetchTrialBalance = async () => {
     try {
-      const result = await window.electronAPI.realmOperation('getTrialBalance', fromDate, toDate);
+      const result = await window.electronAPI.realmOperation('getTrialBalance', fromDate, toDate, storeNo);
       if (result.success) {
         setTrialBalance(result.data)
       }

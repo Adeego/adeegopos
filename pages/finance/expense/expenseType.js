@@ -56,15 +56,21 @@ export default function ExpenseType() {
   const store = useWsinfoStore((state) => state.wsinfo);
 
   useEffect(() => {
-    if (store.storeNo) {
-      setStoreNo(store.storeNo)
+    if (store && store.storeNo) {
+      setStoreNo(store.storeNo);
     }
-    fetchExpenseTypes();
-  }, [store.storeNo]);
+  }, [store]);
+
+  useEffect(() => {
+    if (storeNo) {
+      fetchExpenseTypes();
+    }
+  }, [storeNo]);
 
   const fetchExpenseTypes = async () => {
+    if (!storeNo) return;
     try {
-      const result = await window.electronAPI.realmOperation('getAllExpenseTypes');
+      const result = await window.electronAPI.realmOperation('getAllExpenseTypes', storeNo);
       if (result.success) {
         setExpenseTypes(result.expenseTypes || [])
       } else {
@@ -177,8 +183,9 @@ export default function ExpenseType() {
   }
 
   const handleDeleteExpenseType = async (id) => {
+    if (!storeNo) return;
     try {
-      const result = await window.electronAPI.realmOperation('archiveExpenseType', id)
+      const result = await window.electronAPI.realmOperation('archiveExpenseType', { id, storeNo })
       if (result.success) {
         toast({
           title: "Success",

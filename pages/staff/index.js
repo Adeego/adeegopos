@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import AddStaff from '@/components/staff/addStaff';
 import { useRouter } from 'next/router';
+import useWsinfoStore from '@/stores/wsinfo';
 
 export default function Staff() {
   const [staff, setStaff] = useState([]);
@@ -15,10 +16,20 @@ export default function Staff() {
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [searchTerm, setSearchTerm] = useState('');
   const router = useRouter();
+  const store = useWsinfoStore((state) => state.wsinfo);
+  const [storeNo, setStoreNo] = useState('');
 
   useEffect(() => {
-    fetchStaff();
-  }, []);
+    if (store && store.storeNo) {
+      setStoreNo(store.storeNo);
+    }
+  }, [store]);
+
+  useEffect(() => {
+    if (storeNo) {
+      fetchStaff();
+    }
+  }, [storeNo]);
 
   useEffect(() => {
     const filtered = staff.filter(s =>
@@ -30,8 +41,9 @@ export default function Staff() {
   }, [staff, searchTerm]);  
 
   const fetchStaff = async () => {
+    if (!storeNo) return;
     try {
-      const result = await window.electronAPI.realmOperation('getAllStaff');
+      const result = await window.electronAPI.realmOperation('getAllStaff', storeNo);
       if (result.success) {
         setStaff(result.staff);
         setFilteredStaff(result.staff);

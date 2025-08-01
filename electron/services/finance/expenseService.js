@@ -45,12 +45,16 @@ function createExpense(db, expenseData) {
 }
 
 // Get all expenses
-function getAllExpenses(db) {
+function getAllExpenses(db, { storeNo }) {
+  if (!storeNo) {
+    return Promise.resolve({ success: false, error: "storeNo is required" });
+  }
   return db
     .find({
       selector: { 
         type: "expense",
-        state: "Active"
+        state: "Active",
+        storeNo: storeNo
       },
     })
     .then((result) => ({ success: true, expenses: result.docs }))

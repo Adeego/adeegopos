@@ -49,7 +49,6 @@ function SaleCard() {
   });
   const [currentVariant, setCurrentVariant] = useState(null);
   const [custSearchDialog, setCustSearchDialog] = useState(false);
-  const [storeNo, setStoreNo] = useState("");
   const [saleDetail, setSaleDetail] = useState(false);
   const [servedBy, setServedBy] = useState('');
   const [amountPaid, setAmountPaid] = useState(null);
@@ -57,6 +56,7 @@ function SaleCard() {
   const [change, setChange] = useState(null)
   const [discount, setDiscount] = useState(0)
   const store = useWsinfoStore((state) => state.wsinfo);
+  const storeNo = store.storeNo;
   const staff = useStaffStore((state) => state.staff)
   const addDraft = useDraftSalesStore(state => state.addDraft);
 
@@ -87,12 +87,7 @@ function SaleCard() {
     return () => clearTimeout(delayDebounceFn);
   }, [name]);
 
-  useEffect(() => {
-    const storeNo = store.storeNo;
-    if (storeNo) {
-      setStoreNo(storeNo);
-    }
-  }, [store.storeNo]);
+
 
   useEffect(() => {
     if (staff.firstName) {
@@ -114,7 +109,7 @@ function SaleCard() {
   const fetchDefaultCustomer = async (storeNumber) => {
     console.log(store.storeNo)
     try {
-      const result = await window.electronAPI.searchCustomers(storeNumber);
+      const result = await window.electronAPI.searchCustomers(storeNumber, '');
       if (result.success && result.customers.length > 0) {
         console.log(result.customers);
         setCustomer(result.customers[0]);
@@ -225,7 +220,7 @@ function SaleCard() {
 
   const performCustomerSearch = async () => {
     try {
-      const result = await window.electronAPI.searchCustomers(name);
+      const result = await window.electronAPI.searchCustomers(name, storeNo);
       if (result.success) {
         setCustomerResult(result.customers);
       } else {

@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import AddTransaction from './addTransaction';
 import { useRouter } from 'next/router';
+import useWsinfoStore from '@/stores/wsinfo';
 
 export default function TransactionTable() {
   const [transactions, setTransactions] = useState([]);
@@ -15,10 +16,20 @@ export default function TransactionTable() {
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [searchTerm, setSearchTerm] = useState('');
   const router = useRouter();
+  const store = useWsinfoStore((state) => state.wsinfo);
+  const [storeNo, setStoreNo] = useState('');
 
   useEffect(() => {
-    fetchTransactions();
-  }, []);
+    if (store && store.storeNo) {
+      setStoreNo(store.storeNo);
+    }
+  }, [store]);
+
+  useEffect(() => {
+    if (storeNo) {
+      fetchTransactions();
+    }
+  }, [storeNo]);
 
   useEffect(() => {
     const filtered = transactions.filter(t =>
@@ -31,7 +42,7 @@ export default function TransactionTable() {
 
   const fetchTransactions = async () => {
     try {
-      const result = await window.electronAPI.realmOperation('getAllTransactions');
+      const result = await window.electronAPI.realmOperation('getAllTransactions', storeNo);
       if (result.success) {
         setTransactions(result.transactions);
         setFilteredTransactions(result.transactions);

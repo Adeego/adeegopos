@@ -8,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import RecordExpense from './recordExpense';
 import { useRouter } from 'next/router';
 import Link from 'next/link';
+import useWsinfoStore from '@/stores/wsinfo';
 
 export default function ExpenseTable() {
   const [expenses, setExpenses] = useState([]);
@@ -16,10 +17,20 @@ export default function ExpenseTable() {
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [searchTerm, setSearchTerm] = useState('');
   const router = useRouter();
+  const store = useWsinfoStore((state) => state.wsinfo);
+  const [storeNo, setStoreNo] = useState('');
 
   useEffect(() => {
-    fetchExpenses();
-  }, []);
+    if (store && store.storeNo) {
+      setStoreNo(store.storeNo);
+    }
+  }, [store]);
+
+  useEffect(() => {
+    if (storeNo) {
+      fetchExpenses();
+    }
+  }, [storeNo]);
 
   useEffect(() => {
     const filtered = expenses.filter(e =>
@@ -31,8 +42,9 @@ export default function ExpenseTable() {
   }, [expenses, searchTerm]);  
 
   const fetchExpenses = async () => {
+    if (!storeNo) return;
     try {
-      const result = await window.electronAPI.realmOperation('getAllExpenses');
+      const result = await window.electronAPI.realmOperation('getAllExpenses', storeNo);
       if (result.success) {
         setExpenses(result.expenses);
         setFilteredExpenses(result.expenses);

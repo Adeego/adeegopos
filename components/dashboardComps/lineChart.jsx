@@ -3,19 +3,30 @@
 import { useState, useEffect } from "react"
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import useWsinfoStore from "@/stores/wsinfo";
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart"
 
 export default function SalesLineChart() {
   const [hoveredHour, setHoveredHour] = useState(null)
   const [salesData, setSalesData] = useState([])
+  const store = useWsinfoStore((state) => state.wsinfo);
+  const [storeNo, setStoreNo] = useState('');
 
   useEffect(() => {
-    fetchHourlySalesData();
-  }, []);
+    if (store && store.storeNo) {
+      setStoreNo(store.storeNo);
+    }
+  }, [store]);
+
+  useEffect(() => {
+    if (storeNo) {
+      fetchHourlySalesData();
+    }
+  }, [storeNo]);
 
   const fetchHourlySalesData = async () => {
     try {
-      const result = await window.electronAPI.realmOperation('getHourlySalesData');
+      const result = await window.electronAPI.realmOperation('getHourlySalesData', storeNo);
       if (result.success) {
         setSalesData(result.data);
       } else {

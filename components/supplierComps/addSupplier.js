@@ -1,4 +1,4 @@
-import React, {useState} from 'react'
+import React, {useState, useEffect} from 'react'
 import { v4 as uuidv4 } from 'uuid';
 
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger, SheetFooter, SheetClose } from "@/components/ui/sheet";
@@ -8,9 +8,12 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/components/ui/use-toast";
+import useWsinfoStore from '@/stores/wsinfo';
 
 export default function AddSupplier({fetchSuppliers}) {
   const [isAddingSupplier, setIsAddingSupplier] = useState(false);
+  const store = useWsinfoStore((state) => state.wsinfo);
+  const [storeNo, setStoreNo] = useState("");
 
   // New supplier state
   const [newSupplier, setNewSupplier] = useState({
@@ -20,6 +23,12 @@ export default function AddSupplier({fetchSuppliers}) {
     address: '',
     balance: '',
   });
+
+  useEffect(() => {
+    if (store && store.storeNo) {
+      setStoreNo(store.storeNo);
+    }
+  }, [store]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -35,9 +44,9 @@ export default function AddSupplier({fetchSuppliers}) {
     try {
         const supplierData = {
           ...newSupplier,
-          _id: `24091324:${uuidv4()}`,
+          _id: `${storeNo}:${uuidv4()}`,
           balance: parseInt(newSupplier.balance),
-          storeNo: "24091324"
+          storeNo: storeNo
         };
         console.log(supplierData);
         const result = await window.electronAPI.realmOperation('createSupplier', supplierData);

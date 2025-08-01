@@ -40,8 +40,10 @@ export default function AddTransaction() {
   const [alert, setAlert] = useState({ show: false, message: '', type: 'default' });
 
   useEffect(() => {
-    fetchAccounts();
-  }, []);
+    if (storeNo) {
+      fetchAccounts();
+    }
+  }, [storeNo]);
   
   useEffect(() => {
     const storeNo = wsinfo.storeNo;
@@ -72,7 +74,7 @@ export default function AddTransaction() {
 
   const fetchAccounts = async () => {
     try {
-      const result = await window.electronAPI.realmOperation('getAllAccounts');
+      const result = await window.electronAPI.realmOperation('getAllAccounts', storeNo);
       if (result.success) {
         setAccounts(result.accounts || []); // Ensure accounts is always an array
       } else {
@@ -88,7 +90,7 @@ export default function AddTransaction() {
   const performSearch = async (searchTerm, type ) => {
     if (!searchTerm) return;
     try {
-      const searchResult = await window.electronAPI.searchCSS(searchTerm, type.toLowerCase());
+      const searchResult = await window.electronAPI.searchCSS(searchTerm, type.toLowerCase(), storeNo);
       if (searchResult.success) {
         setSearchResult(searchResult.result);
       }

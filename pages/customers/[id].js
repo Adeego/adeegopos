@@ -12,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "@/components/ui/use-toast"
 import useStaffStore from '@/stores/staffStore'
+import useWsinfoStore from '@/stores/wsinfo'
 import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
@@ -45,15 +46,23 @@ export default function CustomerDetail() {
   const [fromDate, setFromDate] = useState(new Date(new Date().setDate(new Date().getDate() - 30)));
   const [toDate, setToDate] = useState(new Date());
   const staff = useStaffStore((state) => state.staff)
+  const store = useWsinfoStore((state) => state.wsinfo);
+  const [storeNo, setStoreNo] = useState('');
   const router = useRouter()
   const {id} = router.query
 
   useEffect(() => {
-    if (id) {
+    if (store && store.storeNo) {
+      setStoreNo(store.storeNo);
+    }
+  }, [store]);
+
+  useEffect(() => {
+    if (id && storeNo) {
       fetchSelectedCustomer();
       fetchCustomerSales();
     }
-  }, [id]);
+  }, [id, storeNo]);
 
   useEffect(() => {
     if (customer) {
@@ -69,7 +78,7 @@ export default function CustomerDetail() {
 
   const fetchSelectedCustomer = async () => {
     try {
-      const result = await window.electronAPI.realmOperation('getCustomerById', id);
+      const result = await window.electronAPI.realmOperation('getCustomerById', id, storeNo);
       if (result.success) {
         setCustomer(result.customer);
       } else {
@@ -117,18 +126,18 @@ export default function CustomerDetail() {
   };
 
   const fetchCustomerSales = async () => {
+    if (!storeNo) return;
     try {
-      const result = await window.electronAPI.realmOperation('getCustomerSales', id, fromDate, toDate);
+      const result = await window.electronAPI.realmOperation('getCustomerSales', { customerId: id, fromDate, toDate, storeNo });
       if (result.success) {
-        setSales(result.sales)
-        console.log(result.sales);
+        setSales(result.sales);
       } else {
-        console.error('Failed to fetch sales:', result.error);
+        console.error('Failed to fetch customer sales:', result.error);
       }
     } catch (error) {
-      console.error('Error fetching sales:', error);
+      console.error('Error fetching customer sales:', error);
     }
-  }
+  };
 
   const handlePrint = () => {
     alert('No printer connected')

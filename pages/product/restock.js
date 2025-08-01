@@ -28,24 +28,34 @@ export default function Restock() {
   const [suppliers, setSuppliers] = useState([]);
   const [selectedProducts, setSelectedProducts] = useState([]);
   const store = useWsinfoStore((state) => state.wsinfo);
+  const [storeNo, setStoreNo] = useState('');
 
   useEffect(() => {
-    loadSuppliers()
-  }, [])
-
-  useEffect(() => {
-    if (searchTerm) {
-      searchProducts()
-    } else {
-      setProducts([])
+    if (store && store.storeNo) {
+      setStoreNo(store.storeNo);
     }
-  }, [searchTerm])
+  }, [store]);
+
+  useEffect(() => {
+    if (storeNo) {
+      loadSuppliers();
+    }
+  }, [storeNo]);
+
+  useEffect(() => {
+    if (searchTerm && storeNo) {
+      searchProducts();
+    } else {
+      setProducts([]);
+    }
+  }, [searchTerm, storeNo]);
 
   console.log(store.storeNo)
 
   const loadSuppliers = async () => {
+    if (!storeNo) return;
     try {
-      const result = await window.electronAPI.realmOperation('getAllSuppliers');
+      const result = await window.electronAPI.realmOperation('getAllSuppliers', storeNo);
       if (result.success) {
         setSuppliers(result.suppliers);
       } else {
@@ -62,8 +72,9 @@ export default function Restock() {
   }
 
   const searchProducts = async () => {
+    if (!storeNo) return;
     try {
-      const result = await window.electronAPI.searchProducts(searchTerm);
+      const result = await window.electronAPI.searchProducts(searchTerm, storeNo);
       if (result.success) {
         setProducts(result.products)
       } else {
@@ -193,7 +204,7 @@ export default function Restock() {
 
       handleCreateInvoice();
       
-      const result = await window.electronAPI.realmOperation('restockProducts', selectedProducts);
+      const result = await window.electronAPI.realmOperation('restockProducts', { products: selectedProducts, storeNo });
       console.log(result);
       
       if (result.success) {

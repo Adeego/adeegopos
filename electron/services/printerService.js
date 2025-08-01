@@ -7,8 +7,8 @@ function formatDate(date) {
 }
 
 function formatCurrency(amount) {
-  if (typeof amount !== 'number') return '$0.00';
-  return `$${amount.toFixed(2)}`;
+  if (typeof amount !== 'number') return 'Ksh 0.00';
+  return 'Ksh ' + amount.toFixed(2);
 }
 
 function validateSaleData(sale) {
@@ -20,9 +20,19 @@ function validateSaleData(sale) {
   return true;
 }
 
-async function printReceipt(sale) {
+const printQueue = [];
+let isPrinting = false;
+
+async function processPrintQueue() {
+  if (isPrinting || printQueue.length === 0) {
+    return;
+  }
+
+  isPrinting = true;
+  const sale = printQueue.shift();
+
   try {
-        // Validate sale data
+    // Validate sale data
     validateSaleData(sale);
 
     // Get the printer instance from the main process
@@ -31,11 +41,11 @@ async function printReceipt(sale) {
       throw new Error('Printer not initialized');
     }
 
-    return new Promise((resolve, reject) => {
+    await new Promise((resolve, reject) => {
       device.open(function(error) {
-        if(error) {
+        if (error) {
           console.error('Error opening printer:', error);
-          reject({ success: false, error: 'Failed to open printer connection' });
+          reject(new Error('Failed to open printer connection'));
           return;
         }
 
@@ -49,16 +59,16 @@ async function printReceipt(sale) {
             .text('ADEEGO POS')
             .size(0, 0)
             .style('normal')
-            .text('123 Main St, Anytown, USA')
+            .text('SOUTH C, NAIROBI, KE')
             .text(formatDate(sale.createdAt))
-            .text('') // Empty line for spacing
+            .text(''); // Empty line for spacing
 
           // Print items using table
           sale.items.forEach(item => {
             const quantity = item.quantity || 0;
             const name = item.name || 'Unknown Item';
             const total = formatCurrency(item.subtotal || 0);
-            
+
             printer.tableCustom([
               { text: `${quantity} x ${name}`, width: 0.7, align: 'LEFT' },
               { text: total, width: 0.3, align: 'RIGHT' }
@@ -66,19 +76,8 @@ async function printReceipt(sale) {
           });
 
           // Print totals
-          const tax = sale.totalAmount * 0.08; // 8% tax
-          const subtotal = sale.totalAmount - tax;
-
           printer
             .text('') // Empty line for spacing
-            .tableCustom([
-              { text: 'Subtotal', width: 0.7, align: 'LEFT' },
-              { text: formatCurrency(subtotal), width: 0.3, align: 'RIGHT' }
-            ])
-            .tableCustom([
-              { text: 'Tax (8%)', width: 0.7, align: 'LEFT' },
-              { text: formatCurrency(tax), width: 0.3, align: 'RIGHT' }
-            ])
             .tableCustom([
               { text: 'Total', width: 0.7, align: 'LEFT' },
               { text: formatCurrency(sale.totalAmount), width: 0.3, align: 'RIGHT' }
@@ -91,19 +90,32 @@ async function printReceipt(sale) {
             .cut()
             .close();
 
-          resolve({ success: true });
+          console.log(`Successfully printed receipt for sale: ${sale._id}`);
+          resolve();
         } catch (printError) {
           console.error('Error during printing:', printError);
-          reject({ success: false, error: 'Failed to print receipt' });
+          reject(new Error('Failed to print receipt'));
         }
       });
     });
   } catch (error) {
-    console.error('Printing error:', error.message);
-    return { 
-      success: false, 
-      error: 'Failed to print receipt. Please check printer connection and try again.'
-    };
+    console.error(`Printing error for sale ${sale._id}:`, error.message);
+  } finally {
+    isPrinting = false;
+    // Process the next item in the queue
+    processPrintQueue();
+  }
+}
+
+function printReceipt(sale) {
+  try {
+    validateSaleData(sale);
+    printQueue.push(sale);
+    processPrintQueue();
+    return Promise.resolve({ success: true, message: 'Receipt queued for printing.' });
+  } catch (error) {
+    console.error('Error queueing receipt:', error.message);
+    return Promise.reject({ success: false, error: 'Failed to queue receipt for printing.' });
   }
 }
 

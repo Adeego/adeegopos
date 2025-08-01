@@ -4,13 +4,13 @@ import { useToast } from '@/components/ui/use-toast';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Trash2 } from 'lucide-react';
 
-export default function DeleteTransaction({onDeleteSuccess, transactionId, transactionDescription}) {
+export default function DeleteTransaction({onDeleteSuccess, transactionId, transactionDescription, storeNo}) {
   const { toast } = useToast();
   const router = useRouter();
 
   const handleDelete = async () => {
     try {
-      const result = await window.electronAPI.realmOperation('archiveTransaction', transactionId);
+      const result = await window.electronAPI.realmOperation('archiveTransaction', transactionId, storeNo);
       if (result.success) {
         toast({
           title: "Success",

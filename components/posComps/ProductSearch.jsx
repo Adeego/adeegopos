@@ -4,8 +4,10 @@ import { Input } from '../ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import useWsinfoStore from '@/stores/wsinfo';
 
 function ProductSearch({ handleProductSelect }) {
+  const storeNo = useWsinfoStore((state) => state.wsinfo.storeNo);
   const [open, setOpen] = useState(false)
   const [searchTerm, setSearchTerm] = useState('');
   const [searchResults, setSearchResults] = useState(null);
@@ -29,7 +31,7 @@ function ProductSearch({ handleProductSelect }) {
 
   const fetchAllProducts = async () => {
     try {
-      const result = await window.electronAPI.realmOperation('getAllVariants');
+      const result = await window.electronAPI.realmOperation('getAllVariants', storeNo);
       if (result.success) {
         setSearchResults(result.products);
         console.log(result);
@@ -45,7 +47,7 @@ function ProductSearch({ handleProductSelect }) {
 
   const performSearch = async () => {
     try {
-      const result = await window.electronAPI.searchVariants(searchTerm);
+      const result = await window.electronAPI.searchVariants(searchTerm, storeNo);
       if (result.success) {
         console.log(result);
         setSearchResults(result.products);
