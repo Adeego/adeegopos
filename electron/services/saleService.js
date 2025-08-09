@@ -81,7 +81,7 @@ function createSale(db, saleData, mainWindow) {
         .then(customer => {
           const updatedCustomer = {
             ...customer,
-            balance: (customer.balance || 0) - saleData.totalAmount
+            balance: (Number(customer.balance) || 0) - (Number(saleData.totalAmount) || 0)
           };
           return db.put(updatedCustomer);
         })
@@ -108,6 +108,7 @@ function createSale(db, saleData, mainWindow) {
         type: "account",
         accountNumber: accountNo
       },
+      limit: 9999
     })
     .then((response) => {
       if (response.docs.length === 0) {
@@ -117,11 +118,14 @@ function createSale(db, saleData, mainWindow) {
       
       const accountToUpdate = response.docs[0];
       
+      const currentBalance = Number(accountToUpdate.balance) || 0;
+      const amount = Number(saleData.totalAmount) || 0;
+
       let balanceChange = 0;
       if (saleData.saleType === 'NEW SALE') {
-        balanceChange = saleData.totalAmount;
+        balanceChange = amount;
       } else if (saleData.saleType === 'RETURN SALE') {
-        balanceChange = -saleData.totalAmount;
+        balanceChange = -amount;
       }
 
       if (balanceChange === 0) {
@@ -130,7 +134,7 @@ function createSale(db, saleData, mainWindow) {
 
       const updatedAccount = {
         ...accountToUpdate,
-        balance: (accountToUpdate.balance || 0) + balanceChange
+        balance: currentBalance + balanceChange
       };
       
       return db.put(updatedAccount);
@@ -194,7 +198,8 @@ function getSaleProducts(db, saleId) {
 // Function to get the number of sales grouped by payment methods fr date1 to date2                                                       
 function getSalesByPaymentMethod(db, storeNo, date1, date2) {                 
   return db.find({                                                   
-    selector: { storeNo: storeNo, createdAt: { $gte: new Date(date1), $lte: new Date(date2) } }                                                    
+    selector: { storeNo: storeNo, createdAt: { $gte: new Date(date1), $lte: new Date(date2) } },                                                   
+    limit: 9999
   })                                                                 
     .then(result => {                                                
       const groupedSales = {                                         
@@ -222,7 +227,8 @@ function getSalesByPaymentMethod(db, storeNo, date1, date2) {
 // Total sales for a given time period                               
 function getTotalSales(db, storeNo, startDate, endDate) {                     
   return db.find({                                                   
-    selector: { storeNo: storeNo, createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) }, limit: 1000 }                                                    
+    selector: { storeNo: storeNo, createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) } },
+    limit: 9999                                                   
   })                                                                 
     .then(result => {                                                
       const totalSales = result.docs.reduce((sum, sale) => sum + sale.totalAmount, 0);                                                
@@ -237,7 +243,8 @@ function getTotalSales(db, storeNo, startDate, endDate) {
 // Average transaction value for a given time period                 
 function getAverageTransactionValue(db, storeNo, startDate, endDate) {        
   return db.find({                                                   
-    selector: { storeNo: storeNo, createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) } }                                                    
+    selector: { storeNo: storeNo, createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) } },                                                   
+    limit: 9999
   })                                                                 
     .then(result => {                                                
       const totalSales = result.docs.reduce((sum, sale) => sum + sale.totalAmount, 0);                                                
@@ -253,13 +260,14 @@ function getAverageTransactionValue(db, storeNo, startDate, endDate) {
 // Sales by product category for a given time period                 
 function getSalesByCategory(db, storeNo, startDate, endDate) {                
   return db.find({                                                   
-    selector: { storeNo: storeNo, createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) } }                                                    
+    selector: { storeNo: storeNo, createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) } },                                                   
+    limit: 9999
   })                                                                 
     .then(result => {                                                
       const categoryTotals = {};                                     
                                                                      
       result.docs.forEach(sale => {                                  
-        sale.items.forEach(item => {                                 
+        sale.items.forEach(item => {                                  
           const category = item.productVariant.product.category;     
           if (!categoryTotals[category]) {                           
             categoryTotals[category] = 0;                            
@@ -279,13 +287,14 @@ function getSalesByCategory(db, storeNo, startDate, endDate) {
 // Top-selling items for a given time period                         
 function getTopSellingItems(db, storeNo, startDate, endDate, limit = 50) {    
   return db.find({                                                   
-    selector: { storeNo: storeNo, createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) } }                                                    
+    selector: { storeNo: storeNo, createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) } },                                                   
+    limit: 9999
   })                                                                 
     .then(result => {                                                
       const itemSales = {};                                          
                                                                      
       result.docs.forEach(sale => {                                  
-        sale.items.forEach(item => {                                 
+        sale.items.forEach(item => {                                  
           const productId = item.productVariant.product._id;         
           if (!itemSales[productId]) {                               
             itemSales[productId] = {                                 
@@ -311,7 +320,8 @@ function getTopSellingItems(db, storeNo, startDate, endDate, limit = 50) {
 // Gross profit margin for a given time period                       
 function getGrossProfitMargin(db, storeNo, startDate, endDate) {              
   return db.find({                                                   
-    selector: { storeNo: storeNo, createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) } }                                                    
+    selector: { storeNo: storeNo, createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) } },                                                   
+    limit: 9999
   })                                                                 
     .then(result => {                                                
       let totalRevenue = 0;                                          
@@ -338,7 +348,8 @@ function getGrossProfitMargin(db, storeNo, startDate, endDate) {
 // Function to get total sales, revenue, and gross profit            
 function getTotalSalesRevenueAndProfit(db, storeNo, startDate, endDate) {     
   return db.find({                                                   
-    selector: { storeNo: storeNo, createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) } }                                                    
+    selector: { storeNo: storeNo, createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) } },                                                   
+    limit: 9999
   })                                                                 
     .then(result => {                                                
       let totalSales = 0;                                            
@@ -379,7 +390,8 @@ function getTopCustomers(db, storeNo, startDate, endDate, limit = 10) {
     selector: { 
       storeNo: storeNo, 
       createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) } 
-    }
+    },
+    limit: 9999
   })
     .then(result => {
       const customerSales = {};
@@ -419,7 +431,8 @@ function getAllSalesBetweenDates(db, storeNo, startDate, endDate) {
         storeNo: storeNo,
         createdAt: { $gte: startDate, $lte: endDate },
       },
-      // No limit to fetch all sales in the range
+      sort: [{ createdAt: 'desc' }],
+      limit: 9999
     })
     .then((result) => {
       return { success: true, data: result.docs };

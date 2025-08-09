@@ -5,6 +5,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Separator } from "@/components/ui/separator"
 import { CalendarIcon, CreditCardIcon, UserIcon, TagIcon, CheckCircleIcon, XCircleIcon, ShoppingBasket, User, Phone, MapPin, CreditCard, PhoneIcon, MapPinIcon, ShoppingBasketIcon } from "lucide-react"
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Printer } from 'lucide-react'
 
 export default function ViewSale() {
   const [sale, setSale] = useState(null);
@@ -49,12 +51,31 @@ export default function ViewSale() {
     }
   };
 
+  const handlePrint = async () => {
+    try {
+      const result = await window.electronAPI.realmOperation('printReceipt', sale);
+      if (result && result.success) {
+        console.log('Receipt queued for printing.');
+      } else {
+        console.error('Failed to queue receipt for printing', result && result.error);
+      }
+    } catch (error) {
+      console.error('Error printing receipt:', error);
+    }
+  }
+
   if (!sale) {
     return <div>Loading...</div>;
   }
 
   return (
     <div className="space-y-6 p-6 bg-background">
+      <div className="flex justify-end">
+        <Button onClick={handlePrint} className="gap-2">
+          <Printer className="h-4 w-4" />
+          Print Receipt
+        </Button>
+      </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card className="shadow-lg">
           <CardHeader className="bg-primary/5">

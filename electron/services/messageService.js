@@ -32,13 +32,14 @@ function createMessage(db, messageData, mainWindow) {
 function getAllMessages(db, storeNo) {
   return db
     .find({
-      selector: { 
+      selector: {
         type: "message",
         state: "Active",
         storeNo: storeNo,
         createdAt: { "$gt": null }
       },
-      sort: [{ createdAt: "desc" }]
+      sort: [{ createdAt: "desc" }],
+      limit: 9999
     })
     .then((result) => ({ success: true, messages: result.docs }))
     .catch((error) => ({ success: false, error: error.message }));

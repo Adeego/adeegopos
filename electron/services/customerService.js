@@ -109,7 +109,7 @@ function deleteCustomer(db, customerId) {
 }
 
 // Query all sales for a specific customer
-function getCustomerSales(db, customerId, storeNo, fromDate, toDate) {
+function getCustomerSales(db, customerId, fromDate, toDate, storeNo) {
   return db
     .find({
       selector: {

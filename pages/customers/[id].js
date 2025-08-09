@@ -128,7 +128,7 @@ export default function CustomerDetail() {
   const fetchCustomerSales = async () => {
     if (!storeNo) return;
     try {
-      const result = await window.electronAPI.realmOperation('getCustomerSales', { customerId: id, fromDate, toDate, storeNo });
+      const result = await window.electronAPI.realmOperation('getCustomerSales', id, fromDate, toDate, storeNo);
       if (result.success) {
         setSales(result.sales);
       } else {

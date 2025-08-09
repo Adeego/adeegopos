@@ -16,6 +16,7 @@ const stock = require('./services/stockManagement')
 const message = require('./services/messageService')
 const expenseType = require('./services/finance/expenseTypeService')
 const aiAnalysis = require('./services/aiAnalysisService')
+const printerService = require('./services/printerService')
 
 function getSyncStatus(db) {
   return db.info()
@@ -132,7 +133,11 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
       case 'archiveProduct':
         return productService.archiveProduct(db, args[0]);
       case 'restockProducts':
-        return productService.restockProducts(db, args[0]);
+        // Accept either an array of products or an object { products, storeNo }
+        return productService.restockProducts(
+          db,
+          Array.isArray(args[0]) ? args[0] : (args[0] && args[0].products ? args[0].products : args[0])
+        );
       case 'createSale':
         return saleService.createSale(db, args[0], mainWindow);
       case 'archiveSale':
@@ -277,6 +282,9 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
         return expenseType.updateExpenseType(db, args[0]);
       case 'archiveExpenseType':
         return expenseType.archiveExpenseType(db, args[0]);
+      case 'printReceipt':
+        // args[0] should be the sale object to print
+        return printerService.printReceipt(args[0]);
       default:
         throw new Error(`Unknown operation: ${operation}`);
     }

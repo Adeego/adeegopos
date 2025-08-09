@@ -41,26 +41,28 @@ function updateProduct(db, productData) {
       // Update the existing product with the new data
       const updatedProduct = {
         ...existingProduct,
-        name: productData.name,
-        baseUnit: productData.baseUnit,
-        buyPrice: productData.buyPrice,
-        stock: productData.stock,
-        variants: productData.variants.map((variant) => ({
-          _id: variant._id,
-          productId: productData._id,
-          name: variant.name,
-          conversionFactor: variant.conversionFactor,
-          unitPrice: variant.unitPrice,
-          storeNo: variant.storeNo,
-        })),
-        status: productData.status,
-        category: productData.category,
-        restockThreshold: productData.restockThreshold,
-        restockPeriod: productData.restockPeriod,
-        updatedAt: productData.updatedAt,
-        barCode: productData.barCode,
-        storeNo: productData.storeNo,
-        state: productData.state
+        name: productData.name ?? existingProduct.name,
+        baseUnit: productData.baseUnit ?? existingProduct.baseUnit,
+        buyPrice: productData.buyPrice ?? existingProduct.buyPrice,
+        stock: productData.stock ?? existingProduct.stock,
+        variants: (productData.variants
+          ? productData.variants.map((variant) => ({
+              _id: variant._id,
+              productId: productData._id,
+              name: variant.name,
+              conversionFactor: variant.conversionFactor,
+              unitPrice: variant.unitPrice,
+              storeNo: variant.storeNo,
+            }))
+          : existingProduct.variants),
+        status: productData.status ?? existingProduct.status,
+        category: productData.category ?? existingProduct.category,
+        restockThreshold: productData.restockThreshold ?? existingProduct.restockThreshold,
+        restockPeriod: productData.restockPeriod ?? existingProduct.restockPeriod,
+        updatedAt: productData.updatedAt ?? new Date().toISOString(),
+        barCode: productData.barCode ?? existingProduct.barCode,
+        storeNo: productData.storeNo ?? existingProduct.storeNo,
+        state: productData.state ?? existingProduct.state
       };
 
       // Save the updated product back to the database
@@ -167,11 +169,12 @@ async function restockProducts(db, productsData) {
     for (const product of productsData) {
       console.log("Processing product:", product);
       
-      // Update product stock and buy price
+      // Update product stock and buy price (send minimal fields for a safe partial update)
       const updatedProduct = {
-        ...product,
+        _id: product._id,
         stock: Number(product.stock) + Number(product.restockQuantity),
-        buyPrice: product.newBuyPrice
+        buyPrice: product.newBuyPrice,
+        updatedAt: new Date().toISOString()
       };
       console.log("Updated product data:", updatedProduct);
       

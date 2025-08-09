@@ -61,6 +61,9 @@ async function processPrintQueue() {
             .style('normal')
             .text('SOUTH C, NAIROBI, KE')
             .text(formatDate(sale.createdAt))
+            .text(`Sale ID: ${sale._id || ''}`)
+            .text(`Type: ${sale.saleType || ''} | Payment: ${sale.paymentMethod || ''}`)
+            .text(`Served: ${sale.servedBy || ''} | Fulfillment: ${sale.fullfilmentType || ''}`)
             .text(''); // Empty line for spacing
 
           // Print items using table
@@ -82,6 +85,29 @@ async function processPrintQueue() {
               { text: 'Total', width: 0.7, align: 'LEFT' },
               { text: formatCurrency(sale.totalAmount), width: 0.3, align: 'RIGHT' }
             ])
+            .tableCustom([
+              { text: 'Items', width: 0.7, align: 'LEFT' },
+              { text: String(sale.totalItems || 0), width: 0.3, align: 'RIGHT' }
+            ])
+            .tableCustom([
+              { text: 'Discount', width: 0.7, align: 'LEFT' },
+              { text: formatCurrency(sale.totalDiscount || 0), width: 0.3, align: 'RIGHT' }
+            ]);
+
+          if (typeof sale.amountPaid === 'number') {
+            printer.tableCustom([
+              { text: 'Paid', width: 0.7, align: 'LEFT' },
+              { text: formatCurrency(sale.amountPaid), width: 0.3, align: 'RIGHT' }
+            ]);
+          }
+          if (typeof sale.change === 'number') {
+            printer.tableCustom([
+              { text: 'Change', width: 0.7, align: 'LEFT' },
+              { text: formatCurrency(sale.change), width: 0.3, align: 'RIGHT' }
+            ]);
+          }
+
+          printer
             .text('') // Empty line for spacing
             .align('ct')
             .text('Thank you for shopping with us!')
