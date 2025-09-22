@@ -1,4 +1,27 @@
 const OpenAI = require('openai');
+const path = require('path');
+const fs = require('fs');
+
+// Load environment variables from .env file in production
+function loadEnvVariables() {
+  try {
+    if (process.env.NODE_ENV === 'production') {
+      const envPath = path.join(process.resourcesPath, '.env');
+      if (fs.existsSync(envPath)) {
+        const envConfig = require('dotenv').parse(fs.readFileSync(envPath));
+        for (const k in envConfig) {
+          process.env[k] = envConfig[k];
+        }
+      }
+    } else {
+      require('dotenv').config();
+    }
+  } catch (error) {
+    console.error('Error loading environment variables:', error);
+  }
+}
+
+loadEnvVariables();
 const { v4: uuidv4 } = require('uuid');
 
 // Function to fetch products that need restocking

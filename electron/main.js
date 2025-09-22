@@ -15,6 +15,7 @@ const fs = require('fs');
 const { execSync } = require('child_process');
 const escpos = require('escpos');
 escpos.Network = require('escpos-network');
+const Evilscan = require('evilscan');
 
 let serve;
 let pouch;
@@ -24,11 +25,68 @@ let printer; // Store printer connection
 // Disable hardware acceleration
 app.disableHardwareAcceleration();
 
-// Printer configuration
-const PRINTER_IP = '192.168.1.87';
+let device;
 const PRINTER_PORT = 9100;
-const device = new escpos.Network(PRINTER_IP, PRINTER_PORT);
-const options = { encoding: "GB18030" /* default */ };
+
+async function findAndConnectPrinter() {
+  return new Promise((resolve, reject) => {
+    const options = {
+      target: '192.168.8.0/24', // Assuming a common subnet, adjust if necessary
+      port: String(PRINTER_PORT),
+      status: 'O', // Look for open ports
+    };
+
+    const scanner = new Evilscan(options);
+    let found = false;
+
+    scanner.on('result', (data) => {
+      if (data.status === 'open' && !found) {
+        found = true; // Prevent multiple connections from the same scan
+        console.log(`Found printer at ${data.ip}:${data.port}`);
+        device = new escpos.Network(data.ip, data.port);
+        const printerOptions = { encoding: "GB18030" };
+        printer = new escpos.Printer(device, printerOptions);
+        global.printer = { printer, device };
+        console.log('Printer connected successfully');
+        scanner.abort(); // Stop scanning once found
+        resolve();
+      }
+    });
+
+    scanner.on('error', (err) => {
+      reject(new Error(`Network scan error: ${err.toString()}`));
+    });
+
+    scanner.on('done', () => {
+      if (!found) {
+        reject(new Error('No open printer port found on the network.'));
+      }
+    });
+
+    console.log('Scanning for network printer...');
+    scanner.run();
+  });
+}
+
+async function connectPrinterWithRetry(retries = 3, delay = 5000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      await findAndConnectPrinter();
+      return; // Success
+    } catch (error) {
+      console.error(`Printer connection attempt ${i + 1} failed:`, error.message);
+      if (i < retries - 1) {
+        console.log(`Retrying in ${delay / 1000} seconds...`);
+        await new Promise(res => setTimeout(res, delay));
+      } else {
+        console.error('All printer connection attempts failed.');
+        if (mainWindow) {
+          mainWindow.webContents.send('printer-status', { connected: false, error: 'All connection attempts failed' });
+        }
+      }
+    }
+  }
+}
 
 if (app.isPackaged) {
   (async () => {
@@ -41,18 +99,6 @@ if (app.isPackaged) {
       { scheme: "app", privileges: { secure: true, standard: true } },
     ]);
   })();
-}
-
-// Function to establish printer connection
-async function connectPrinter() {
-  try {
-    printer = new escpos.Printer(device, options);
-    // Make printer instance available globally
-    global.printer = { printer, device };
-    console.log('Printer connected successfully');
-  } catch (error) {
-    console.error('Error connecting to printer:', error);
-  }
 }
 
 const createWindow = () => {
@@ -81,7 +127,10 @@ const createWindow = () => {
   } else {
     mainWindow.loadURL("http://localhost:3333");
     mainWindow.webContents.on("did-fail-load", () => {
-      mainWindow.webContents.reloadIgnoringCache();
+      console.log('Failed to load dev server, retrying in 1 second...');
+      setTimeout(() => {
+        mainWindow.webContents.reloadIgnoringCache();
+      }, 1000);
     });
     checkOnlineStatus();
   }
@@ -199,8 +248,8 @@ app.on("ready", async () => {
 
     setupIpcHandlers(ipcMain, pouch, mainWindow);
 
-    // Connect to printer
-    await connectPrinter();
+    // Connect to printer with retry logic
+    await connectPrinterWithRetry();
 
     checkOnlineStatus();
     setInterval(checkOnlineStatus, 60000);

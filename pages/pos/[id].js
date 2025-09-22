@@ -139,9 +139,9 @@ export default function ViewSale() {
                     <TableCell className="font-medium">{item.name}</TableCell>
                     <TableCell>{item.conversionFactor}</TableCell>
                     <TableCell>{item.quantity}</TableCell>
-                    <TableCell>KES {item.unitPrice.toFixed(2)}</TableCell>
-                    <TableCell>KES {item.subtotal.toFixed(2)}</TableCell>
-                    <TableCell>KES {item.discount.toFixed(2)}</TableCell>
+                    <TableCell>KES {(parseFloat(item.unitPrice) || 0).toFixed(2)}</TableCell>
+                    <TableCell>KES {(parseFloat(item.subtotal) || 0).toFixed(2)}</TableCell>
+                    <TableCell>KES {(parseFloat(item.discount) || 0).toFixed(2)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

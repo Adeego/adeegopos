@@ -35,11 +35,13 @@ async function processPrintQueue() {
     // Validate sale data
     validateSaleData(sale);
 
-    // Get the printer instance from the main process
-    const { printer, device } = global.printer;
-    if (!printer || !device) {
+    const { printer: globalPrinter, device: globalDevice } = global.printer;
+    if (!globalPrinter || !globalDevice) {
       throw new Error('Printer not initialized');
     }
+
+    const device = new escpos.Network(globalDevice.address, globalDevice.port);
+    const printer = new escpos.Printer(device);
 
     await new Promise((resolve, reject) => {
       device.open(function(error) {
@@ -56,17 +58,20 @@ async function processPrintQueue() {
             .align('ct')
             .style('b')
             .size(1, 1)
-            .text('ADEEGO POS')
+            .text('ADEEGO MART')
             .size(0, 0)
             .style('normal')
-            .text('SOUTH C, NAIROBI, KE')
+            .text('NAIROBI WEST, NAIROBI, KE')
             .text(formatDate(sale.createdAt))
-            .text(`Sale ID: ${sale._id || ''}`)
-            .text(`Type: ${sale.saleType || ''} | Payment: ${sale.paymentMethod || ''}`)
-            .text(`Served: ${sale.servedBy || ''} | Fulfillment: ${sale.fullfilmentType || ''}`)
+            .text(`Payment: ${sale.paymentMethod || ''}`)
+            .text(`Served By: ${sale.servedBy || ''}`)
             .text(''); // Empty line for spacing
 
+          //- Divider
+          printer.text('--------------------------------');
+
           // Print items using table
+          printer.font('b'); // Use smaller font for items
           sale.items.forEach(item => {
             const quantity = item.quantity || 0;
             const name = item.name || 'Unknown Item';
@@ -77,6 +82,10 @@ async function processPrintQueue() {
               { text: total, width: 0.3, align: 'RIGHT' }
             ]);
           });
+          printer.font('a'); // Reset font
+
+          //- Divider
+          printer.text('--------------------------------');
 
           // Print totals
           printer
@@ -107,6 +116,9 @@ async function processPrintQueue() {
             ]);
           }
 
+          //- Divider
+          printer.text('--------------------------------');
+
           printer
             .text('') // Empty line for spacing
             .align('ct')
@@ -114,13 +126,18 @@ async function processPrintQueue() {
             .text('Please come again')
             .text('') // Empty line for spacing
             .cut()
-            .close();
+            .flush();
 
-          console.log(`Successfully printed receipt for sale: ${sale._id}`);
-          resolve();
+          device.close(() => {
+            console.log(`Successfully printed receipt for sale: ${sale._id}`);
+            resolve();
+          });
+
         } catch (printError) {
           console.error('Error during printing:', printError);
-          reject(new Error('Failed to print receipt'));
+          device.close(() => {
+            reject(new Error('Failed to print receipt'));
+          });
         }
       });
     });

@@ -1,7 +1,8 @@
 // pouchSync.js
 
 const PouchDB = require("pouchdb");
-const { ipcMain } = require('electron');
+const { ipcMain, app } = require('electron');
+const path = require('path');
 PouchDB.plugin(require("pouchdb-find"));
 
 const COUCHDB_URL = "http://admin:Adeego2025@139.59.91.36:5984//adeegopos";
@@ -11,7 +12,8 @@ let currentStoreNo = null;
 let syncHandler;
 
 function openPouchDB() {
-  localDB = new PouchDB("adeegopos", { auto_compaction: true });
+  const dbPath = path.join(app.getPath('userData'), 'database', 'adeegopos');
+  localDB = new PouchDB(dbPath, { auto_compaction: true });
   setupStoreNoListener();
   return localDB;
 }

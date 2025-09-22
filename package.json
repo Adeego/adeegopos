@@ -1,20 +1,24 @@
 {
   "name": "claude",
   "description": "POS App",
-  "version": "0.5.4",
+  "version": "0.5.9",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
     "dev": "next dev",
-    "build": "next build && npm run copy-static",
-    "cleanup": "sudo rm -rf out dist && sudo rm -rf node_modules/.cache",
+    "build": "next build && npm run copy-static && npm run copy-env",
+    "copy:ubuntu-env": "cp .env ./out/",
+    "copy-env": "copy .env .\\out\\",
+    "cleanup": "npm run cleanup:win && npm run cleanup:unix",
+    "cleanup:win": "powershell -Command \"Get-Process | Where-Object {$_.ProcessName -match 'electron|CLAUDE'} | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 10; if (Test-Path dist) { Get-ChildItem -Path dist -Recurse | Remove-Item -Force -Recurse; Remove-Item -Path dist -Force -Recurse }; if (Test-Path out) { Remove-Item -Path out -Recurse -Force }; if (Test-Path 'node_modules\\.cache') { Remove-Item -Path 'node_modules\\.cache' -Recurse -Force }\"",
+    "cleanup:unix": "rm -rf out dist && rm -rf node_modules/.cache",
     "copy-static": "cp -r ./public ./out/",
     "start": "next start",
     "lint": "next lint",
     "electron": "electron .",
     "electron-dev": "concurrently -n \"NEXT,ELECTRON\" -c \"yellow,blue\" --kill-others \"next dev -p 3333\" \"electron .\"",
     "electron-builder": "electron-builder",
-    "pack": "next build && electron-builder",
+    "pack": "dotenv -e .env -- next build && npm run copy-env && electron-builder --win --dir",
     "dist": "next build && electron-builder",
     "dist:lin": "dotenv -e .env -- next build && dotenv -e .env -- electron-builder",
     "publish": "dotenv -e .env -- next build && electron-builder --publish always",
@@ -31,6 +35,7 @@
     ],
     "win": {
       "target": "nsis",
+      "icon": "assets/pos2.ico",
       "publish": {
         "provider": "github",
         "owner": "Adeego",
@@ -51,22 +56,22 @@
         "owner": "Adeego"
       }
     ],
-  "extraResources": [
-    {
-      "from": ".env",
-      "to": ".env"
+    "extraResources": [
+      {
+        "from": ".env",
+        "to": ".env"
+      }
+    ],
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "CLAUDE",
+      "uninstallDisplayName": "Uninstall CLAUDE",
+      "artifactName": "${productName}-Setup-${version}.${ext}",
+      "deleteAppDataOnUninstall": true
     }
-  ],
-  "nsis": {
-    "oneClick": false,
-    "allowToChangeInstallationDirectory": true,
-    "createDesktopShortcut": true,
-    "createStartMenuShortcut": true,
-    "shortcutName": "CLAUDE",
-    "uninstallDisplayName": "Uninstall CLAUDE",
-    "artifactName": "${productName}-Setup-${version}.${ext}",
-    "deleteAppDataOnUninstall": true
-  }
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.0",
@@ -102,6 +107,7 @@
     "electron-updater": "^6.1.8",
     "escpos": "^3.0.0-alpha.6",
     "escpos-network": "^3.0.0-alpha.5",
+    "evilscan": "^1.9.1",
     "framer-motion": "^11.11.11",
     "fuse.js": "^7.0.0",
     "is-online": "^11.0.0",
