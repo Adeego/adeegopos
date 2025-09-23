@@ -59,19 +59,20 @@ async function processPrintQueue() {
             .style('b')
             .size(1, 1)
             .text('ADEEGO MART')
+            .text('TELL: 0725970724')
             .size(0, 0)
             .style('normal')
-            .text('NAIROBI WEST, NAIROBI, KE')
+            .text('SOUTH B, NAIROBI, KE')
             .text(formatDate(sale.createdAt))
             .text(`Payment: ${sale.paymentMethod || ''}`)
             .text(`Served By: ${sale.servedBy || ''}`)
             .text(''); // Empty line for spacing
 
           //- Divider
-          printer.text('--------------------------------');
+          printer.text('--------------------------------------');
 
           // Print items using table
-          printer.font('b'); // Use smaller font for items
+          printer.font('a'); // Use smaller font for items
           sale.items.forEach(item => {
             const quantity = item.quantity || 0;
             const name = item.name || 'Unknown Item';
@@ -81,11 +82,12 @@ async function processPrintQueue() {
               { text: `${quantity} x ${name}`, width: 0.7, align: 'LEFT' },
               { text: total, width: 0.3, align: 'RIGHT' }
             ]);
+            printer.text(''); // Add space between items
           });
           printer.font('a'); // Reset font
 
           //- Divider
-          printer.text('--------------------------------');
+          printer.text('--------------------------------------');
 
           // Print totals
           printer
@@ -98,10 +100,10 @@ async function processPrintQueue() {
               { text: 'Items', width: 0.7, align: 'LEFT' },
               { text: String(sale.totalItems || 0), width: 0.3, align: 'RIGHT' }
             ])
-            .tableCustom([
-              { text: 'Discount', width: 0.7, align: 'LEFT' },
-              { text: formatCurrency(sale.totalDiscount || 0), width: 0.3, align: 'RIGHT' }
-            ]);
+            // .tableCustom([
+            //   { text: 'Discount', width: 0.7, align: 'LEFT' },
+            //   { text: formatCurrency(sale.totalDiscount || 0), width: 0.3, align: 'RIGHT' }
+            // ]);
 
           if (typeof sale.amountPaid === 'number') {
             printer.tableCustom([
