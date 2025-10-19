@@ -17,6 +17,8 @@ const message = require('./services/messageService')
 const expenseType = require('./services/finance/expenseTypeService')
 const aiAnalysis = require('./services/aiAnalysisService')
 const printerService = require('./services/printerService')
+const subscriptionService = require('./services/subscriptionService')
+const growthService = require('./services/growthService')
 
 function getSyncStatus(db) {
   return db.info()
@@ -126,6 +128,8 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
         return productService.updateProduct(db, args[0]);
       case 'addNewVariant':
         return productService.addNewVariant(db, args[0], args[1])
+      case 'updateVariant':
+        return productService.updateVariant(db, args[0], args[1], args[2])
       case 'removeVariant':
         return productService.removeVariant(db, args[0], args[1])
       case 'addNewProduct':
@@ -285,6 +289,49 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
       case 'printReceipt':
         // args[0] should be the sale object to print
         return printerService.printReceipt(args[0]);
+      
+      // Adeego Plus Subscription Operations
+      case 'getAllSubscriptions':
+        return subscriptionService.getAllSubscriptions(db, args[0]);
+      case 'addSubscription':
+        return subscriptionService.addSubscription(db, args[0]);
+      case 'updateSubscription':
+        return subscriptionService.updateSubscription(db, args[0]);
+      case 'deleteSubscription':
+        return subscriptionService.deleteSubscription(db, args[0]);
+      case 'getTodayDeliveries':
+        return subscriptionService.getTodayDeliveries(db, args[0], args[1]);
+      case 'updateDeliveryStatus':
+        return subscriptionService.updateDeliveryStatus(db, args[0]);
+      case 'getSubscriptionById':
+        return subscriptionService.getSubscriptionById(db, args[0]);
+      case 'getCustomerSubscriptions':
+        return subscriptionService.getCustomerSubscriptions(db, args[0], args[1]);
+      case 'getDeliveryHistory':
+        return subscriptionService.getDeliveryHistory(db, args[0]);
+      case 'getSubscriptionStats':
+        return subscriptionService.getSubscriptionStats(db, args[0]);
+      case 'searchSubscriptions':
+        return subscriptionService.searchSubscriptions(db, args[0], args[1]);
+      case 'searchCustomers':
+        return customerService.searchCustomers(db, args[0], args[1]);
+      
+      // Growth Analytics Operations
+      case 'getMonthlySalesData':
+        return growthService.getMonthlySalesData(db, args[0], args[1], args[2]);
+      case 'getWeeklySalesGrowth':
+        return growthService.getWeeklySalesGrowth(db, args[0], args[1], args[2]);
+      case 'getAverageOrderValue':
+        return growthService.getAverageOrderValue(db, args[0], args[1], args[2]);
+      case 'getWeeklySalesBarData':
+        return growthService.getWeeklySalesBarData(db, args[0], args[1], args[2]);
+      case 'getTopPerformingProducts':
+        return growthService.getTopPerformingProducts(db, args[0], args[1], args[2], args[3]);
+      case 'getWeeklyGrossMargin':
+        return growthService.getWeeklyGrossMargin(db, args[0], args[1], args[2]);
+      case 'getGrowthMetrics':
+        return growthService.getGrowthMetrics(db, args[0]);
+      
       default:
         throw new Error(`Unknown operation: ${operation}`);
     }

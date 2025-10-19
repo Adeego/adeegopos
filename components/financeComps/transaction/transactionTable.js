@@ -43,6 +43,7 @@ export default function TransactionTable() {
   const fetchTransactions = async () => {
     try {
       const result = await window.electronAPI.realmOperation('getAllTransactions', storeNo);
+      console.log(result);
       if (result.success) {
         setTransactions(result.transactions);
         setFilteredTransactions(result.transactions);

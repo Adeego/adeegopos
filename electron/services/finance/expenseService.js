@@ -45,7 +45,7 @@ function createExpense(db, expenseData) {
 }
 
 // Get all expenses
-function getAllExpenses(db, { storeNo }) {
+function getAllExpenses(db, storeNo) {
   if (!storeNo) {
     return Promise.resolve({ success: false, error: "storeNo is required" });
   }

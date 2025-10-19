@@ -60,6 +60,7 @@ async function processPrintQueue() {
             .size(1, 1)
             .text('ADEEGO MART')
             .text('TELL: 0725970724')
+            .text('TILL NO: 4386994')
             .size(0, 0)
             .style('normal')
             .text('SOUTH B, NAIROBI, KE')

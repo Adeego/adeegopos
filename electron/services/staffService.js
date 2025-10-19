@@ -4,7 +4,7 @@ function createStaff(db, staffData) {
     _id: staffData._id,
     firstName: staffData.firstName,
     lastName: staffData.lastName,
-    phoneNumber: staffData.phoneNumber,
+    phone: staffData.phoneNumber,
     balance: staffData.balance,
     passcode: staffData.passcode,
     salary: staffData.salary,

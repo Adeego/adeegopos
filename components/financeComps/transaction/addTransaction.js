@@ -134,6 +134,7 @@ export default function AddTransaction() {
         "from": from,
         "to": to,
         "amount": parseInt(amount),
+        "storeNo": storeNo,
         "date": date.toISOString()
       }
       console.log(action)

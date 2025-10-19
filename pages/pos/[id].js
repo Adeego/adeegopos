@@ -84,7 +84,7 @@ export default function ViewSale() {
           <CardContent className="p-6">
             <div className="grid grid-cols-2 gap-6">
               <InfoItem icon={<UserIcon className="w-5 h-5" />} label="Sale Type" value={sale.saleType} />
-              <InfoItem icon={<CreditCardIcon className="w-5 h-5" />} label="Total Amount" value={`KES ${(sale.totalAmount || 0).toFixed(2)}`} />
+              <InfoItem icon={<CreditCardIcon className="w-5 h-5" />} label="Total Amount" value={`KES ${Number(sale.totalAmount || 0).toFixed(2)}`} />
               <InfoItem icon={<CreditCardIcon className="w-5 h-5" />} label="Payment Method" value={sale.paymentMethod} />
               <InfoItem icon={<CalendarIcon className="w-5 h-5" />} label="Date" value={new Date(sale.createdAt).toLocaleString()} />
               <InfoItem icon={<ShoppingBasketIcon className="w-5 h-5" />} label="Items" value={sale.totalItems.toString()} />
@@ -139,9 +139,9 @@ export default function ViewSale() {
                     <TableCell className="font-medium">{item.name}</TableCell>
                     <TableCell>{item.conversionFactor}</TableCell>
                     <TableCell>{item.quantity}</TableCell>
-                    <TableCell>KES {(parseFloat(item.unitPrice) || 0).toFixed(2)}</TableCell>
-                    <TableCell>KES {(parseFloat(item.subtotal) || 0).toFixed(2)}</TableCell>
-                    <TableCell>KES {(parseFloat(item.discount) || 0).toFixed(2)}</TableCell>
+                    <TableCell>KES {Number(item.unitPrice).toFixed(2)}</TableCell>
+                    <TableCell>KES {Number(item.subtotal).toFixed(2)}</TableCell>
+                    <TableCell>KES {Number(item.discount).toFixed(2)}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>

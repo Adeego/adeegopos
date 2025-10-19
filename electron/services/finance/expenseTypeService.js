@@ -20,7 +20,7 @@ function createExpenseType(db, expenseTypeData) {
 }
 
 // Get all expense types
-function getAllExpenseTypes(db, { storeNo }) {
+function getAllExpenseTypes(db, storeNo) {
   if (!storeNo) {
     return Promise.resolve({ success: false, error: "storeNo is required" });
   }

@@ -59,7 +59,7 @@ export default function ExpenseDetail() {
   const fetchExpenseDetail = async () => {
     if (!storeNo) return;
     try {
-      const result = await window.electronAPI.realmOperation('getExpenseById', { id, storeNo });
+      const result = await window.electronAPI.realmOperation('getExpenseById', id);
       if (result.success) {
         setExpense(result.expense);
       } else {

@@ -32,6 +32,7 @@ function getAllCustomers(db, storeNo) {
         state: "Active",
         storeNo: storeNo
       },
+      limit: 9999
     })
     .then((result) => ({ success: true, customers: result.docs }))
     .catch((error) => ({ success: false, error: error.message }));
@@ -57,7 +58,8 @@ async function searchCustomers(db, searchTerm, storeNo, state = "Active", type =
         state: state,
         type: type,
         storeNo: storeNo
-      }
+      },
+      limit: 9999
     });
     return { success: true, customers: result.docs };
   } catch (error) {

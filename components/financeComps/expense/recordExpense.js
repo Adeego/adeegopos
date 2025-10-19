@@ -63,7 +63,7 @@ export default function RecordExpense({ fetchExpenses }) {
 
   const fetchExpenseTypes = async () => {
     try {
-      const result = await window.electronAPI.realmOperation('getAllExpenseTypes')
+      const result = await window.electronAPI.realmOperation('getAllExpenseTypes', storeNo)
       if (result.success) {
         setExpenseTypes(result.expenseTypes)
       }

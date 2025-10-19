@@ -30,11 +30,18 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
 import Link from 'next/link';
-import { FilePenLine, Trash2, SquarePlus } from 'lucide-react';
+import { FilePenLine, Trash2, SquarePlus, Pencil } from 'lucide-react';
 
 export default function ViewProduct({ product, fetchSelectedProduct, saleItems, fetchProductSales, handleArchiveProduct, handleEditState }) {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [editingVariant, setEditingVariant] = useState(null)
   const [newVariant, setNewVariant] = useState({
+    name: '',
+    conversionFactor: '',
+    unitPrice: ''
+  })
+  const [editVariantData, setEditVariantData] = useState({
     name: '',
     conversionFactor: '',
     unitPrice: ''
@@ -83,6 +90,44 @@ export default function ViewProduct({ product, fetchSelectedProduct, saleItems, 
       }
     } catch (error) {
       console.error("Error removing variant:", error);
+    }
+  }
+
+  const handleEditVariantClick = (variant) => {
+    setEditingVariant(variant)
+    setEditVariantData({
+      name: variant.name,
+      conversionFactor: variant.conversionFactor,
+      unitPrice: variant.unitPrice
+    })
+    setIsEditDialogOpen(true)
+  }
+
+  const handleEditInputChange = (e) => {
+    const { name, value } = e.target
+    setEditVariantData(prev => ({ ...prev, [name]: value }))
+  }
+
+  const handleEditSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      const result = await window.electronAPI.realmOperation(
+        "updateVariant", 
+        product._id, 
+        editingVariant._id,
+        editVariantData
+      );
+      if (result.success) {
+        console.log('Variant updated successfully');
+        fetchSelectedProduct()
+        setIsEditDialogOpen(false);
+        setEditingVariant(null)
+        setEditVariantData({ name: '', conversionFactor: '', unitPrice: '' });
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      console.error("Error updating variant:", error);
     }
   }
 
@@ -217,27 +262,36 @@ export default function ViewProduct({ product, fetchSelectedProduct, saleItems, 
                     <TableCell>{variant.unitPrice}</TableCell>
                     <TableCell>{variant.conversionFactor}</TableCell>
                     <TableCell>
-                      <AlertDialog>
-                        <AlertDialogTrigger asChild>
-                          <Button variant="ghost" size="sm">
-                            <Trash2 className="h-4 w-4 text-red-500" />
-                          </Button>
-                        </AlertDialogTrigger>
-                        <AlertDialogContent>
-                          <AlertDialogHeader>
-                            <AlertDialogTitle>Remove Variant</AlertDialogTitle>
-                            <AlertDialogDescription>
-                              Are you sure you want to remove the variant {variant.name}? This action cannot be undone.
-                            </AlertDialogDescription>
-                          </AlertDialogHeader>
-                          <AlertDialogFooter>
-                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                            <AlertDialogAction onClick={() => handleRemoveVariant(variant._id)}>
-                              Remove
-                            </AlertDialogAction>
-                          </AlertDialogFooter>
-                        </AlertDialogContent>
-                      </AlertDialog>
+                      <div className="flex gap-1">
+                        <Button 
+                          variant="ghost" 
+                          size="sm"
+                          onClick={() => handleEditVariantClick(variant)}
+                        >
+                          <Pencil className="h-4 w-4 text-blue-500" />
+                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant="ghost" size="sm">
+                              <Trash2 className="h-4 w-4 text-red-500" />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Remove Variant</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Are you sure you want to remove the variant {variant.name}? This action cannot be undone.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleRemoveVariant(variant._id)}>
+                                Remove
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -248,6 +302,64 @@ export default function ViewProduct({ product, fetchSelectedProduct, saleItems, 
       </div>
       
       <ProductSales saleItems={saleItems || []} />
+
+      {/* Edit Variant Dialog */}
+      <Dialog open={isEditDialogOpen} onOpenChange={setIsEditDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Edit Variant</DialogTitle>
+            <DialogDescription>Update the variant details.</DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleEditSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="edit-name">Name</Label>
+              <Input
+                id="edit-name"
+                name="name"
+                value={editVariantData.name}
+                onChange={handleEditInputChange}
+                required
+                placeholder="Enter variant name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-conversionFactor">Conversion Factor</Label>
+              <Input
+                id="edit-conversionFactor"
+                name="conversionFactor"
+                type="number"
+                value={editVariantData.conversionFactor}
+                onChange={handleEditInputChange}
+                required
+                placeholder="Enter conversion factor"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-unitPrice">Unit Price</Label>
+              <Input
+                id="edit-unitPrice"
+                name="unitPrice"
+                type="number"
+                value={editVariantData.unitPrice}
+                onChange={handleEditInputChange}
+                required
+                placeholder="Enter unit price"
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button 
+                type="button" 
+                variant="outline" 
+                className="flex-1"
+                onClick={() => setIsEditDialogOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button type="submit" className="flex-1">Update Variant</Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

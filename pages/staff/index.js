@@ -112,7 +112,7 @@ export default function Staff() {
               {currentStaff.map((s) => (
                 <TableRow key={s._id} className="text-base">
                   <TableCell className="text-left font-medium">{s.firstName} {s.lastName}</TableCell>
-                  <TableCell className="text-left">{s.phoneNumber}</TableCell>
+                  <TableCell className="text-left">{s.phone}</TableCell>
                   <TableCell className="hidden md:table-cell text-left">{s.role}</TableCell>
                   <TableCell className="hidden md:table-cell text-left">KES {s.salary}</TableCell>
                   <TableCell className="text-right">

@@ -116,6 +116,45 @@ function addNewVariant(db, productId, variantData) {
     .catch((error) => ({ success: false, error: error.message }));
 }
 
+// Update a variant in a product
+function updateVariant(db, productId, variantId, variantData) {
+  return db
+    .get(productId)
+    .then((existingProduct) => {
+      // Find and update the specific variant
+      const updatedVariants = existingProduct.variants.map((variant) => {
+        if (variant._id === variantId) {
+          return {
+            ...variant,
+            name: variantData.name ?? variant.name,
+            conversionFactor: variantData.conversionFactor ?? variant.conversionFactor,
+            unitPrice: variantData.unitPrice ?? variant.unitPrice,
+            storeNo: variantData.storeNo ?? variant.storeNo,
+          };
+        }
+        return variant;
+      });
+
+      // Create the updated product object
+      const updatedProduct = {
+        ...existingProduct,
+        variants: updatedVariants,
+        updatedAt: new Date().toISOString(), // Update the timestamp
+      };
+
+      // Save the updated product back to the database
+      return db.put(updatedProduct);
+    })
+    .then((response) => ({
+      success: true,
+      product: {
+        _id: response.id,
+        updatedAt: new Date().toISOString(),
+      },
+    }))
+    .catch((error) => ({ success: false, error: error.message }));
+}
+
 // Remove a variant from a product
 function removeVariant(db, productId, variantId) {
   return db
@@ -409,6 +448,7 @@ module.exports = {
   addNewProduct,
   updateProduct,
   addNewVariant,
+  updateVariant,
   removeVariant,
   archiveProduct,
   getAllProducts,

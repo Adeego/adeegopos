@@ -20,6 +20,8 @@ import {
   BriefcaseBusiness,
   Settings,
   Store,
+  CalendarClock,
+  TrendingUp,
 } from "lucide-react";
 
 import {
@@ -61,6 +63,12 @@ const links = [
     allowedRoles: ["admin", "worker", "operator"], // admin and operator can manage customers
   },
   {
+    label: "Adeego Plus",
+    icon: <CalendarClock className="h-[18px] w-[18px]" strokeWidth={2} />,
+    pageLink: "/adeegoplus",
+    allowedRoles: ["admin", "operator"], // admin and operator can manage subscriptions
+  },
+  {
     label: "Suppliers",
     icon: <Cable className="h-[18px] w-[18px]" strokeWidth={2} />,
     pageLink: "/supplier",
@@ -77,6 +85,12 @@ const links = [
     icon: <BadgeDollarSign className="h-[18px] w-[18px]" strokeWidth={2} />,
     pageLink: "/finance",
     allowedRoles: ["admin"], // Only admin can access finance
+  },
+  {
+    label: "Growth",
+    icon: <TrendingUp className="h-[18px] w-[18px]" strokeWidth={2} />,
+    pageLink: "/growth",
+    allowedRoles: ["admin"], // Only admin can view growth analytics
   },
   {
     label: "Report",

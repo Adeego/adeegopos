@@ -111,7 +111,7 @@ async function createTransaction(db, transactionData) {
 }
   
 // Get all transactions
-function getAllTransactions(db, { storeNo }) {
+function getAllTransactions(db, storeNo) {
   if (!storeNo) {
     return Promise.resolve({ success: false, error: "storeNo is required" });
   }
@@ -120,15 +120,16 @@ function getAllTransactions(db, { storeNo }) {
       selector: { 
         type: "transaction",
         state: "Active",
-        storeNo: storeNo
+        storeNo: storeNo,
       },
+      limit: 9999,
     })
     .then((result) => ({ success: true, transactions: result.docs }))
     .catch((error) => ({ success: false, error: error.message }));
 }
 
 // Get today's transactions
-function getTodayTransactions(db, { storeNo }) {
+function getTodayTransactions(db, storeNo) {
   if (!storeNo) {
     return Promise.resolve({ success: false, error: "storeNo is required" });
   }
@@ -143,6 +144,7 @@ function getTodayTransactions(db, { storeNo }) {
         storeNo: storeNo,
         createdAt: { $regex: `^${today}` }
       },
+      limit: 9999,
     })
     .then((result) => {
       if (!result || !result.docs) {
