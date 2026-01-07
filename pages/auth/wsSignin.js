@@ -89,7 +89,7 @@ export default function WsSignin() {
     e.preventDefault();
   
     try {
-    const response = await axios.post('http://139.59.91.36:8000/signin', {
+    const response = await axios.post('https://adeego.store/signin', {
         name: name,
         passcode: passcode, // Assuming passcode is used as passcode
     }, {

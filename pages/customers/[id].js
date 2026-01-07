@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { CalendarDays, CreditCard, DollarSign, Phone, MapPin, Activity, ShoppingCart, TrendingUp, PrinterIcon, CreditCardIcon, CalendarIcon, EyeIcon, ShoppingCartIcon } from 'lucide-react'
+import { CalendarDays, CreditCard, DollarSign, Phone, MapPin, Activity, ShoppingCart, TrendingUp, PrinterIcon, CreditCardIcon, CalendarIcon, EyeIcon, ShoppingCartIcon, ArrowDownLeft, ArrowUpRight, FileText } from 'lucide-react'
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -42,6 +42,8 @@ export default function CustomerDetail() {
   const [editedCustomer, setEditedCustomer] = useState(null);
   const [role, setRole] = useState(null);
   const [sales, setSales] = useState([]);
+  const [ledger, setLedger] = useState([]);
+  const [aging, setAging] = useState({ "0-30": 0, "30-60": 0, "60+": 0 });
   const [selectedSale, setSelectedSale] = useState(null)
   const [fromDate, setFromDate] = useState(new Date(new Date().setDate(new Date().getDate() - 30)));
   const [toDate, setToDate] = useState(new Date());
@@ -61,6 +63,8 @@ export default function CustomerDetail() {
     if (id && storeNo) {
       fetchSelectedCustomer();
       fetchCustomerSales();
+      fetchCustomerLedger();
+      fetchCustomerAging();
     }
   }, [id, storeNo]);
 
@@ -139,9 +143,84 @@ export default function CustomerDetail() {
     }
   };
 
+  const fetchCustomerLedger = async () => {
+    if (!storeNo) return;
+    try {
+      // Fetch all transactions if possible, or just the range.
+      // If we want running balance, we ideally need everything or a starting balance.
+      // For now, we use the selected range.
+      const result = await window.electronAPI.realmOperation('getCustomerLedger', id, fromDate, toDate, storeNo);
+      if (result.success) {
+        setLedger(result.ledger);
+      } else {
+        console.error('Failed to fetch customer ledger:', result.error);
+      }
+    } catch (error) {
+      console.error('Error fetching customer ledger:', error);
+    }
+  };
+
+  const fetchCustomerAging = async () => {
+    if (!storeNo) return;
+    try {
+      const result = await window.electronAPI.realmOperation('getCustomerAging', id, storeNo);
+      console.log('Customer aging result:', result);
+      if (result.success) {
+        setAging(result.aging);
+      } else {
+        console.error('Failed to fetch customer aging:', result.error);
+      }
+    } catch (error) {
+      console.error('Error fetching customer aging:', error);
+    }
+  };
+
   const handlePrint = () => {
     alert('No printer connected')
   }
+
+  // Calculate running balance for display
+  // We will calculate it backwards from the current customer balance
+  // assuming the ledger is sorted by date (which it is from backend)
+  const getLedgerWithBalance = () => {
+    if (!customer) return ledger;
+    
+    // Sort descending (newest first)
+    const sortedLedger = [...ledger].sort((a, b) => new Date(b.date) - new Date(a.date));
+    
+    let currentBalance = customer.balance;
+    
+    // We only can accurately calculate backwards if we assume the latest transaction in the ledger
+    // corresponds to the current balance state, OR if we display relative to current balance.
+    // BUT: There might be transactions AFTER the 'toDate' if 'toDate' is in the past.
+    // So working backwards from current balance is risky if we don't have ALL transactions from now.
+    
+    // Simplified approach: Just show the transactions and their individual amounts.
+    // Displaying "Balance" column might be misleading if we don't have full history.
+    // However, the user requested "Balance".
+    
+    // Let's try to calculate it assuming we have the latest transactions.
+    return sortedLedger.map((entry, index) => {
+       const entryBalance = currentBalance;
+       
+       // Prepare balance for next row (older entry)
+       // If entry is CREDIT (Added to balance), then previous balance was LOWER.
+       // Prev + Credit = Current => Prev = Current - Credit.
+       // If entry is DEBIT (Subtracted from balance), then previous balance was HIGHER.
+       // Prev - Debit = Current => Prev = Current + Debit.
+       
+       if (entry.entryType === 'CREDIT') {
+         currentBalance -= entry.amount;
+       } else {
+         currentBalance += entry.amount;
+       }
+       
+       return { ...entry, runningBalance: entryBalance };
+    });
+  };
+
+  const ledgerWithBalance = getLedgerWithBalance();
+
 
   if (!customer) {
     return (
@@ -265,10 +344,11 @@ export default function CustomerDetail() {
             </CardHeader>
             <CardContent>
               <Tabs defaultValue="info" className="w-full">
-                <TabsList className="grid w-full grid-cols-3">
+                <TabsList className="grid w-full grid-cols-4">
                   <TabsTrigger value="info">Customer Info</TabsTrigger>
                   <TabsTrigger value="insights">Insights</TabsTrigger>
                   <TabsTrigger value="history">Sales History</TabsTrigger>
+                  <TabsTrigger value="ledger">Ledger</TabsTrigger>
                 </TabsList>
                 <TabsContent value="info" className="mt-4 space-y-4">
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -288,16 +368,6 @@ export default function CustomerDetail() {
                         <div className="text-3xl font-bold text-primary">KSH {customer.balance.toLocaleString()}</div>
                       </CardContent>
                     </Card>
-                    {/* <Card>
-                      <CardHeader>
-                        <CardTitle className="text-xl font-semibold">Key Metrics</CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <MetricItem icon={ShoppingCart} label="Times Bought" value={customer.timesBought} />
-                        <MetricItem icon={DollarSign} label="Avg. Transaction" value={`KSH ${customer.avgTransaction}`} />
-                        <MetricItem icon={TrendingUp} label="Total Transactions" value={`KSH ${customer.totalTransactions}`} />
-                      </CardContent>
-                    </Card> */}
                   </div>
                 </TabsContent>
                 <TabsContent value="history" className="mt-4">
@@ -489,6 +559,159 @@ export default function CustomerDetail() {
                         </div>
                       ) : (
                         <p className="text-muted-foreground">No sales found for the selected date range.</p>
+                      )}
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+                <TabsContent value="ledger" className="mt-4">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">0-30 Days</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold">KSH {aging["0-30"].toLocaleString()}</div>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">30-60 Days</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold">KSH {aging["30-60"].toLocaleString()}</div>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader className="pb-2">
+                        <CardTitle className="text-sm font-medium text-muted-foreground">60+ Days</CardTitle>
+                      </CardHeader>
+                      <CardContent>
+                        <div className="text-2xl font-bold text-red-600">KSH {aging["60+"].toLocaleString()}</div>
+                      </CardContent>
+                    </Card>
+                  </div>
+
+                  <Card>
+                    <CardHeader>
+                       <div className="flex items-center justify-between">
+                        <div>
+                          <CardTitle>Customer Ledger</CardTitle>
+                          <CardDescription>Detailed view of credits, debits, and balance history</CardDescription>
+                        </div>
+                        <div className="flex items-center space-x-2">
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant={"outline"}
+                                size="sm"
+                                className={cn(
+                                  "w-[180px] justify-start text-left font-normal",
+                                  !fromDate && "text-muted-foreground"
+                                )}
+                              >
+                                <CalendarDays className="mr-2 h-4 w-4" />
+                                {fromDate ? format(fromDate, "PPP") : <span>From Date</span>}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0">
+                              <Calendar
+                                mode="single"
+                                selected={fromDate}
+                                onSelect={setFromDate}
+                                initialFocus
+                              />
+                            </PopoverContent>
+                          </Popover>
+                          <Popover>
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant={"outline"}
+                                size="sm"
+                                className={cn(
+                                  "w-[180px] justify-start text-left font-normal",
+                                  !toDate && "text-muted-foreground"
+                                )}
+                              >
+                                <CalendarDays className="mr-2 h-4 w-4" />
+                                {toDate ? format(toDate, "PPP") : <span>To Date</span>}
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-auto p-0">
+                              <Calendar
+                                mode="single"
+                                selected={toDate}
+                                onSelect={setToDate}
+                                initialFocus
+                              />
+                            </PopoverContent>
+                          </Popover>
+                         <Button onClick={fetchCustomerLedger} variant="outline" size="sm">
+                           <Activity className="mr-2 h-4 w-4" />
+                           Refresh
+                         </Button>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      {ledgerWithBalance.length > 0 ? (
+                        <div className="rounded-md border">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead className="w-[120px]">Date</TableHead>
+                                <TableHead>Description</TableHead>
+                                <TableHead className="text-right text-green-600">Credit</TableHead>
+                                <TableHead className="text-right text-red-600">Debit</TableHead>
+                                <TableHead className="text-right">Balance</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {ledgerWithBalance.map((entry) => (
+                                <TableRow key={entry.ref}>
+                                  <TableCell className="font-medium">
+                                    {new Date(entry.date).toLocaleDateString('en-US', {
+                                      year: 'numeric',
+                                      month: 'short',
+                                      day: 'numeric',
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    })}
+                                  </TableCell>
+                                  <TableCell>
+                                    <div className="flex flex-col">
+                                      <span className="font-medium">{entry.description}</span>
+                                      <span className="text-xs text-muted-foreground">ID: {entry.ref.slice(-6)}</span>
+                                    </div>
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    {entry.entryType === 'CREDIT' ? (
+                                      <span className="text-green-600 font-medium flex items-center justify-end gap-1">
+                                        <ArrowUpRight className="h-3 w-3" />
+                                        KSH {entry.amount.toLocaleString()}
+                                      </span>
+                                    ) : '-'}
+                                  </TableCell>
+                                  <TableCell className="text-right">
+                                    {entry.entryType === 'DEBIT' ? (
+                                      <span className="text-red-600 font-medium flex items-center justify-end gap-1">
+                                        <ArrowDownLeft className="h-3 w-3" />
+                                        KSH {entry.amount.toLocaleString()}
+                                      </span>
+                                    ) : '-'}
+                                  </TableCell>
+                                  <TableCell className="text-right font-bold">
+                                    KSH {entry.runningBalance.toLocaleString()}
+                                  </TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      ) : (
+                        <div className="text-center py-8 text-muted-foreground">
+                          <FileText className="mx-auto h-12 w-12 mb-3 opacity-20" />
+                          <p>No ledger entries found for this customer in the selected period.</p>
+                        </div>
                       )}
                     </CardContent>
                   </Card>

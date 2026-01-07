@@ -218,6 +218,197 @@ async function getTodayCustomerTransactions(db, storeNo) {
 }
 }
 
+
+// Get customer ledger (sales and transactions)
+async function getCustomerLedger(db, customerId, fromDate, toDate, storeNo) {
+  try {
+    // Fetch Credit Sales
+    const salesResult = await db.find({
+      selector: {
+        customerId: customerId,
+        type: "sale",
+        paymentMethod: "CREDIT",
+        storeNo: storeNo,
+        createdAt: {
+          $gte: fromDate || '',
+          $lte: toDate || new Date().toISOString()
+        }
+      },
+      limit: 9999
+    });
+
+    // Fetch Transactions involving the customer
+    const transactionsResult = await db.find({
+      selector: {
+        $or: [
+          { from: customerId },
+          { to: customerId }
+        ],
+        type: "transaction",
+        state: "Active",
+        storeNo: storeNo,
+        date: {
+          $gte: fromDate || '',
+          $lte: toDate || new Date().toISOString()
+       }
+      },
+      limit: 9999
+    });
+
+    const sales = salesResult.docs.map(sale => ({
+      ...sale,
+      date: sale.createdAt,
+      description: "Credit Sale",
+      entryType: "DEBIT", // Reduces balance
+      amount: sale.totalAmount,
+      ref: sale._id
+    }));
+
+    const transactions = transactionsResult.docs.map(trans => {
+      // specific logic based on createTransaction
+      // Deposit -> Increase Balance -> CREDIT
+      // Withdraw -> Decrease Balance -> DEBIT
+      const isDeposit = trans.transType === 'deposit';
+      
+      return {
+        ...trans,
+        description: trans.description || (isDeposit ? "Payment/Deposit" : "Withdrawal"),
+        entryType: isDeposit ? "CREDIT" : "DEBIT",
+        ref: trans._id
+      };
+    });
+
+    // Combine and Sort
+    const ledger = [...sales, ...transactions].sort((a, b) => new Date(a.date) - new Date(b.date));
+    
+    return { success: true, ledger };
+
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Get customer aging analysis
+async function getCustomerAging(db, customerId, storeNo) {
+  console.log(`[getCustomerAging] Starting for customerId: ${customerId}, storeNo: ${storeNo}`);
+  try {
+    const customer = await db.get(customerId);
+    let balance = customer.balance;
+    console.log(`[getCustomerAging] Customer balance: ${balance}`);
+
+    // In this system, debt is stored as a negative balance (balance = balance - saleAmount).
+    // So if balance is negative, it means the customer owes money.
+    // If balance is positive, it means they have store credit (overpaid).
+    
+    let outstandingDebt = 0;
+    if (balance < 0) {
+      outstandingDebt = Math.abs(balance);
+    } else {
+      console.log(`[getCustomerAging] Balance is positive or zero (${balance}). No debt to age.`);
+      return { success: true, aging: { "0-30": 0, "30-60": 0, "60+": 0 } };
+    }
+
+    console.log(`[getCustomerAging] Outstanding Debt: ${outstandingDebt}`);
+
+    // Fetch all credit sales (DEBITS) - These increase debt (make balance more negative)
+    const salesResult = await db.find({
+      selector: {
+        customerId: customerId,
+        type: "sale",
+        paymentMethod: "CREDIT",
+        storeNo: storeNo
+      },
+      limit: 9999
+    });
+    console.log(`[getCustomerAging] Found ${salesResult.docs.length} credit sales.`);
+
+    // Fetch Transactions involving the customer
+    const transactionsResult = await db.find({
+      selector: {
+        $or: [
+          { from: customerId },
+          { to: customerId }
+        ],
+        type: "transaction",
+        state: "Active",
+        storeNo: storeNo
+      },
+      limit: 9999
+    });
+    console.log(`[getCustomerAging] Found ${transactionsResult.docs.length} transactions.`);
+    
+    const debits = [];
+    
+    salesResult.docs.forEach(sale => {
+      debits.push({
+        date: new Date(sale.createdAt),
+        amount: sale.totalAmount
+      });
+    });
+
+    // For transactions:
+    // If it's a Withdrawal (transType != deposit), it reduces balance (increases debt).
+    // If it's a Deposit, it increases balance (reduces debt).
+    // We are looking for things that INCREASED DEBT (Debits).
+    
+    transactionsResult.docs.forEach(trans => {
+       const isDeposit = trans.transType === 'deposit';
+       if (!isDeposit) { // Withdrawal/Charge -> Increases Debt
+          debits.push({
+             date: new Date(trans.date),
+             amount: trans.amount
+          });
+       }
+    });
+    console.log(`[getCustomerAging] Total debits to process: ${debits.length}`);
+
+    // Sort by Date DESC (Newest first)
+    debits.sort((a, b) => b.date - a.date);
+
+    let aging = {
+      "0-30": 0,
+      "30-60": 0,
+      "60+": 0
+    };
+
+    let remainingDebt = outstandingDebt;
+    const now = new Date();
+    const day30 = 30 * 24 * 60 * 60 * 1000;
+    const day60 = 60 * 24 * 60 * 60 * 1000;
+
+    for (const debit of debits) {
+      if (remainingDebt <= 0) break;
+
+      const amountToApply = Math.min(remainingDebt, debit.amount);
+      const diffTime = Math.abs(now - debit.date);
+      
+      if (diffTime <= day30) {
+        aging["0-30"] += amountToApply;
+      } else if (diffTime <= day60) {
+        aging["30-60"] += amountToApply;
+      } else {
+        aging["60+"] += amountToApply;
+      }
+
+      remainingDebt -= amountToApply;
+    }
+
+    // If there is still remaining debt (e.g. initial balance migration or unaccounted debits), put it in 60+
+    if (remainingDebt > 0) {
+      console.log(`[getCustomerAging] Remaining debt ${remainingDebt} assigned to 60+ bucket.`);
+      aging["60+"] += remainingDebt;
+    }
+
+    console.log("Customer aging calculation:", { customerId, balance, outstandingDebt, aging });
+
+    return { success: true, aging };
+
+  } catch (error) {
+    console.error(`[getCustomerAging] Error: ${error.message}`);
+    return { success: false, error: error.message };
+  }
+}
+
 module.exports = {
   createCustomer,
   getAllCustomers,
@@ -228,4 +419,6 @@ module.exports = {
   getCustomerSales,
   getTodayCreditSales,
   getTodayCustomerTransactions,
+  getCustomerLedger,
+  getCustomerAging,
 };

@@ -14,6 +14,7 @@ export default function RecordExpense({ fetchExpenses }) {
     _id: '',
     description: '',
     amount: '',
+    transactionCost: '',
     date: '',
     account: '',
     accountId: '',
@@ -96,6 +97,7 @@ export default function RecordExpense({ fetchExpenses }) {
         ...newExpense,
         _id: `${storeNo}:${uuidv4()}`,
         amount: parseInt(newExpense.amount),
+        transactionCost: parseInt(newExpense.transactionCost) || 0,
         date: new Date(newExpense.date).toISOString(),
         storeNo: `${storeNo}`
       };
@@ -112,6 +114,7 @@ export default function RecordExpense({ fetchExpenses }) {
           _id: '',
           description: '',
           amount: '',
+          transactionCost: '',
           date: '',
           account: '',
           accountId: '',
@@ -168,6 +171,19 @@ export default function RecordExpense({ fetchExpenses }) {
                 name="amount"
                 type="number"
                 value={newExpense.amount}
+                onChange={handleInputChange}
+                className="col-span-3"
+              />
+            </div>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <Label htmlFor="transactionCost" className="text-right">
+                Trans. Cost
+              </Label>
+              <Input
+                id="transactionCost"
+                name="transactionCost"
+                type="number"
+                value={newExpense.transactionCost}
                 onChange={handleInputChange}
                 className="col-span-3"
               />

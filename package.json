@@ -1,7 +1,7 @@
 {
-  "name": "claude",
+  "name": "adeegopos",
   "description": "POS App",
-  "version": "0.6.0",
+  "version": "0.6.4",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
@@ -25,7 +25,7 @@
     "pack:publish": "dotenv -e .env -- next build && dotenv -e .env -- electron-builder --publish always"
   },
   "build": {
-    "appId": "com.adeegoltd.claude",
+    "appId": "com.adeegoltd.adeegopos",
     "productName": "CLAUDE",
     "copyright": "adeego",
     "files": [

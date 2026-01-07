@@ -18,7 +18,8 @@ export default function GrowthAnalytics() {
     averageOrderValue: [],
     weeklySales: [],
     topProducts: [],
-    weeklyGrossMargin: []
+    weeklyGrossMargin: [],
+    weeklyFulfillmentType: []
   })
   
   const store = useWsinfoStore((state) => state.wsinfo)
@@ -601,6 +602,99 @@ export default function GrowthAnalytics() {
                 activeDot={{ r: 6 }}
               />
             </LineChart>
+          </ChartContainer>
+        </CardContent>
+      </Card>
+
+      {/* Delivery vs Walk-in Client Sales */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Delivery vs Walk-in Client Sales</CardTitle>
+          <CardDescription>Weekly comparison of delivery and walk-in client sales since September 13, 2025</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ChartContainer
+            config={{
+              delivery: {
+                label: "Delivery",
+                color: "hsl(var(--chart-1))",
+              },
+              walkIn: {
+                label: "Walk-in",
+                color: "hsl(var(--chart-2))",
+              },
+            }}
+            className="aspect-auto h-[300px] w-full"
+          >
+            <BarChart data={growthData.weeklyFulfillmentType}>
+              <XAxis 
+                dataKey="week" 
+                tick={{ fill: 'hsl(var(--foreground))' }}
+                tickLine={{ stroke: 'hsl(var(--border))' }}
+              />
+              <YAxis 
+                tick={{ fill: 'hsl(var(--foreground))' }}
+                tickLine={{ stroke: 'hsl(var(--border))' }}
+              />
+              <ChartTooltip
+                content={({ active, payload }) => {
+                  if (active && payload && payload.length) {
+                    return (
+                      <div className="rounded-lg border bg-background p-2 shadow-sm">
+                        <div className="grid gap-2">
+                          <div className="flex flex-col">
+                            <span className="text-[0.70rem] uppercase text-muted-foreground">
+                              Week
+                            </span>
+                            <span className="font-bold text-muted-foreground">
+                              {payload[0].payload.week}
+                            </span>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-[0.70rem] uppercase text-muted-foreground">
+                              Delivery Sales
+                            </span>
+                            <span className="font-bold" style={{ color: 'hsl(var(--chart-1))' }}>
+                              {payload[0].payload.delivery} sales • {formatCurrency(payload[0].payload.deliveryRevenue)}
+                            </span>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-[0.70rem] uppercase text-muted-foreground">
+                              Walk-in Sales
+                            </span>
+                            <span className="font-bold" style={{ color: 'hsl(var(--chart-2))' }}>
+                              {payload[0].payload.walkIn} sales • {formatCurrency(payload[0].payload.walkInRevenue)}
+                            </span>
+                          </div>
+                          <div className="flex flex-col">
+                            <span className="text-[0.70rem] uppercase text-muted-foreground">
+                              Total Sales
+                            </span>
+                            <span className="font-bold">
+                              {payload[0].payload.delivery + payload[0].payload.walkIn} sales
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  }
+                  return null
+                }}
+              />
+              <Legend />
+              <Bar
+                dataKey="delivery"
+                fill="hsl(var(--chart-1))"
+                radius={[4, 4, 0, 0]}
+                name="Delivery"
+              />
+              <Bar
+                dataKey="walkIn"
+                fill="hsl(var(--chart-2))"
+                radius={[4, 4, 0, 0]}
+                name="Walk-in"
+              />
+            </BarChart>
           </ChartContainer>
         </CardContent>
       </Card>

@@ -6,6 +6,7 @@ function createExpense(db, expenseData) {
     _id: expenseData._id,
     description: expenseData.description,
     amount: expenseData.amount,
+    transactionCost: expenseData.transactionCost || 0,
     date: expenseData.date,
     storeNo: expenseData.storeNo,
     account: expenseData.account,

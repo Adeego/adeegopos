@@ -80,7 +80,7 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
   });
 
   ipcMain.on('aiAnalysis-start', (event, metrics) => {
-    aiAnalysis.aiAnalysis(event, metrics)
+    aiAnalysis.aiAnalysis(event, metrics, db)
       .then(() => {
         event.reply('aiAnalysis-data', { done: true });
       })
@@ -101,6 +101,7 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
   });
 
   ipcMain.handle('realm-operation', async (event, operation, ...args) => {
+    console.log(`[IPC] realm-operation called: ${operation}`);
     switch (operation) {
       case 'createCustomer':
         return customerService.createCustomer(db, args[0]);
@@ -116,6 +117,10 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
         return customerService.getTodayCreditSales(db, args[0]);
       case 'getTodayCustomerTransactions':
         return customerService.getTodayCustomerTransactions(db, args[0]);
+      case 'getCustomerLedger':
+        return customerService.getCustomerLedger(db, args[0], args[1], args[2], args[3]);
+      case 'getCustomerAging':
+        return customerService.getCustomerAging(db, args[0], args[1]);
       case 'getAllProducts':
         return productService.getAllProducts(db, args[0]);
       case 'getAllVariants':
@@ -146,6 +151,12 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
         return saleService.createSale(db, args[0], mainWindow);
       case 'archiveSale':
         return saleService.archiveSale(db, args[0]);
+      case 'getCashierSales':
+        return saleService.getCashierSales(db, args[0].storeNo, args[0].staffId);
+      case 'getTodaySalesByPaidStatus':
+        return saleService.getTodaySalesByPaidStatus(db, args[0].storeNo, args[0].paidStatus);
+      case 'updateSalePaidStatus':
+        return saleService.updateSalePaidStatus(db, args[0].saleId, args[0].paidStatus);
       case 'createSupplier':
         return supplierService.createSupplier(db, args[0]);
       case 'createInvoice':

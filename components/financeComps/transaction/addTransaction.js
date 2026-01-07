@@ -21,6 +21,7 @@ import { CalendarIcon, ChevronDown, Search, X } from 'lucide-react'
 export default function AddTransaction() {
   const wsinfo = useWsinfoStore((state) => state.wsinfo);
   const [amount, setAmount] = useState(0);
+  const [transactionCost, setTransactionCost] = useState(0);
   const [open, setOpen] = React.useState(false);
   const [accounts, setAccounts] = useState([]);
   const [description, setDescription] = useState("")
@@ -108,6 +109,7 @@ export default function AddTransaction() {
       setFromLabel("");
       setDescription("");
       setAmount(0);
+      setTransactionCost(0);
       setDate(() => new Date());
     } else if (value === "withdraw") {
       setTransType("withdraw"); 
@@ -117,6 +119,7 @@ export default function AddTransaction() {
       setToLabel("");
       setDescription("");
       setAmount(0);
+      setTransactionCost(0);
       setDate(() => new Date());
     }
   };
@@ -134,6 +137,7 @@ export default function AddTransaction() {
         "from": from,
         "to": to,
         "amount": parseInt(amount),
+        "transactionCost": parseInt(transactionCost) || 0,
         "storeNo": storeNo,
         "date": date.toISOString()
       }
@@ -152,6 +156,7 @@ export default function AddTransaction() {
         
         // Clear all field states
         setAmount(0);
+        setTransactionCost(0);
         setDescription("");
         setSource(null);
         setDestination("account");
@@ -360,6 +365,17 @@ export default function AddTransaction() {
                       </div>
 
                       <div className="space-y-2">
+                        <Label htmlFor="transaction-cost">Transaction Cost</Label>
+                        <Input
+                          id="transaction-cost"
+                          placeholder="Enter transaction cost"
+                          type="number"
+                          value={transactionCost}
+                          onChange={(e) => setTransactionCost(e.target.value)}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
                         <Label htmlFor="date-picker">Transaction Date</Label>
                         <Dialog open={dateOpen} onOpenChange={setDateOpen} className="" >
                           <DialogTrigger className='' asChild>
@@ -554,6 +570,17 @@ export default function AddTransaction() {
                           value={amount}
                           onChange={(e) => setAmount(e.target.value)}
                           required
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="transaction-cost">Transaction Cost</Label>
+                        <Input
+                          id="transaction-cost"
+                          placeholder="Enter transaction cost"
+                          type="number"
+                          value={transactionCost}
+                          onChange={(e) => setTransactionCost(e.target.value)}
                         />
                       </div>
 

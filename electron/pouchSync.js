@@ -3,6 +3,7 @@
 const PouchDB = require("pouchdb");
 const { ipcMain, app } = require('electron');
 const path = require('path');
+const fs = require('fs');
 PouchDB.plugin(require("pouchdb-find"));
 
 const COUCHDB_URL = "http://adeegopos:ogeeda2025@139.59.91.36:5984//adeegopos";
@@ -13,14 +14,22 @@ let syncHandler;
 
 function openPouchDB() {
   const dbPath = path.join(app.getPath('userData'), 'database', 'adeegopos');
+  
+  // Ensure the database directory exists
+  const dbDir = path.dirname(dbPath);
+  if (!fs.existsSync(dbDir)) {
+    fs.mkdirSync(dbDir, { recursive: true });
+    console.log('Created database directory:', dbDir);
+  }
+  
   localDB = new PouchDB(dbPath, { auto_compaction: true });
   setupStoreNoListener();
   return localDB;
 }
 
 function setupIndexes() {
-  // Define the index fields for products
-  const productIndexFields = ['name', 'state', 'type', 'storeNo'];
+  // Define the index fields for products - Optimized for store-first filtering
+  const productIndexFields = ['storeNo', 'type', 'state', 'name'];
   // Define the index fields for customers
   const customerIndexFields = ['name', 'phoneNumber', 'state', 'type', 'createdAt', 'storeNo'];
   // Define the index fields for general use

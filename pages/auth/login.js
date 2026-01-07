@@ -28,7 +28,7 @@ export default function Login() {
     }
   
     try {
-      const response = await axios.post('http://139.59.91.36:8000/signin/staff', {
+      const response = await axios.post('https://adeego.store/signin/staff', {
         phone: phoneNumber,
         passcode: passcode
       }, {

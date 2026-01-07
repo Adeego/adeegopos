@@ -18,8 +18,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
 
     signInStaff: (phoneNumber, passcode) => ipcRenderer.invoke('sign-in-staff', phoneNumber, passcode),
     searchCustomers: (name) => ipcRenderer.invoke('search-customers', name),
-    searchVariants: (searchTerm) => ipcRenderer.invoke('search-variants', searchTerm),
-    searchProducts: (searchTerm) => ipcRenderer.invoke('search-products', searchTerm),
+    searchVariants: (searchTerm, storeNo) => ipcRenderer.invoke('search-variants', searchTerm, storeNo),
+    searchProducts: (searchTerm, storeNo) => ipcRenderer.invoke('search-products', searchTerm, storeNo),
     searchCSS: (searchTerm, type) => ipcRenderer.invoke('search-css', searchTerm, type),
     restock: (task, ...args) => ipcRenderer.invoke('restock', task, ...args),
     aiAnalysis: (metrics, onData, onComplete, onError) => {

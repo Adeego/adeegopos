@@ -16,11 +16,15 @@ function ProductSearch({ handleProductSelect }) {
   const inputRef = useRef(null);
 
   useEffect(() => {
-    if (searchTerm) {
-      performSearch();
-    } else {
-      fetchAllProducts();
-    }
+    const delayDebounceFn = setTimeout(() => {
+      if (searchTerm) {
+        performSearch();
+      } else {
+        fetchAllProducts();
+      }
+    }, 300);
+
+    return () => clearTimeout(delayDebounceFn);
   }, [searchTerm]);
 
   useEffect(() => {
@@ -47,10 +51,31 @@ function ProductSearch({ handleProductSelect }) {
 
   const performSearch = async () => {
     try {
-      const result = await window.electronAPI.searchVariants(searchTerm, storeNo);
+      const result = await window.electronAPI.searchProducts(searchTerm, storeNo);
       if (result.success) {
         console.log(result);
-        setSearchResults(result.products);
+        // Flatten the products and their variants on the client side
+        const flattenedProducts = result.products.flatMap(product => {
+          // If the product has no variants, return the product itself
+          if (!product.variants || product.variants.length === 0) {
+            return [{
+              ...product,
+              variantName: product.name,
+              productName: product.name,
+              isBaseProduct: true
+            }];
+          }
+          // Otherwise, return an array of product-variant combinations
+          return product.variants.map(variant => ({
+            ...product,
+            ...variant,
+            variantName: variant.name,
+            productName: product.name,
+            isBaseProduct: false
+          }));
+        });
+        
+        setSearchResults(flattenedProducts);
         console.log("Search successful")
       } else {
         console.error('Search failed:', result.error);

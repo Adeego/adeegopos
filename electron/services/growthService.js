@@ -312,6 +312,57 @@ function getWeeklyGrossMargin(db, storeNo, startDate, endDate) {
     });
 }
 
+// Get weekly fulfillment type data (Delivery vs Walk-in)
+function getWeeklyFulfillmentTypeData(db, storeNo, startDate, endDate) {
+  return db.find({
+    selector: { 
+      type: 'sale',
+      state: 'Active',
+      storeNo: storeNo, 
+      createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) }
+    },
+    limit: 9999
+  })
+    .then(result => {
+      const weeklyFulfillment = {};
+      
+      result.docs.forEach(sale => {
+        const date = new Date(sale.createdAt);
+        const weekKey = getWeekKey(date);
+        const fulfillmentType = sale.fullfilmentType || 'WALK-IN-CLIENT'; // Default to walk-in if not specified
+        
+        if (!weeklyFulfillment[weekKey]) {
+          weeklyFulfillment[weekKey] = {
+            week: weekKey,
+            delivery: 0,
+            walkIn: 0,
+            deliveryRevenue: 0,
+            walkInRevenue: 0
+          };
+        }
+        
+        if (fulfillmentType === 'DELIVERY') {
+          weeklyFulfillment[weekKey].delivery += 1;
+          weeklyFulfillment[weekKey].deliveryRevenue += sale.totalAmount;
+        } else {
+          weeklyFulfillment[weekKey].walkIn += 1;
+          weeklyFulfillment[weekKey].walkInRevenue += sale.totalAmount;
+        }
+      });
+      
+      // Sort by week
+      const sortedData = Object.values(weeklyFulfillment).sort((a, b) => 
+        a.week.localeCompare(b.week)
+      );
+      
+      return { success: true, data: sortedData };
+    })
+    .catch(error => {
+      console.error('Error getting weekly fulfillment type data:', error);
+      return { success: false, error: error.message };
+    });
+}
+
 // Helper function to get week key (year-week format) - Week starts on Saturday
 function getWeekKey(date) {
   const year = date.getFullYear();
@@ -440,9 +491,10 @@ function getGrowthMetrics(db, storeNo) {
     getAverageOrderValue(db, storeNo, startDate, endDate),
     getWeeklySalesBarData(db, storeNo, startDate, endDate),
     getTopPerformingProducts(db, storeNo, startDate, endDate),
-    getWeeklyGrossMargin(db, storeNo, startDate, endDate)
+    getWeeklyGrossMargin(db, storeNo, startDate, endDate),
+    getWeeklyFulfillmentTypeData(db, storeNo, startDate, endDate)
   ])
-    .then(([monthly, weekly, aov, weeklySales, topProducts, margin]) => {
+    .then(([monthly, weekly, aov, weeklySales, topProducts, margin, fulfillmentType]) => {
       return {
         success: true,
         data: {
@@ -452,7 +504,8 @@ function getGrowthMetrics(db, storeNo) {
           averageOrderValue: aov.data || [],
           weeklySales: weeklySales.data || [],
           topProducts: topProducts.data || [],
-          weeklyGrossMargin: margin.data || []
+          weeklyGrossMargin: margin.data || [],
+          weeklyFulfillmentType: fulfillmentType.data || []
         }
       };
     })
@@ -469,5 +522,6 @@ module.exports = {
   getWeeklySalesBarData,
   getTopPerformingProducts,
   getWeeklyGrossMargin,
+  getWeeklyFulfillmentTypeData,
   getGrowthMetrics
 };

@@ -151,6 +151,10 @@ export default function SupplierDetail() {
                     </SelectContent>
                   </Select>
                 </div>
+                <div>
+                  <Label htmlFor="balance">Balance</Label>
+                  <Input id="balance" name="balance" type="number" value={supplier.balance} onChange={handleInputChange} />
+                </div>
               </>
             ) : (
               <>

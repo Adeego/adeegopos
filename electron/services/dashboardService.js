@@ -250,12 +250,26 @@ function transactionMetrics(db) {
   // Function to calculate transaction metrics from documents
   const calculateMetrics = (docs) => {
     let customerCredits = 0;
+    let customerCreditsCash = 0;
+    let customerCreditsMpesa = 0;
     let supplierPayments = 0;
 
     docs.forEach(transaction => {
       // Calculate customer credits
       if (transaction.source === 'customer') {
-        customerCredits += Number(transaction.amount) || 0;
+        const amount = Number(transaction.amount) || 0;
+        customerCredits += amount;
+        
+        // Categorize by destination account (001 = Cash, 002 = M-Pesa)
+        const destAccount = transaction.to || '';
+        if (destAccount.endsWith('001')) {
+          customerCreditsCash += amount;
+        } else if (destAccount.endsWith('002')) {
+          customerCreditsMpesa += amount;
+        } else {
+          // Default to cash if unknown
+          customerCreditsCash += amount;
+        }
       }
       // Calculate supplier payments
       if (transaction.destination === 'supplier') {
@@ -265,6 +279,8 @@ function transactionMetrics(db) {
 
     return {
         customerCredits: Number(customerCredits.toFixed(2)),
+        customerCreditsCash: Number(customerCreditsCash.toFixed(2)),
+        customerCreditsMpesa: Number(customerCreditsMpesa.toFixed(2)),
         supplierPayments: Number(supplierPayments.toFixed(2))
     };
   };

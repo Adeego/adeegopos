@@ -27,7 +27,7 @@ function createSale(db, saleData, mainWindow) {
     paymentMethod: saleData.paymentMethod,
     saleType: saleData.saleType,
     fullfilmentType: saleData.fullfilmentType,
-    confirmed: saleData.confirmed,
+    paid: saleData.paid !== undefined ? saleData.paid : false,
     storeNo: saleData.storeNo,
     state: 'Active',
     createdAt: saleData.createdAt,
@@ -466,6 +466,86 @@ function archiveSale(db, saleId) {
     .catch((error) => ({ success: false, error: error.message }));
 }
 
+// Get sales for a specific cashier/staff member
+function getCashierSales(db, storeNo, staffId) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  
+  return db
+    .find({
+      selector: {
+        type: 'sale',
+        state: 'Active',
+        storeNo: storeNo,
+        servedBy: staffId,
+        createdAt: { $gte: today.toISOString(), $lt: tomorrow.toISOString() }
+      },
+      sort: [{ createdAt: 'desc' }],
+      limit: 9999
+    })
+    .then((result) => {
+      return { success: true, data: result.docs };
+    })
+    .catch((error) => {
+      console.error('Error getting cashier sales:', error);
+      return { success: false, error: error.message };
+    });
+}
+
+// Get today's sales filtered by paid status
+function getTodaySalesByPaidStatus(db, storeNo, paidStatus) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  
+  const selector = {
+    type: 'sale',
+    state: 'Active',
+    storeNo: storeNo,
+    createdAt: { $gte: today.toISOString(), $lt: tomorrow.toISOString() }
+  };
+  
+  // Add paid filter if specified (not 'all')
+  if (paidStatus !== 'all') {
+    selector.paid = paidStatus === 'paid';
+  }
+  
+  return db
+    .find({
+      selector: selector,
+      sort: [{ createdAt: 'desc' }],
+      limit: 9999
+    })
+    .then((result) => {
+      return { success: true, data: result.docs };
+    })
+    .catch((error) => {
+      console.error('Error getting sales by paid status:', error);
+      return { success: false, error: error.message };
+    });
+}
+
+// Update sale paid status
+function updateSalePaidStatus(db, saleId, paidStatus) {
+  return db
+    .get(saleId)
+    .then((sale) => {
+      sale.paid = paidStatus;
+      sale.updatedAt = new Date().toISOString();
+      return db.put(sale);
+    })
+    .then((response) => {
+      return { success: true, sale: { _id: response.id, paid: paidStatus } };
+    })
+    .catch((error) => {
+      console.error('Error updating sale paid status:', error);
+      return { success: false, error: error.message };
+    });
+}
+
 module.exports = {
   createSale,
   getSaleProducts,
@@ -480,4 +560,7 @@ module.exports = {
   getAllSalesBetweenDates,
   getSaleById,
   archiveSale,
+  getCashierSales,
+  getTodaySalesByPaidStatus,
+  updateSalePaidStatus,
 };

@@ -5,7 +5,94 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
-async function aiAnalysis(event, metrics) {
+async function getInventoryInsights(db) {
+  if (!db) return { lowStock: [], topSelling: [] };
+
+  try {
+    // Fetch low stock items (Active products where restock is true or stock is low)
+    // We use a broad selector to catch items that might need attention
+    const lowStockResult = await db.find({
+        selector: {
+            type: 'product',
+            state: 'Active',
+            $or: [
+              { restock: true },
+              { stock: { $lte: 10 } } // Fallback threshold if restock flag isn't set
+            ]
+        },
+        limit: 20
+    });
+    
+    const lowStock = lowStockResult.docs.map(p => `${p.name} (Stock: ${p.stock})`);
+
+    // Fetch recent sales for trend analysis (last 14 days to catch recent trends)
+    const lookbackDate = new Date();
+    lookbackDate.setDate(lookbackDate.getDate() - 14);
+    
+    const recentSalesResult = await db.find({
+        selector: {
+            type: 'sale',
+            state: 'Active',
+            createdAt: { $gte: lookbackDate.toISOString() }
+        },
+        limit: 500 // Analyze last 500 sales for speed
+    });
+
+    const productCounts = {};
+    recentSalesResult.docs.forEach(sale => {
+        if (sale.items && Array.isArray(sale.items)) {
+            sale.items.forEach(item => {
+                const name = item.name || (item.productVariant && item.productVariant.product && item.productVariant.product.name);
+                if (name) {
+                    productCounts[name] = (productCounts[name] || 0) + (Number(item.quantity) || 0);
+                }
+            });
+        }
+    });
+
+    const topSelling = Object.entries(productCounts)
+        .sort(([,a], [,b]) => b - a)
+        .slice(0, 10)
+        .map(([name, count]) => `${name} (${count} units)`);
+
+    return { lowStock, topSelling };
+  } catch (error) {
+    console.error("Error gathering inventory insights:", error);
+    return { lowStock: [], topSelling: [] };
+  }
+}
+
+function getShoppingPeriod() {
+  const today = new Date();
+  const day = today.getDate();
+  
+  // Monthly Shopping Time: Start (1-5) and End (25-31) of month
+  if (day >= 25 || day <= 9) {
+    return {
+      name: "Monthly Shopping Season",
+      focus: "High Volume & Stock Availability",
+      description: "Customers are doing bulk monthly shopping. Prioritize high-velocity items and bulk packs. Ensure stock levels are high to prevent stockouts."
+    };
+  } 
+  // Slow Time: 10th to 25th
+  else if (day >= 10 && day < 25) {
+    return {
+      name: "Mid-Month Slow Season",
+      focus: "Maintain Velocity & Cash Flow",
+      description: "Sales typically slow down. Focus on ensuring availability of daily essentials that move quickly regardless of date. Use promotions to boost velocity of slower items."
+    };
+  } 
+  // Transition periods (6-9)
+  else {
+    return {
+      name: "Regular Trading Period",
+      focus: "Balanced Operations",
+      description: "Standard trading days. Maintain balanced inventory and focus on customer service."
+    };
+  }
+}
+
+async function aiAnalysis(event, metrics, db) {
     // Input validation
     if (!metrics || typeof metrics !== 'object') {
         console.error('Invalid metrics provided');
@@ -30,12 +117,36 @@ async function aiAnalysis(event, metrics) {
         return null;
       }
 
+      // Gather Context
+      const periodContext = getShoppingPeriod();
+      const inventoryContext = await getInventoryInsights(db);
+      
+      const currentDate = new Date().toLocaleDateString('en-KE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+
       const stream = await openai.chat.completions.create({
-        model: "gpt-4o-2024-11-20",
+        model: "gpt-5.1-2025-11-13",
         messages: [
           {
             role: "system",
-            content: `You are a retail business analyst. Analyze the provided store data and provide actionable insights. The currency is KES (Kenya shillings). The analysis should be in 200 words not more. The analysis should be in English language`
+            content: `You are a vital AI retail agent for AdeegoPOS. Your goal is to ensure profitability and stock availability.
+            
+            Current Context:
+            - Date: ${currentDate}
+            - Season: ${periodContext.name}
+            - Focus: ${periodContext.focus}
+            - Strategy: ${periodContext.description}
+            
+            Inventory Status:
+            - Critical Low Stock: ${inventoryContext.lowStock.length > 0 ? inventoryContext.lowStock.join(', ') : "No critical alerts."}
+            - Top Movers (Last 14 days): ${inventoryContext.topSelling.length > 0 ? inventoryContext.topSelling.join(', ') : "Insufficient data."}
+            
+            Task:
+            Analyze the store data below. Provide actionable insights focusing on:
+            1. **Stock Optimization:** Recommend specific actions for low stock or fast-moving items based on the current "${periodContext.name}".
+            2. **Financial Health:** Briefly comment on Revenue/Profit trends.
+            3. **Strategic Advice:** Give 1 concrete step to improve sales right now.
+            
+            Keep the tone professional, encouraging, and direct. Max 250 words. Currency: KES.`
           },
           {
             role: "user",
@@ -64,7 +175,7 @@ async function aiAnalysis(event, metrics) {
           }
         ],
         stream: true,
-        max_tokens: 400
+        max_tokens: 500
       });
 
       let buffer = '';

@@ -258,7 +258,7 @@ function searchVariants(db, searchTerm, storeNo) {
         type: "product",
         storeNo: storeNo
       },
-      limit: 999
+      limit: 100
     })
     .then((result) => {
       console.log("Search result:", result);
@@ -406,6 +406,7 @@ function getAllVariants(db, storeNo) {
         state: "Active",
         storeNo: storeNo
       },
+      limit: 1000
     })
     .then((result) => {
       console.log(result);

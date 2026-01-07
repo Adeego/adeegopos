@@ -389,6 +389,7 @@ function SaleCard() {
       paymentMethod: paymentMethod,
       saleType: saleType,
       fullfilmentType: fulfillmentType,
+      paid: false,
       confirmed: true,
       storeNo: `${storeNo}`,
       createdAt: new Date(),
@@ -538,6 +539,7 @@ function SaleCard() {
         setNote={setNote}
         servedBy={servedBy}
         change={change}
+        totalAmount={totalAmount}
       />
 
       <AlertDialogs

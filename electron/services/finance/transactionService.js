@@ -87,6 +87,7 @@ async function createTransaction(db, transactionData) {
       destination: transactionData.destination,
       description: transactionData.description,
       amount: transactionData.amount,
+      transactionCost: transactionData.transactionCost || 0,
       date: transactionData.date,
       transType: transactionData.transType,
       storeNo: transactionData.storeNo,

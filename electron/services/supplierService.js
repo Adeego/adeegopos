@@ -166,17 +166,17 @@ function getSupplierById(db, supplierId) {
 
 // Update an existing supplier
 function updateSupplier(db, supplierData) {
-  const customer = {
+  const supplier = {
     _id: supplierData._id,
-    type: "customer",
+    type: "supplier",
     state: "Active",
     ...supplierData,
   };
   return db
-    .put(customer)
+    .put(supplier)
     .then((response) => ({
       success: true,
-      customer: { _id: response.id, ...customer },
+      supplier: { _id: response.id, ...supplier },
     }))
     .catch((error) => ({ success: false, error: error.message }));
 }
