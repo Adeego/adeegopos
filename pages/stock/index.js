@@ -10,12 +10,29 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { AlertCircle, DollarSign, TrendingUp, Package, ArrowRight } from "lucide-react"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs"
+import { AlertCircle, DollarSign, TrendingUp, Package, ArrowRight, RefreshCw } from "lucide-react"
+import { toast } from "@/components/ui/use-toast"
 import useWsinfoStore from '@/stores/wsinfo'
 import Link from 'next/link'
 
+const CATEGORIES = ['Primary', 'Secondary', 'Perishable', 'Drinks', 'Reserve']
+
 export default function StockDashboard() {
   const [products, setProducts] = useState([])
+  const [groupedProducts, setGroupedProducts] = useState({})
   const [loading, setLoading] = useState(true)
   const [metrics, setMetrics] = useState({
     totalCost: 0,
@@ -45,6 +62,23 @@ export default function StockDashboard() {
       
       if (result.success) {
         const allProducts = result.products
+        
+        // Group products by category (default to Reserve if no category)
+        const grouped = CATEGORIES.reduce((acc, cat) => {
+          acc[cat] = []
+          return acc
+        }, {})
+        
+        allProducts.forEach(product => {
+          const category = product.category || 'Reserve'
+          if (grouped[category]) {
+            grouped[category].push(product)
+          } else {
+            grouped['Reserve'].push(product)
+          }
+        })
+        
+        setGroupedProducts(grouped)
         
         // Filter products with low stock (stock <= restockThreshold)
         const lowStockProducts = allProducts.filter(product => {
@@ -83,6 +117,59 @@ export default function StockDashboard() {
       console.error('Error loading products:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const handleCategoryChange = async (productId, newCategory) => {
+    try {
+      const result = await window.electronAPI.realmOperation('updateProduct', {
+        _id: productId,
+        category: newCategory
+      })
+      
+      if (result.success) {
+        // Update state locally instead of refetching
+        setGroupedProducts(prev => {
+          const updated = { ...prev }
+          let movedProduct = null
+          
+          // Find and remove product from its current category
+          for (const cat of CATEGORIES) {
+            const index = updated[cat]?.findIndex(p => p._id === productId)
+            if (index !== undefined && index !== -1) {
+              movedProduct = { ...updated[cat][index], category: newCategory }
+              updated[cat] = updated[cat].filter(p => p._id !== productId)
+              break
+            }
+          }
+          
+          // Add product to new category
+          if (movedProduct) {
+            updated[newCategory] = [...(updated[newCategory] || []), movedProduct]
+          }
+          
+          return updated
+        })
+        
+        // Also update low stock products list
+        setProducts(prev => prev.map(p => 
+          p._id === productId ? { ...p, category: newCategory } : p
+        ))
+        
+        toast({
+          title: "Success",
+          description: "Product category updated",
+        })
+      } else {
+        throw new Error(result.error)
+      }
+    } catch (error) {
+      console.error('Error updating category:', error)
+      toast({
+        title: "Error",
+        description: "Failed to update category",
+        variant: "destructive",
+      })
     }
   }
 
@@ -126,12 +213,18 @@ export default function StockDashboard() {
           <h1 className="text-3xl font-bold text-neutral-900">Stock Management</h1>
           <p className="text-neutral-500 mt-1">Monitor inventory levels and stock alerts</p>
         </div>
-        <Link href="/product/restock">
-          <Button className="gap-2">
-            Restock Products
-            <ArrowRight className="h-4 w-4" />
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={loadProducts} className="gap-2">
+            <RefreshCw className="h-4 w-4" />
+            Refresh
           </Button>
-        </Link>
+          <Link href="/product/restock">
+            <Button className="gap-2">
+              Restock Products
+              <ArrowRight className="h-4 w-4" />
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Metrics Cards */}
@@ -193,22 +286,131 @@ export default function StockDashboard() {
         </Card>
       </div>
 
-      {/* Low Stock Items Table */}
+      {/* Products Grouped by Category */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Package className="h-5 w-5" />
-            Low Stock Items
+            Products by Category
           </CardTitle>
         </CardHeader>
         <CardContent>
-          {products.length === 0 ? (
-            <div className="text-center py-12">
-              <Package className="h-12 w-12 text-neutral-300 mx-auto mb-4" />
-              <p className="text-lg font-medium text-neutral-600">All stock levels are healthy</p>
-              <p className="text-sm text-neutral-500 mt-2">No items require immediate restocking</p>
-            </div>
-          ) : (
+          <Tabs defaultValue="Primary" className="w-full">
+            <TabsList className="grid w-full grid-cols-5">
+              {CATEGORIES.map((category) => {
+                const count = (groupedProducts[category] || []).length
+                return (
+                  <TabsTrigger key={category} value={category} className="gap-2">
+                    {category}
+                    <Badge variant="secondary" className="ml-1">{count}</Badge>
+                  </TabsTrigger>
+                )
+              })}
+            </TabsList>
+            {CATEGORIES.map((category) => {
+              const categoryProducts = groupedProducts[category] || []
+              const categoryStock = categoryProducts.reduce((sum, p) => sum + p.stock, 0)
+              const categoryValue = categoryProducts.reduce((sum, p) => sum + (p.buyPrice * p.stock), 0)
+              
+              return (
+                <TabsContent key={category} value={category} className="mt-4">
+                  <div className="flex items-center gap-4 mb-4 text-sm text-neutral-500">
+                    <span><strong>{categoryProducts.length}</strong> products</span>
+                    <span><strong>{categoryStock}</strong> units</span>
+                    <span><strong>{formatCurrency(categoryValue)}</strong> value</span>
+                  </div>
+                  {categoryProducts.length === 0 ? (
+                    <div className="text-center py-12 text-neutral-500">
+                      <Package className="h-12 w-12 mx-auto mb-4 text-neutral-300" />
+                      <p>No products in this category</p>
+                    </div>
+                  ) : (
+                    <div className="rounded-md border">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Product Name</TableHead>
+                            <TableHead className="text-center">Stock</TableHead>
+                            <TableHead className="text-center">Status</TableHead>
+                            <TableHead className="text-right">Buy Price</TableHead>
+                            <TableHead className="text-right">Stock Value</TableHead>
+                            <TableHead className="text-center">Category</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {categoryProducts.map((product) => {
+                            const status = getStockStatus(product)
+                            const threshold = product.restockThreshold || 10
+                            const stockValue = product.buyPrice * product.stock
+
+                            return (
+                              <TableRow key={product._id}>
+                                <TableCell className="font-medium">
+                                  {product.name}
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  <span className={`font-semibold ${
+                                    product.stock === 0 
+                                      ? 'text-red-600' 
+                                      : product.stock <= threshold * 0.5 
+                                      ? 'text-orange-600' 
+                                      : 'text-neutral-900'
+                                  }`}>
+                                    {product.stock}
+                                  </span>
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  <Badge variant={status.color}>
+                                    {status.label}
+                                  </Badge>
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {formatCurrency(product.buyPrice)}
+                                </TableCell>
+                                <TableCell className="text-right font-medium">
+                                  {formatCurrency(stockValue)}
+                                </TableCell>
+                                <TableCell className="text-center">
+                                  <Select
+                                    value={product.category || 'Reserve'}
+                                    onValueChange={(value) => handleCategoryChange(product._id, value)}
+                                  >
+                                    <SelectTrigger className="w-[130px]">
+                                      <SelectValue />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                      {CATEGORIES.map((cat) => (
+                                        <SelectItem key={cat} value={cat}>
+                                          {cat}
+                                        </SelectItem>
+                                      ))}
+                                    </SelectContent>
+                                  </Select>
+                                </TableCell>
+                              </TableRow>
+                            )
+                          })}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </TabsContent>
+              )
+            })}
+          </Tabs>
+        </CardContent>
+      </Card>
+
+      {/* Low Stock Items Table */}
+      {products.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-orange-600">
+              <AlertCircle className="h-5 w-5" />
+              Low Stock Alerts
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
             <div className="rounded-md border">
               <Table>
                 <TableHeader>
@@ -217,15 +419,13 @@ export default function StockDashboard() {
                     <TableHead className="text-center">Current Stock</TableHead>
                     <TableHead className="text-center">Threshold</TableHead>
                     <TableHead className="text-center">Status</TableHead>
-                    <TableHead className="text-right">Buy Price</TableHead>
-                    <TableHead className="text-right">Stock Value</TableHead>
+                    <TableHead className="text-center">Category</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {products.map((product) => {
                     const status = getStockStatus(product)
                     const threshold = product.restockThreshold || 10
-                    const stockValue = product.buyPrice * product.stock
 
                     return (
                       <TableRow key={product._id}>
@@ -251,11 +451,10 @@ export default function StockDashboard() {
                             {status.label}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-right">
-                          {formatCurrency(product.buyPrice)}
-                        </TableCell>
-                        <TableCell className="text-right font-medium">
-                          {formatCurrency(stockValue)}
+                        <TableCell className="text-center">
+                          <Badge variant="outline">
+                            {product.category || 'Reserve'}
+                          </Badge>
                         </TableCell>
                       </TableRow>
                     )
@@ -263,9 +462,9 @@ export default function StockDashboard() {
                 </TableBody>
               </Table>
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }

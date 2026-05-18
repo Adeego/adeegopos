@@ -284,7 +284,7 @@ function getWeeklyGrossMargin(db, storeNo, startDate, endDate) {
         
         sale.items.forEach(item => {
           const revenue = item.subtotal;
-          const cost = item.quantity * (item.buyPrice || 0) * (item.productVariant?.conversionFactor || 1);
+          const cost = item.quantity * (item.buyPrice || 0);
           
           weeklyMargin[weekKey].totalRevenue += revenue;
           weeklyMargin[weekKey].totalCost += cost;
@@ -365,9 +365,16 @@ function getWeeklyFulfillmentTypeData(db, storeNo, startDate, endDate) {
 
 // Helper function to get week key (year-week format) - Week starts on Saturday
 function getWeekKey(date) {
-  const year = date.getFullYear();
-  const weekNumber = getWeekNumber(date);
-  return `${year}-W${String(weekNumber).padStart(2, '0')}`;
+  const d = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const dayOfWeek = d.getDay();
+  const daysSinceSaturday = (dayOfWeek + 1) % 7;
+
+  const saturday = new Date(d);
+  saturday.setDate(d.getDate() - daysSinceSaturday);
+
+  const weekYear = saturday.getFullYear();
+  const weekNumber = getWeekNumber(saturday);
+  return `${weekYear}-W${String(weekNumber).padStart(2, '0')}`;
 }
 
 // Helper function to get week number (Saturday-Friday weeks)
@@ -480,21 +487,154 @@ function calculateDailyProjections(data, days) {
   return projections;
 }
 
+// Get weekly stockout rate from snapshots
+function getWeeklyStockoutRate(db, storeNo) {
+  return db.find({
+    selector: {
+      type: 'stockout-snapshot',
+      storeNo: storeNo,
+      snapshotType: 'main',
+    },
+    limit: 9999
+  })
+    .then(result => {
+      const weeklyData = {};
+
+      result.docs.forEach(doc => {
+        const date = new Date(doc.date);
+        const weekKey = getWeekKey(date);
+
+        if (!weeklyData[weekKey]) {
+          weeklyData[weekKey] = {
+            week: weekKey,
+            totalRate: 0,
+            totalStockouts: 0,
+            totalTracked: 0,
+            count: 0,
+            avgStockoutRate: 0,
+            avgCritical: 0,
+            avgLow: 0,
+            totalCritical: 0,
+            totalLow: 0,
+          };
+        }
+
+        weeklyData[weekKey].totalRate += doc.stockoutRate || 0;
+        weeklyData[weekKey].totalStockouts += doc.stockoutCount || 0;
+        weeklyData[weekKey].totalTracked += doc.totalTracked || 0;
+        weeklyData[weekKey].totalCritical += doc.criticalCount || 0;
+        weeklyData[weekKey].totalLow += doc.lowCount || 0;
+        weeklyData[weekKey].count += 1;
+      });
+
+      // Calculate averages
+      Object.values(weeklyData).forEach(week => {
+        week.avgStockoutRate = week.count > 0
+          ? Math.round((week.totalRate / week.count) * 100) / 100
+          : 0;
+        week.avgCritical = week.count > 0
+          ? Math.round((week.totalCritical / week.count) * 10) / 10
+          : 0;
+        week.avgLow = week.count > 0
+          ? Math.round((week.totalLow / week.count) * 10) / 10
+          : 0;
+      });
+
+      const sortedData = Object.values(weeklyData).sort((a, b) =>
+        a.week.localeCompare(b.week)
+      );
+
+      return { success: true, data: sortedData };
+    })
+    .catch(error => {
+      console.error('Error getting weekly stockout rate:', error);
+      return { success: false, error: error.message };
+    });
+}
+
+// Get monthly stockout rate from snapshots
+function getMonthlyStockoutRate(db, storeNo) {
+  return db.find({
+    selector: {
+      type: 'stockout-snapshot',
+      storeNo: storeNo,
+      snapshotType: 'main',
+    },
+    limit: 9999
+  })
+    .then(result => {
+      const monthlyData = {};
+
+      result.docs.forEach(doc => {
+        const date = new Date(doc.date);
+        const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+
+        if (!monthlyData[monthKey]) {
+          monthlyData[monthKey] = {
+            month: monthKey,
+            totalRate: 0,
+            totalStockouts: 0,
+            totalTracked: 0,
+            count: 0,
+            avgStockoutRate: 0,
+            avgCritical: 0,
+            avgLow: 0,
+            totalCritical: 0,
+            totalLow: 0,
+          };
+        }
+
+        monthlyData[monthKey].totalRate += doc.stockoutRate || 0;
+        monthlyData[monthKey].totalStockouts += doc.stockoutCount || 0;
+        monthlyData[monthKey].totalTracked += doc.totalTracked || 0;
+        monthlyData[monthKey].totalCritical += doc.criticalCount || 0;
+        monthlyData[monthKey].totalLow += doc.lowCount || 0;
+        monthlyData[monthKey].count += 1;
+      });
+
+      // Calculate averages
+      Object.values(monthlyData).forEach(month => {
+        month.avgStockoutRate = month.count > 0
+          ? Math.round((month.totalRate / month.count) * 100) / 100
+          : 0;
+        month.avgCritical = month.count > 0
+          ? Math.round((month.totalCritical / month.count) * 10) / 10
+          : 0;
+        month.avgLow = month.count > 0
+          ? Math.round((month.totalLow / month.count) * 10) / 10
+          : 0;
+      });
+
+      const sortedData = Object.values(monthlyData).sort((a, b) =>
+        a.month.localeCompare(b.month)
+      );
+
+      return { success: true, data: sortedData };
+    })
+    .catch(error => {
+      console.error('Error getting monthly stockout rate:', error);
+      return { success: false, error: error.message };
+    });
+}
+
 // Get comprehensive growth metrics
 function getGrowthMetrics(db, storeNo) {
   const endDate = new Date();
   const startDate = new Date(Math.max(TRACKING_START_DATE.getTime(), endDate.getTime() - 90 * 24 * 60 * 60 * 1000)); // Last 90 days or tracking start
+  const topProductsStartDate = new Date(endDate.getTime() - 30 * 24 * 60 * 60 * 1000); // Last 30 days
   
   return Promise.all([
     getMonthlySalesData(db, storeNo, startDate, endDate),
     getWeeklySalesGrowth(db, storeNo, startDate, endDate),
     getAverageOrderValue(db, storeNo, startDate, endDate),
     getWeeklySalesBarData(db, storeNo, startDate, endDate),
-    getTopPerformingProducts(db, storeNo, startDate, endDate),
+    getTopPerformingProducts(db, storeNo, topProductsStartDate, endDate),
     getWeeklyGrossMargin(db, storeNo, startDate, endDate),
-    getWeeklyFulfillmentTypeData(db, storeNo, startDate, endDate)
+    getWeeklyFulfillmentTypeData(db, storeNo, startDate, endDate),
+    getWeeklyStockoutRate(db, storeNo),
+    getMonthlyStockoutRate(db, storeNo)
   ])
-    .then(([monthly, weekly, aov, weeklySales, topProducts, margin, fulfillmentType]) => {
+    .then(([monthly, weekly, aov, weeklySales, topProducts, margin, fulfillmentType, weeklyStockout, monthlyStockout]) => {
       return {
         success: true,
         data: {
@@ -505,7 +645,9 @@ function getGrowthMetrics(db, storeNo) {
           weeklySales: weeklySales.data || [],
           topProducts: topProducts.data || [],
           weeklyGrossMargin: margin.data || [],
-          weeklyFulfillmentType: fulfillmentType.data || []
+          weeklyFulfillmentType: fulfillmentType.data || [],
+          weeklyStockoutRate: weeklyStockout.data || [],
+          monthlyStockoutRate: monthlyStockout.data || []
         }
       };
     })
@@ -523,5 +665,7 @@ module.exports = {
   getTopPerformingProducts,
   getWeeklyGrossMargin,
   getWeeklyFulfillmentTypeData,
+  getWeeklyStockoutRate,
+  getMonthlyStockoutRate,
   getGrowthMetrics
 };

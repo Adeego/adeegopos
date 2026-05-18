@@ -1,24 +1,25 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+
 import useWsinfoStore from '@/stores/wsinfo';
 import { useToast } from '@/components/ui/use-toast';
-import DeleteTransaction from '@/components/financeComps/transaction/deleteTransaction';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import TransactionReconciliationDialog from '@/components/reconciliation/TransactionReconciliationDialog';
+import ReconciliationHistory from '@/components/reconciliation/ReconciliationHistory';
 
 export default function TransactionDetail() {
   const router = useRouter();
   const { id } = router.query;
   const { toast } = useToast();
-  const [transaction, setTransaction] = useState(null);
-  const [isEditing, setIsEditing] = useState(false);
   const store = useWsinfoStore((state) => state.wsinfo);
   const [storeNo, setStoreNo] = useState('');
+  const [transaction, setTransaction] = useState(null);
+  const [reconciliations, setReconciliations] = useState([]);
 
   useEffect(() => {
-    if (store && store.storeNo) {
+    if (store?.storeNo) {
       setStoreNo(store.storeNo);
     }
   }, [store]);
@@ -26,56 +27,37 @@ export default function TransactionDetail() {
   useEffect(() => {
     if (id && storeNo) {
       fetchTransactionDetail();
+      fetchReconciliations();
     }
   }, [id, storeNo]);
 
   const fetchTransactionDetail = async () => {
-    if (!storeNo) return;
     try {
       const result = await window.electronAPI.realmOperation('getTransactionById', id, storeNo);
       if (result.success) {
         setTransaction(result.transaction);
       } else {
-        console.error('Failed to fetch transaction details:', result.error);
-        toast({
-          description: 'Failed to fetch transaction details'
-        });
+        throw new Error(result.error || 'Failed to fetch transaction details');
       }
     } catch (error) {
-      console.error('Error fetching transaction details:', error);
       toast({
-        description: 'Error fetching transaction details'
+        title: 'Load failed',
+        description: error.message,
+        variant: 'destructive',
       });
     }
   };
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setTransaction({ ...transaction, [name]: value });
-  };
-
-  const handleSave = async () => {
+  const fetchReconciliations = async () => {
     try {
-      const result = await window.electronAPI.realmOperation('updateTransaction', {
-        ...transaction,
-        updatedAt: new Date().toISOString(),
-      });
+      const result = await window.electronAPI.realmOperation('getReconciliationBySource', 'transaction', id, storeNo);
       if (result.success) {
-        setIsEditing(false);
-        toast({
-          description: 'Transaction details updated successfully'
-        });
+        setReconciliations(result.reconciliations || []);
       } else {
-        console.error('Failed to update transaction:', result.error);
-        toast({
-          description: 'Failed to update transaction details'
-        });
+        throw new Error(result.error || 'Failed to fetch reconciliation history');
       }
     } catch (error) {
-      console.error('Error updating transaction:', error);
-      toast({
-        description: 'Error updating transaction details'
-      });
+      console.error('Failed to fetch transaction reconciliations:', error);
     }
   };
 
@@ -85,64 +67,65 @@ export default function TransactionDetail() {
 
   return (
     <div className="space-y-8">
-      <Card className="w-full bg-white shadow-lg rounded-lg overflow-hidden">
-        <CardHeader className="bg-gray-50 border-b border-gray-200">
-          <CardTitle className="text-2xl font-semibold text-gray-800">Transaction Details</CardTitle>
-          <CardDescription className="text-sm text-gray-600">
-            This transaction was recorded on {new Date(transaction.createdAt).toLocaleDateString()}
-          </CardDescription>
+      <Card className="w-full overflow-hidden rounded-lg bg-white shadow-lg">
+        <CardHeader className="border-b border-gray-200 bg-gray-50">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <CardTitle className="text-2xl font-semibold text-gray-800">Transaction Details</CardTitle>
+              <CardDescription className="text-sm text-gray-600">
+                This transaction was recorded on {new Date(transaction.createdAt).toLocaleDateString()}
+              </CardDescription>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={transaction.status === 'reversed' ? 'destructive' : transaction.status === 'replaced' ? 'secondary' : 'default'}>
+                {transaction.status || 'posted'}
+              </Badge>
+              <Badge variant="outline">{transaction.transType}</Badge>
+            </div>
+          </div>
         </CardHeader>
         <CardContent className="p-6">
           <div className="space-y-4">
-            {isEditing ? (
-              <>
-                <div>
-                  <Label htmlFor="description">Description</Label>
-                  <Input id="description" name="description" value={transaction.description} onChange={handleInputChange} />
-                </div>
-                <div>
-                  <Label htmlFor="amount">Amount</Label>
-                  <Input id="amount" name="amount" type="number" value={transaction.amount} onChange={handleInputChange} />
-                </div>
-                <div>
-                  <Label htmlFor="date">Date</Label>
-                  <Input id="date" name="date" type="date" value={new Date(transaction.date).toISOString().split('T')[0]} onChange={handleInputChange} />
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                  <div className="text-sm font-medium text-gray-600">DESCRIPTION</div>
-                  <div className="text-sm font-semibold text-gray-900">{transaction.description}</div>
-                </div>
-                <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                  <div className="text-sm font-medium text-gray-600">AMOUNT</div>
-                  <div className="text-sm font-semibold text-gray-900">KES {transaction.amount}</div>
-                </div>
-                <div className="flex items-center justify-between py-2 border-b border-gray-100">
-                  <div className="text-sm font-medium text-gray-600">DATE</div>
-                  <div className="text-sm font-semibold text-gray-900">{new Date(transaction.date).toLocaleDateString()}</div>
-                </div>
-              </>
-            )}
+            <DetailRow label="Description" value={transaction.description} />
+            <DetailRow label="Amount" value={`KES ${Number(transaction.amount || 0).toFixed(2)}`} />
+            <DetailRow label="Transaction Cost" value={`KES ${Number(transaction.transactionCost || 0).toFixed(2)}`} />
+            <DetailRow label="Source" value={`${transaction.source}: ${transaction.from}`} />
+            <DetailRow label="Destination" value={`${transaction.destination}: ${transaction.to}`} />
+            <DetailRow label="Date" value={new Date(transaction.date).toLocaleDateString()} />
           </div>
         </CardContent>
-        <CardFooter className="bg-gray-50 border-t border-gray-200 p-6">
-          <div className="w-full flex justify-between">
-            {isEditing ? (
-              <>
-                <Button variant="outline" onClick={() => setIsEditing(false)}>Cancel</Button>
-                <Button onClick={handleSave}>Save</Button>
-              </>
-            ) : (
-              <>
-                <Button onClick={() => setIsEditing(true)}>Edit</Button>
-                <DeleteTransaction transactionId={transaction._id} transactionDescription={transaction.description} storeNo={storeNo} />
-              </>
-            )}
+        <CardFooter className="border-t border-gray-200 bg-gray-50 p-6">
+          <div className="flex w-full flex-wrap justify-between gap-3">
+            <Button variant="outline" onClick={() => router.push('/finance?view=transactions')}>Back</Button>
+            <div className="flex flex-wrap gap-2">
+              <TransactionReconciliationDialog
+                transaction={transaction}
+                mode="reverse"
+                onSuccess={fetchReconciliations}
+              />
+              <TransactionReconciliationDialog
+                transaction={transaction}
+                mode="replace"
+                onSuccess={fetchReconciliations}
+              />
+            </div>
           </div>
         </CardFooter>
       </Card>
+
+      <ReconciliationHistory
+        reconciliations={reconciliations}
+        description="Correction cases linked to this transaction"
+      />
+    </div>
+  );
+}
+
+function DetailRow({ label, value }) {
+  return (
+    <div className="flex items-center justify-between border-b border-gray-100 py-2">
+      <div className="text-sm font-medium text-gray-600">{label.toUpperCase()}</div>
+      <div className="text-sm font-semibold text-gray-900">{value}</div>
     </div>
   );
 }

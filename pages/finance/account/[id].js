@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from '@/components/ui/use-toast';
 import useWsinfoStore from '@/stores/wsinfo';
+import financialAccountTypes from '@/lib/financialAccountTypes.json';
 
 export default function AccountDetail() {
   const router = useRouter();
@@ -60,6 +61,13 @@ export default function AccountDetail() {
   };
 
   const handleSave = async () => {
+    if (!financialAccountTypes.includes(account.accountType)) {
+      toast({
+        description: 'Please select a valid account type'
+      });
+      return;
+    }
+
     try {
       const result = await window.electronAPI.realmOperation('updateAccount', {
         ...account,
@@ -120,8 +128,11 @@ export default function AccountDetail() {
                       <SelectValue placeholder="Select Account Type" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="Bank">Bank</SelectItem>
-                      <SelectItem value="Legible">Legible</SelectItem>
+                      {financialAccountTypes.map((accountType) => (
+                        <SelectItem key={accountType} value={accountType}>
+                          {accountType}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>

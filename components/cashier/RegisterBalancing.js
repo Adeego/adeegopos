@@ -1,574 +1,575 @@
 'use client'
 
-import React, { useState } from 'react';
-import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetDescription } from '@/components/ui/sheet';
+import React, { useCallback, useEffect, useState } from 'react';
+import { ArrowRightLeft, Calculator, CheckCircle2, Clock, Lock, RefreshCw, Save, Smartphone, Wallet } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
-import { Badge } from '@/components/ui/badge';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Calculator, Wallet, Smartphone, CreditCard, RefreshCw, Save, Trash2, Clock, History, Lock } from 'lucide-react';
-import useRegisterBalanceStore from '@/stores/registerBalanceStore';
-import useStaffStore from '@/stores/staffStore';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
+import useStaffStore from '@/stores/staffStore';
+import useWsinfoStore from '@/stores/wsinfo';
+import { can } from '@/lib/rbac';
 
-// Cash payment row - moved outside to prevent re-creation on each render
-const CashRow = ({ today, todaySales, creditsPaid = 0, setOpeningBalance, setClosingBalance }) => {
-  const opening = today.cash?.opening || 0;
-  const sales = todaySales.cash || 0;
-  const credits = creditsPaid;
-  const expected = opening + sales + credits;
-  const actual = today.cash?.closing || 0;
-  const difference = actual - expected;
-  
+const toCurrency = (value) => `KES ${Number(value || 0).toFixed(2)}`;
+
+const toInputNumber = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const formatBusinessDate = (value) => {
+  if (!value) {
+    return 'Today';
+  }
+
+  const parsed = new Date(`${value}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) {
+    return value;
+  }
+
+  return parsed.toLocaleDateString('en-US', {
+    weekday: 'long',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+  });
+};
+
+const formatDateTime = (value) => {
+  if (!value) {
+    return 'N/A';
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return 'N/A';
+  }
+
+  return parsed.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
+const getTodayBusinessDate = () => {
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const DifferenceBadge = ({ value }) => {
+  const isZero = Number(value || 0) === 0;
+  const isPositive = Number(value || 0) > 0;
+
   return (
-    <Card className="mb-4">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium flex items-center gap-2">
-          <Wallet className="h-4 w-4 text-green-600" />
-          Cash
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <Label className="text-xs text-muted-foreground">Opening Balance</Label>
-            <Input
-              type="number"
-              value={today.cash?.opening ?? ''}
-              onChange={(e) => setOpeningBalance('cash', null, e.target.value)}
-              placeholder="0.00"
-              className="mt-1"
-            />
-          </div>
-          <div>
-            <Label className="text-xs text-muted-foreground">Today's Sales</Label>
-            <Input
-              value={sales.toFixed(2)}
-              readOnly
-              className="mt-1 bg-muted"
-            />
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <Label className="text-xs text-muted-foreground">Credits Paid</Label>
-            <Input
-              value={credits.toFixed(2)}
-              readOnly
-              className="mt-1 bg-muted text-green-600"
-            />
-          </div>
-          <div>
-            <Label className="text-xs text-muted-foreground">Expected</Label>
-            <Input
-              value={expected.toFixed(2)}
-              readOnly
-              className="mt-1 bg-muted"
-            />
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <Label className="text-xs text-muted-foreground">Closing Balance</Label>
-            <Input
-              type="number"
-              value={today.cash?.closing ?? ''}
-              onChange={(e) => setClosingBalance('cash', null, e.target.value)}
-              placeholder="0.00"
-              className="mt-1"
-            />
-          </div>
-          <div className="flex items-end">
-            <div className="flex justify-between items-center w-full pb-2">
-              <Label className="text-xs text-muted-foreground">Difference</Label>
-              <Badge variant={difference === 0 ? 'success' : difference > 0 ? 'default' : 'destructive'}
-                     className={difference === 0 ? 'bg-green-500' : difference > 0 ? 'bg-blue-500' : ''}>
-                {difference >= 0 ? '+' : ''}{difference.toFixed(2)}
-              </Badge>
-            </div>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+    <Badge
+      variant={isPositive ? 'default' : isZero ? 'outline' : 'destructive'}
+      className={isZero ? 'border-green-200 bg-green-50 text-green-700' : isPositive ? 'bg-blue-500' : ''}
+    >
+      {value > 0 ? '+' : ''}{toCurrency(value).replace('KES ', '')}
+    </Badge>
   );
 };
 
-// M-Pesa payment row with phone and till sub-fields
-const MpesaRow = ({ today, todaySales, creditsPaid = 0, setOpeningBalance, setClosingBalance }) => {
-  // Phone sub-method
-  const phoneOpening = today.mpesa?.phone?.opening || 0;
-  const phoneSales = todaySales.phone || 0;
-  const phoneExpected = phoneOpening + phoneSales;
-  const phoneClosing = today.mpesa?.phone?.closing || 0;
-  
-  // Till sub-method
-  const tillOpening = today.mpesa?.till?.opening || 0;
-  const tillSales = todaySales.till || 0;
-  const tillExpected = tillOpening + tillSales;
-  const tillClosing = today.mpesa?.till?.closing || 0;
-  
-  // Credits paid via M-Pesa
-  const credits = creditsPaid;
-  
-  // Combined M-Pesa totals (including credits)
-  const totalOpening = phoneOpening + tillOpening;
-  const totalSales = phoneSales + tillSales;
-  const totalExpected = totalOpening + totalSales + credits;
-  const totalClosing = phoneClosing + tillClosing;
-  const totalDifference = totalClosing - totalExpected;
-  
-  return (
-    <Card className="mb-4">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-sm font-medium flex items-center gap-2">
-          <Smartphone className="h-4 w-4 text-green-500" />
-          M-Pesa
-          <Badge variant="outline" className="ml-auto text-xs">
-            Total: KES {totalClosing.toFixed(2)}
+const AccountSummaryCard = ({ icon: Icon, title, account, openingBalance, expectedBalance, countedBalance, variance }) => (
+  <Card className="overflow-hidden border-muted shadow-none">
+    <CardHeader className="border-b bg-muted/30 p-4">
+      <CardTitle className="flex flex-wrap items-center gap-2 text-sm font-medium">
+        <Icon className="h-4 w-4" />
+        {title}
+        {account ? (
+          <Badge variant="outline" className="ml-auto max-w-full">
+            {account.name}
           </Badge>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Phone Sub-section */}
-        <div className="border rounded-lg p-3 bg-muted/30">
-          <div className="flex items-center gap-2 mb-3">
-            <Smartphone className="h-3 w-3 text-blue-600" />
-            <span className="text-xs font-medium">Phone</span>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs text-muted-foreground">Opening</Label>
-              <Input
-                type="number"
-                value={today.mpesa?.phone?.opening ?? ''}
-                onChange={(e) => setOpeningBalance('mpesa', 'phone', e.target.value)}
-                placeholder="0.00"
-                className="mt-1 h-8 text-sm"
-              />
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Sales</Label>
-              <Input
-                value={phoneSales.toFixed(2)}
-                readOnly
-                className="mt-1 h-8 text-sm bg-muted"
-              />
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Expected</Label>
-              <Input
-                value={phoneExpected.toFixed(2)}
-                readOnly
-                className="mt-1 h-8 text-sm bg-muted"
-              />
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Closing</Label>
-              <Input
-                type="number"
-                value={today.mpesa?.phone?.closing ?? ''}
-                onChange={(e) => setClosingBalance('mpesa', 'phone', e.target.value)}
-                placeholder="0.00"
-                className="mt-1 h-8 text-sm"
-              />
-            </div>
-          </div>
-        </div>
+        ) : (
+          <Badge variant="destructive" className="ml-auto">
+            Not Linked
+          </Badge>
+        )}
+      </CardTitle>
+    </CardHeader>
+    <CardContent className="space-y-2 p-4 text-sm">
+      <div className="flex justify-between">
+        <span className="text-muted-foreground">Finance Balance</span>
+        <span className="font-semibold">{account ? toCurrency(account.balance) : 'N/A'}</span>
+      </div>
+      <div className="flex justify-between">
+        <span className="text-muted-foreground">Opening</span>
+        <span className="font-semibold">{toCurrency(openingBalance)}</span>
+      </div>
+      <div className="flex justify-between">
+        <span className="text-muted-foreground">Expected</span>
+        <span className="font-semibold">{toCurrency(expectedBalance)}</span>
+      </div>
+      <div className="flex justify-between">
+        <span className="text-muted-foreground">Counted Closing</span>
+        <span className="font-semibold">{toCurrency(countedBalance)}</span>
+      </div>
+      <div className="flex justify-between items-center">
+        <span className="text-muted-foreground">Variance</span>
+        <DifferenceBadge value={variance} />
+      </div>
+      {account?.accountNumber && (
+        <p className="text-xs text-muted-foreground">Account No: {account.accountNumber}</p>
+      )}
+    </CardContent>
+  </Card>
+);
 
-        {/* Till Sub-section */}
-        <div className="border rounded-lg p-3 bg-muted/30">
-          <div className="flex items-center gap-2 mb-3">
-            <CreditCard className="h-3 w-3 text-purple-600" />
-            <span className="text-xs font-medium">Till</span>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label className="text-xs text-muted-foreground">Opening</Label>
-              <Input
-                type="number"
-                value={today.mpesa?.till?.opening ?? ''}
-                onChange={(e) => setOpeningBalance('mpesa', 'till', e.target.value)}
-                placeholder="0.00"
-                className="mt-1 h-8 text-sm"
-              />
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Sales</Label>
-              <Input
-                value={tillSales.toFixed(2)}
-                readOnly
-                className="mt-1 h-8 text-sm bg-muted"
-              />
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Expected</Label>
-              <Input
-                value={tillExpected.toFixed(2)}
-                readOnly
-                className="mt-1 h-8 text-sm bg-muted"
-              />
-            </div>
-            <div>
-              <Label className="text-xs text-muted-foreground">Closing</Label>
-              <Input
-                type="number"
-                value={today.mpesa?.till?.closing ?? ''}
-                onChange={(e) => setClosingBalance('mpesa', 'till', e.target.value)}
-                placeholder="0.00"
-                className="mt-1 h-8 text-sm"
-              />
-            </div>
-          </div>
-        </div>
-
-        {/* Credits Paid via M-Pesa */}
-        <div className="border rounded-lg p-3 bg-green-50">
-          <div className="flex justify-between items-center">
-            <span className="text-xs font-medium text-green-700">Credits Paid (M-Pesa)</span>
-            <span className="text-sm font-semibold text-green-600">+ KES {credits.toFixed(2)}</span>
-          </div>
-        </div>
-
-        {/* M-Pesa Summary */}
-        <div className="space-y-2 pt-2 border-t">
-          <div className="flex justify-between text-xs">
-            <span className="text-muted-foreground">Total Expected</span>
-            <span className="font-semibold">KES {totalExpected.toFixed(2)}</span>
-          </div>
-          <div className="flex justify-between items-center">
-            <Label className="text-xs text-muted-foreground">M-Pesa Difference</Label>
-            <Badge variant={totalDifference === 0 ? 'success' : totalDifference > 0 ? 'default' : 'destructive'}
-                   className={totalDifference === 0 ? 'bg-green-500' : totalDifference > 0 ? 'bg-blue-500' : ''}>
-              {totalDifference >= 0 ? '+' : ''}{totalDifference.toFixed(2)}
-            </Badge>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
-};
-
-const RegisterBalancing = ({ todaySales = {}, creditsPaid = { cash: 0, mpesa: 0, total: 0 } }) => {
-  const [showHistory, setShowHistory] = useState(false);
+export default function RegisterBalancing({ defaultOpen = false }) {
   const { toast } = useToast();
   const staff = useStaffStore((state) => state.staff);
-  
-  const {
-    yesterday,
-    today,
-    createdAt,
-    editHistory,
-    isSaved,
-    setOpeningBalance,
-    setClosingBalance,
-    saveBalances,
-    carryForward,
-    resetBalances
-  } = useRegisterBalanceStore();
+  const store = useWsinfoStore((state) => state.wsinfo);
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const [session, setSession] = useState(null);
+  const [countedCash, setCountedCash] = useState('0');
+  const [countedMpesa, setCountedMpesa] = useState('0');
+  const [transferAmount, setTransferAmount] = useState('0');
+  const [transferCost, setTransferCost] = useState('0');
+  const [destinationAccountId, setDestinationAccountId] = useState('');
+  const [transferDescription, setTransferDescription] = useState('');
 
-  // Check if user is admin
-  const isAdmin = staff?.role === 'Admin';
-  const staffName = staff?.firstName ? `${staff.firstName} ${staff.lastName || ''}`.trim() : 'Unknown';
+  const canManageCashier = can(staff, 'cashier:manage');
+  const storeNo = store?.storeNo || '';
+  const businessDate = getTodayBusinessDate();
 
-  // Credits paid by method
-  const creditsPaidCash = creditsPaid?.cash || 0;
-  const creditsPaidMpesa = creditsPaid?.mpesa || 0;
-  const totalCreditsPaid = creditsPaid?.total || (creditsPaidCash + creditsPaidMpesa);
+  useEffect(() => {
+    if (defaultOpen) {
+      setOpen(true);
+    }
+  }, [defaultOpen]);
 
-  // Calculate totals
-  const cashOpening = today.cash?.opening || 0;
-  const mpesaPhoneOpening = today.mpesa?.phone?.opening || 0;
-  const mpesaTillOpening = today.mpesa?.till?.opening || 0;
-  const totalOpening = cashOpening + mpesaPhoneOpening + mpesaTillOpening;
+  const syncLocalState = useCallback((nextSession) => {
+    setSession(nextSession);
+    setCountedCash(String(nextSession?.countedBalances?.cash ?? 0));
+    setCountedMpesa(String(nextSession?.countedBalances?.mpesa ?? 0));
+    setTransferAmount(String(nextSession?.transfer?.amount ?? 0));
+    setTransferCost(String(nextSession?.transfer?.transactionCost ?? 0));
+    setDestinationAccountId(nextSession?.transfer?.destinationAccountId || '');
+    setTransferDescription(nextSession?.transfer?.description || `Register close transfer for ${nextSession?.businessDate || businessDate}`);
+  }, [businessDate]);
 
-  const cashSales = todaySales.cash || 0;
-  const phoneSales = todaySales.phone || 0;
-  const tillSales = todaySales.till || 0;
-  const totalSales = cashSales + phoneSales + tillSales;
-  const mpesaSales = phoneSales + tillSales;
+  const fetchRegisterSession = useCallback(async () => {
+    if (!storeNo) {
+      return;
+    }
 
-  // Credits paid adds to the register (money coming in)
-  const totalExpected = totalOpening + totalSales + totalCreditsPaid;
+    setLoading(true);
+    try {
+      const result = await window.electronAPI.realmOperation('getRegisterSession', storeNo, businessDate);
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to load register session');
+      }
 
-  const cashClosing = today.cash?.closing || 0;
-  const mpesaPhoneClosing = today.mpesa?.phone?.closing || 0;
-  const mpesaTillClosing = today.mpesa?.till?.closing || 0;
-  const totalClosing = cashClosing + mpesaPhoneClosing + mpesaTillClosing;
-  const mpesaClosing = mpesaPhoneClosing + mpesaTillClosing;
-
-  const totalDifference = totalClosing - totalExpected;
-
-  // Yesterday's M-Pesa totals
-  const yesterdayMpesaClosing = (yesterday.mpesa?.phone?.closing || 0) + (yesterday.mpesa?.till?.closing || 0);
-
-  const handleSave = () => {
-    if (!isAdmin) {
+      syncLocalState(result.session);
+    } catch (error) {
+      console.error('Error loading register session:', error);
       toast({
-        title: "Access Denied",
-        description: "Only admins can save register balances",
-        variant: "destructive"
+        title: 'Error',
+        description: error.message || 'Failed to load register session',
+        variant: 'destructive',
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [businessDate, storeNo, syncLocalState, toast]);
+
+  useEffect(() => {
+    if (open && storeNo) {
+      fetchRegisterSession();
+    }
+  }, [fetchRegisterSession, open, storeNo]);
+
+  const countedBalances = {
+    cash: toInputNumber(countedCash),
+    mpesa: toInputNumber(countedMpesa),
+  };
+
+  const expectedBalances = session?.expectedBalances || { cash: 0, mpesa: 0, total: 0 };
+  const liveCountedTotals = {
+    ...countedBalances,
+    total: countedBalances.cash + countedBalances.mpesa,
+  };
+  const liveVariances = {
+    cash: Number((liveCountedTotals.cash - Number(expectedBalances.cash || 0)).toFixed(2)),
+    mpesa: Number((liveCountedTotals.mpesa - Number(expectedBalances.mpesa || 0)).toFixed(2)),
+    total: Number((liveCountedTotals.total - Number(expectedBalances.total || 0)).toFixed(2)),
+  };
+
+  const transferAmountValue = toInputNumber(transferAmount);
+  const transferCostValue = toInputNumber(transferCost);
+  const remainingDrawerCash = Number((liveCountedTotals.cash - transferAmountValue - transferCostValue).toFixed(2));
+  const setupError = session?.setupError || '';
+  const sessionClosed = session?.status === 'closed';
+  const canEdit = canManageCashier && !setupError && !sessionClosed;
+  const canClose = canEdit && !closing && remainingDrawerCash >= 0 && ((transferAmountValue === 0 && transferCostValue === 0) || destinationAccountId);
+
+  const handleSave = async () => {
+    if (!canEdit) {
+      toast({
+        title: 'Access Denied',
+        description: setupError || 'Only admins can save register balances.',
+        variant: 'destructive',
       });
       return;
     }
-    saveBalances(staffName);
-    toast({
-      title: "Saved",
-      description: "Register balances saved successfully"
-    });
+
+    setSaving(true);
+    try {
+      const result = await window.electronAPI.realmOperation('saveRegisterSession', {
+        storeNo,
+        businessDate,
+        countedBalances,
+      });
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to save register session');
+      }
+
+      syncLocalState(result.session);
+      toast({
+        title: 'Saved',
+        description: 'Register draft saved successfully.',
+      });
+    } catch (error) {
+      console.error('Error saving register session:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to save register session',
+        variant: 'destructive',
+      });
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleCarryForward = () => {
-    if (!isAdmin) {
+  const handleCloseRegister = async () => {
+    if (!canClose) {
       toast({
-        title: "Access Denied",
-        description: "Only admins can start a new day",
-        variant: "destructive"
+        title: 'Unable to Close',
+        description: setupError || 'Complete the transfer details and ensure the remaining drawer cash is not negative.',
+        variant: 'destructive',
       });
       return;
     }
-    carryForward(staffName);
-    toast({
-      title: "New Day Started",
-      description: "Closing balances carried forward to today's opening"
-    });
-  };
 
-  const handleReset = () => {
-    if (!isAdmin) {
+    setClosing(true);
+    try {
+      const result = await window.electronAPI.realmOperation('closeRegisterSession', {
+        storeNo,
+        businessDate,
+        countedBalances,
+        transfer: {
+          destinationAccountId,
+          amount: transferAmountValue,
+          transactionCost: transferCostValue,
+          description: transferDescription,
+        },
+      }, staff);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to close register');
+      }
+
+      syncLocalState(result.session);
       toast({
-        title: "Access Denied",
-        description: "Only admins can reset register balances",
-        variant: "destructive"
+        title: 'Register Closed',
+        description: transferAmountValue > 0
+          ? 'Register closed and cash transferred successfully.'
+          : 'Register closed successfully.',
       });
-      return;
+    } catch (error) {
+      console.error('Error closing register:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to close register',
+        variant: 'destructive',
+      });
+    } finally {
+      setClosing(false);
     }
-    resetBalances(staffName);
-    toast({
-      title: "Reset Complete",
-      description: "All register balances have been reset"
-    });
-  };
-
-  const formatDate = (isoString) => {
-    if (!isoString) return 'N/A';
-    return new Date(isoString).toLocaleString('en-US', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
   };
 
   return (
-    <Sheet>
-      <SheetTrigger asChild>
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
         <Button variant="outline">
           <Calculator className="mr-2 h-4 w-4" />
           Balance Register
         </Button>
-      </SheetTrigger>
-      <SheetContent className="w-[450px] sm:w-[540px] overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle className="flex items-center gap-2">
+      </DialogTrigger>
+      <DialogContent className="flex h-[92vh] w-[calc(100vw-1rem)] max-w-5xl flex-col gap-0 overflow-hidden p-0 sm:w-[calc(100vw-2rem)]">
+        <DialogHeader className="border-b bg-muted/30 px-4 py-4 pr-12 sm:px-6">
+          <DialogTitle className="flex flex-wrap items-center gap-2 text-base sm:text-lg">
             <Calculator className="h-5 w-5" />
             Register Balancing
-          </SheetTitle>
-          <SheetDescription>
-            {createdAt && (
-              <span className="flex items-center gap-1 text-xs">
-                <Clock className="h-3 w-3" />
-                Created: {formatDate(createdAt)}
-              </span>
-            )}
-          </SheetDescription>
-        </SheetHeader>
+            {sessionClosed && <Badge className="bg-green-500">Closed</Badge>}
+          </DialogTitle>
+          <DialogDescription>
+            {formatBusinessDate(session?.businessDate || businessDate)}
+          </DialogDescription>
+        </DialogHeader>
 
-        <div className="mt-6 space-y-4">
-          {/* Admin Notice */}
-          {!isAdmin && (
-            <Card className="bg-amber-50 border-amber-200">
-              <CardContent className="py-3">
-                <div className="flex items-center gap-2 text-amber-700 text-sm">
-                  <Lock className="h-4 w-4" />
-                  <span>Only admins can save, edit, or delete balances</span>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Yesterday's Summary */}
-          <Card className="bg-muted/50">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Yesterday's Closing</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="grid grid-cols-2 gap-2 text-sm">
-                <div className="text-center">
-                  <p className="text-muted-foreground text-xs">Cash</p>
-                  <p className="font-semibold">{(yesterday.cash?.closing || 0).toFixed(2)}</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-muted-foreground text-xs">M-Pesa</p>
-                  <p className="font-semibold">{yesterdayMpesaClosing.toFixed(2)}</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Separator />
-
-          {/* Payment Methods */}
-          <CashRow 
-            today={today}
-            todaySales={todaySales}
-            creditsPaid={creditsPaidCash}
-            setOpeningBalance={setOpeningBalance}
-            setClosingBalance={setClosingBalance}
-          />
-          
-          <MpesaRow 
-            today={today}
-            todaySales={todaySales}
-            creditsPaid={creditsPaidMpesa}
-            setOpeningBalance={setOpeningBalance}
-            setClosingBalance={setClosingBalance}
-          />
-
-          <Separator />
-
-          {/* Totals Summary */}
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Summary</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Total Opening</span>
-                <span className="font-semibold">KES {totalOpening.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Cash Sales</span>
-                <span className="font-semibold">KES {cashSales.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">M-Pesa Sales</span>
-                <span className="font-semibold">KES {mpesaSales.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Credits Paid (Cash)</span>
-                <span className="font-semibold text-green-600">+ KES {creditsPaidCash.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Credits Paid (M-Pesa)</span>
-                <span className="font-semibold text-green-600">+ KES {creditsPaidMpesa.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Expected Total</span>
-                <span className="font-semibold">KES {totalExpected.toFixed(2)}</span>
-              </div>
-              <Separator />
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Cash Closing</span>
-                <span className="font-semibold">KES {cashClosing.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">M-Pesa Closing</span>
-                <span className="font-semibold">KES {mpesaClosing.toFixed(2)}</span>
-              </div>
-              <div className="flex justify-between items-center pt-2">
-                <span className="font-medium">Total Difference</span>
-                <Badge 
-                  variant={totalDifference === 0 ? 'success' : totalDifference > 0 ? 'default' : 'destructive'}
-                  className={`text-sm ${totalDifference === 0 ? 'bg-green-500' : totalDifference > 0 ? 'bg-blue-500' : ''}`}
-                >
-                  {totalDifference >= 0 ? '+' : ''}KES {totalDifference.toFixed(2)}
-                </Badge>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Edit History */}
-          {editHistory && editHistory.length > 0 && (
-            <Card>
-              <CardHeader className="pb-2">
-                <CardTitle className="text-sm font-medium flex items-center justify-between">
-                  <span className="flex items-center gap-2">
-                    <History className="h-4 w-4" />
-                    Edit History
-                  </span>
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    onClick={() => setShowHistory(!showHistory)}
-                  >
-                    {showHistory ? 'Hide' : 'Show'}
-                  </Button>
-                </CardTitle>
-              </CardHeader>
-              {showHistory && (
-                <CardContent>
-                  <ScrollArea className="h-40">
-                    <div className="space-y-2">
-                      {editHistory.slice().reverse().map((entry, index) => (
-                        <div key={index} className="text-xs border-b pb-2 last:border-0">
-                          <div className="flex justify-between items-start">
-                            <Badge variant="outline" className="text-xs">
-                              {entry.action}
-                            </Badge>
-                            <span className="text-muted-foreground">
-                              {formatDate(entry.timestamp)}
-                            </span>
-                          </div>
-                          <p className="mt-1 text-muted-foreground">
-                            By: {entry.editedBy}
-                          </p>
-                          <p className="text-foreground">{entry.details}</p>
-                        </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="space-y-4 p-4 sm:p-6">
+            {!canManageCashier && (
+              <Card className="border-amber-200 bg-amber-50">
+                <CardContent className="py-3 text-sm text-amber-700">
+                  <div className="flex items-center gap-2">
+                    <Lock className="h-4 w-4" />
+                    Your roles do not allow saving or closing the register.
+                  </div>
                 </CardContent>
-              )}
-            </Card>
-          )}
+              </Card>
+            )}
 
-          {/* Actions - Admin Only */}
-          <div className="flex gap-2 pt-4">
-            <Button 
-              variant="default" 
-              className="flex-1"
-              onClick={handleSave}
-              disabled={!isAdmin}
-            >
-              <Save className="mr-2 h-4 w-4" />
-              Save
-            </Button>
-            <Button 
-              variant="outline" 
-              className="flex-1"
-              onClick={handleCarryForward}
-              disabled={!isAdmin}
-            >
-              <RefreshCw className="mr-2 h-4 w-4" />
-              New Day
-            </Button>
-            <Button 
-              variant="destructive" 
-              size="icon"
-              onClick={handleReset}
-              disabled={!isAdmin}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
+            {setupError && (
+              <Card className="border-red-200 bg-red-50">
+                <CardContent className="py-3 text-sm text-red-700">
+                  {setupError}
+                </CardContent>
+              </Card>
+            )}
+
+            {loading && (
+              <Card>
+                <CardContent className="py-6 text-center text-sm text-muted-foreground">
+                  Loading register session...
+                </CardContent>
+              </Card>
+            )}
+
+            {!loading && session && (
+              <>
+                <Card className="border-muted bg-muted/30 shadow-none">
+                  <CardHeader className="p-4 pb-2">
+                    <CardTitle className="text-sm font-medium">Session Snapshot</CardTitle>
+                  </CardHeader>
+                  <CardContent className="grid gap-2 p-4 pt-0 text-sm sm:grid-cols-3">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Created</span>
+                      <span className="font-semibold">{formatDateTime(session.createdAt)}</span>
+                    </div>
+                    {session.closedAt && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Closed</span>
+                        <span className="font-semibold">{formatDateTime(session.closedAt)}</span>
+                      </div>
+                    )}
+                    {session.closedBy?.name && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Closed By</span>
+                        <span className="font-semibold">{session.closedBy.name}</span>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                <div className="grid gap-4 xl:grid-cols-2">
+                  <AccountSummaryCard
+                    icon={Wallet}
+                    title="Cash"
+                    account={session.linkedAccounts?.cash}
+                    openingBalance={session.openingBalances?.cash}
+                    expectedBalance={expectedBalances.cash}
+                    countedBalance={liveCountedTotals.cash}
+                    variance={liveVariances.cash}
+                  />
+                  <AccountSummaryCard
+                    icon={Smartphone}
+                    title="M-Pesa"
+                    account={session.linkedAccounts?.mpesa}
+                    openingBalance={session.openingBalances?.mpesa}
+                    expectedBalance={expectedBalances.mpesa}
+                    countedBalance={liveCountedTotals.mpesa}
+                    variance={liveVariances.mpesa}
+                  />
+                </div>
+
+                <Card className="border-muted shadow-none">
+                  <CardHeader className="border-b bg-muted/30 p-4">
+                    <CardTitle className="text-sm font-medium">Counted Closing Balances</CardTitle>
+                  </CardHeader>
+                  <CardContent className="grid gap-4 p-4 lg:grid-cols-2">
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Cash Closing</Label>
+                      <Input
+                        type="number"
+                        value={countedCash}
+                        onChange={(event) => setCountedCash(event.target.value)}
+                        disabled={!canEdit}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">M-Pesa Closing</Label>
+                      <Input
+                        type="number"
+                        value={countedMpesa}
+                        onChange={(event) => setCountedMpesa(event.target.value)}
+                        disabled={!canEdit}
+                        className="mt-1"
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-muted shadow-none">
+                  <CardHeader className="border-b bg-muted/30 p-4">
+                    <CardTitle className="text-sm font-medium">Cash Close Transfer</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4 p-4">
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Transfer Amount</Label>
+                        <Input
+                          type="number"
+                          value={transferAmount}
+                          onChange={(event) => setTransferAmount(event.target.value)}
+                          disabled={!canEdit}
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Transfer Cost</Label>
+                        <Input
+                          type="number"
+                          value={transferCost}
+                          onChange={(event) => setTransferCost(event.target.value)}
+                          disabled={!canEdit}
+                          className="mt-1"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Destination Account</Label>
+                      <Select
+                        value={destinationAccountId}
+                        onValueChange={setDestinationAccountId}
+                        disabled={!canEdit || session.availableTransferAccounts?.length === 0}
+                      >
+                        <SelectTrigger className="mt-1">
+                          <SelectValue placeholder="Select account" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {(session.availableTransferAccounts || []).map((account) => (
+                            <SelectItem key={account._id} value={account._id}>
+                              {account.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="text-xs text-muted-foreground">Transfer Description</Label>
+                      <Input
+                        value={transferDescription}
+                        onChange={(event) => setTransferDescription(event.target.value)}
+                        disabled={!canEdit}
+                        className="mt-1"
+                      />
+                    </div>
+                    <div className="rounded-lg border bg-muted/40 p-3 text-sm">
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Remaining Drawer Cash</span>
+                        <span className={`font-semibold ${remainingDrawerCash < 0 ? 'text-red-600' : ''}`}>
+                          {toCurrency(remainingDrawerCash)}
+                        </span>
+                      </div>
+                      <div className="mt-2 flex items-center justify-between">
+                        <span className="text-muted-foreground">Transfer Cost Accounted</span>
+                        <span className="font-semibold">{toCurrency(transferCostValue)}</span>
+                      </div>
+                      <p className="mt-2 text-xs text-muted-foreground">
+                        The remaining drawer cash becomes the next day&apos;s opening cash balance after transfer amount and transfer cost are deducted.
+                      </p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="border-muted shadow-none">
+                  <CardHeader className="border-b bg-muted/30 p-4">
+                    <CardTitle className="text-sm font-medium">Summary</CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2 p-4 text-sm">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Expected Total</span>
+                      <span className="font-semibold">{toCurrency(expectedBalances.total)}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Counted Total</span>
+                      <span className="font-semibold">{toCurrency(liveCountedTotals.total)}</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="text-muted-foreground">Total Variance</span>
+                      <DifferenceBadge value={liveVariances.total} />
+                    </div>
+                    {session.closeSummary && (
+                      <>
+                        <Separator />
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Drawer Cash After Close</span>
+                          <span className="font-semibold">{toCurrency(session.closeSummary.remainingDrawerCash)}</span>
+                        </div>
+                      </>
+                    )}
+                    {session.transfer && (
+                      <div className="rounded-lg border bg-muted/40 p-3">
+                        <div className="flex items-center gap-2 font-medium">
+                          <ArrowRightLeft className="h-4 w-4" />
+                          Cash Transfer
+                        </div>
+                        <p className="mt-2 text-xs text-muted-foreground">
+                          {toCurrency(session.transfer.amount)} moved to {session.transfer.destinationAccountName}
+                          {session.transfer.transactionCost > 0 ? ` with ${toCurrency(session.transfer.transactionCost)} transfer cost.` : '.'}
+                        </p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </>
+            )}
           </div>
         </div>
-      </SheetContent>
-    </Sheet>
+        {!loading && session && (
+          <div className="flex flex-col gap-2 border-t bg-background px-4 py-3 sm:flex-row sm:flex-wrap sm:px-6">
+            <Button variant="outline" onClick={fetchRegisterSession} disabled={loading || saving || closing} className="w-full sm:w-auto">
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Refresh
+            </Button>
+            <Button onClick={handleSave} disabled={!canEdit || saving || closing} className="w-full sm:w-auto">
+              <Save className="mr-2 h-4 w-4" />
+              {saving ? 'Saving...' : 'Save Draft'}
+            </Button>
+            <Button onClick={handleCloseRegister} disabled={!canClose} className="w-full sm:ml-auto sm:w-auto">
+              {sessionClosed ? (
+                <>
+                  <CheckCircle2 className="mr-2 h-4 w-4" />
+                  Closed
+                </>
+              ) : (
+                <>
+                  <Clock className="mr-2 h-4 w-4" />
+                  {closing ? 'Closing...' : 'Close Register'}
+                </>
+              )}
+            </Button>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
-};
-
-export default RegisterBalancing;
+}

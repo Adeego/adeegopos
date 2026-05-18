@@ -1,9 +1,4 @@
-const OpenAI = require('openai');
-
-// Initialize OpenAI client with better error handling for API key
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY
-});
+const { getOpenAIClient, getOpenAIModel } = require('./openaiAuth');
 
 async function getInventoryInsights(db) {
   if (!db) return { lowStock: [], topSelling: [] };
@@ -123,8 +118,9 @@ async function aiAnalysis(event, metrics, db) {
       
       const currentDate = new Date().toLocaleDateString('en-KE', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 
+      const openai = await getOpenAIClient();
       const stream = await openai.chat.completions.create({
-        model: "gpt-5.1-2025-11-13",
+        model: getOpenAIModel(),
         messages: [
           {
             role: "system",

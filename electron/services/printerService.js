@@ -11,6 +11,16 @@ function formatCurrency(amount) {
   return 'Ksh ' + amount.toFixed(2);
 }
 
+function formatPaymentMethod(sale = {}) {
+  if (sale.paymentMethod !== 'HYBRID' || !Array.isArray(sale.paymentBreakdown)) {
+    return sale.paymentMethod || '';
+  }
+
+  return sale.paymentBreakdown
+    .map((payment) => `${payment.method} ${formatCurrency(Number(payment.amount) || 0)}`)
+    .join(' + ');
+}
+
 function validateSaleData(sale) {
   if (!sale) throw new Error('Sale data is required');
   if (!sale._id) throw new Error('Sale ID is missing');
@@ -65,7 +75,7 @@ async function processPrintQueue() {
             .style('normal')
             .text('SOUTH B, NAIROBI, KE')
             .text(formatDate(sale.createdAt))
-            .text(`Payment: ${sale.paymentMethod || ''}`)
+            .text(`Payment: ${formatPaymentMethod(sale)}`)
             .text(`Served By: ${sale.servedBy || ''}`)
             .text(''); // Empty line for spacing
 
@@ -96,6 +106,10 @@ async function processPrintQueue() {
             .tableCustom([
               { text: 'Total', width: 0.7, align: 'LEFT' },
               { text: formatCurrency(sale.totalAmount), width: 0.3, align: 'RIGHT' }
+            ])
+            .tableCustom([
+              { text: 'Txn Cost', width: 0.7, align: 'LEFT' },
+              { text: formatCurrency(Number(sale.transactionCost) || 0), width: 0.3, align: 'RIGHT' }
             ])
             .tableCustom([
               { text: 'Items', width: 0.7, align: 'LEFT' },

@@ -4,10 +4,12 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from '@/components/ui/use-toast';
 import useWsinfoStore from '@/stores/wsinfo';
+import useStaffStore from '@/stores/staffStore';
 import { Edit3, Save, X, Trash2, User, Phone, Briefcase, DollarSign } from 'lucide-react'
+import { can, getPrimaryRole, getRoleLabel, getRoleLabels, normalizeRoles, ROLE_OPTIONS } from '@/lib/rbac';
 
 export default function StaffDetail() {
   const router = useRouter();
@@ -16,7 +18,9 @@ export default function StaffDetail() {
   const [staff, setStaff] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const store = useWsinfoStore((state) => state.wsinfo);
+  const currentStaff = useStaffStore((state) => state.staff);
   const [storeNo, setStoreNo] = useState('');
+  const canManageStaff = can(currentStaff, 'staff:manageRoles');
 
   useEffect(() => {
     if (store && store.storeNo) {
@@ -56,15 +60,22 @@ export default function StaffDetail() {
     setStaff({ ...staff, [name]: value });
   };
 
-  const handleRoleChange = (value) => {
-    setStaff({ ...staff, role: value });
+  const handleRoleToggle = (role, checked) => {
+    const currentRoles = normalizeRoles(staff.roles || staff.role);
+    const roles = checked
+      ? normalizeRoles([...currentRoles, role])
+      : normalizeRoles(currentRoles.filter((item) => item !== role));
+    setStaff({ ...staff, roles, role: getRoleLabel(getPrimaryRole(roles)) });
   };
 
   const handleSave = async () => {
     if (!storeNo) return;
     try {
+      const roles = normalizeRoles(staff.roles || staff.role);
       const result = await window.electronAPI.realmOperation('updateStaff', {
         ...staff,
+        roles,
+        role: getRoleLabel(getPrimaryRole(roles)),
         salary: parseFloat(staff.salary),
         updatedAt: new Date().toISOString(),
         storeNo
@@ -141,20 +152,21 @@ export default function StaffDetail() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="phone">Phone</Label>
-                <Input id="phone" name="phoneNumber" value={staff.phoneNumber} onChange={handleInputChange} />
+                <Input id="phone" name="phone" value={staff.phone || staff.phoneNumber || ''} onChange={handleInputChange} />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="role">Role</Label>
-                <Select value={staff.role} onValueChange={handleRoleChange}>
-                  <SelectTrigger>
-                    <SelectValue>{staff.role}</SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Admin">Admin</SelectItem>
-                    <SelectItem value="Operator">Operator</SelectItem>
-                    <SelectItem value="Worker">Worker</SelectItem>
-                  </SelectContent>
-                </Select>
+                <Label>Roles</Label>
+                <div className="grid grid-cols-2 gap-3 rounded-md border p-3">
+                  {ROLE_OPTIONS.map((option) => (
+                    <label key={option.value} className="flex items-center gap-2 text-sm">
+                      <Checkbox
+                        checked={normalizeRoles(staff.roles || staff.role).includes(option.value)}
+                        onCheckedChange={(checked) => handleRoleToggle(option.value, checked === true)}
+                      />
+                      {option.label}
+                    </label>
+                  ))}
+                </div>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="salary">Salary</Label>
@@ -174,14 +186,14 @@ export default function StaffDetail() {
                 <Phone className="w-6 h-6 text-primary" />
                 <div>
                   <p className="text-sm font-medium">Phone</p>
-                  <p className="text-lg font-semibold">{staff.phoneNumber}</p>
+                  <p className="text-lg font-semibold">{staff.phone || staff.phoneNumber}</p>
                 </div>
               </div>
               <div className="flex items-center space-x-4 p-4 bg-muted rounded-lg">
                 <Briefcase className="w-6 h-6 text-primary" />
                 <div>
                   <p className="text-sm font-medium">Role</p>
-                  <p className="text-lg font-semibold">{staff.role}</p>
+                  <p className="text-lg font-semibold">{getRoleLabels(staff).join(', ') || staff.role}</p>
                 </div>
               </div>
               <div className="flex items-center space-x-4 p-4 bg-muted rounded-lg">
@@ -206,12 +218,16 @@ export default function StaffDetail() {
             </>
           ) : (
             <>
-              <Button variant="outline" onClick={() => setIsEditing(true)}>
-                <Edit3 className="w-4 h-4 mr-2" /> Edit
-              </Button>
-              <Button variant="destructive" onClick={handleDelete}>
-                <Trash2 className="w-4 h-4 mr-2" /> Delete
-              </Button>
+              {canManageStaff && (
+                <>
+                  <Button variant="outline" onClick={() => setIsEditing(true)}>
+                    <Edit3 className="w-4 h-4 mr-2" /> Edit
+                  </Button>
+                  <Button variant="destructive" onClick={handleDelete}>
+                    <Trash2 className="w-4 h-4 mr-2" /> Delete
+                  </Button>
+                </>
+              )}
             </>
           )}
         </CardFooter>

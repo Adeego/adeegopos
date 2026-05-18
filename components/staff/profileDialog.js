@@ -19,6 +19,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Separator } from "@/components/ui/separator"
 import { UserCircle, LogOut, Phone, Lock, User, Briefcase } from "lucide-react"
+import { getRoleLabels } from "@/lib/rbac"
 
 export default function ProfileDialog() {
   const router = useRouter()
@@ -30,7 +31,7 @@ export default function ProfileDialog() {
   const deleteStaff = useStaffStore((state) => state.deleteStaff)
 
   const [formData, setFormData] = useState({
-    phone: staff.phone || "",
+    phone: staff.phone || staff.phoneNumber || "",
     passcode: "",
     confirmPasscode: "",
   })
@@ -115,7 +116,7 @@ export default function ProfileDialog() {
             </Avatar>
             <div>
               <h3 className="text-lg font-semibold">{staff.firstName} {staff.lastName}</h3>
-              <p className="text-sm text-muted-foreground">{staff.role}</p>
+              <p className="text-sm text-muted-foreground">{getRoleLabels(staff).join(", ") || staff.role}</p>
             </div>
           </div>
           <Separator />

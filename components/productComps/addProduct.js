@@ -24,6 +24,8 @@ import {
 import { toast } from "@/components/ui/use-toast";
 import useWsinfoStore from "@/stores/wsinfo";
 
+const { computeVariantUnitPrice } = require("../../lib/variantPricing");
+
 export default function AddProduct({ fetchProducts }) {
   const [isAddingProduct, setIsAddingProduct] = useState(false);
   const [newProduct, setNewProduct] = useState({
@@ -38,6 +40,7 @@ export default function AddProduct({ fetchProducts }) {
     restockPeriod: "",
     restock: false,
     barCode: "",
+    expiryDate: "",
     variants: [], // Array to hold product variants
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString(),
@@ -46,7 +49,7 @@ export default function AddProduct({ fetchProducts }) {
     _id: "",
     name: "",
     conversionFactor: "",
-    unitPrice: "",
+    marginPercent: "",
   });
   const [storeNo, setStoreNo] = useState("")
   const store = useWsinfoStore((state) => state.wsinfo);
@@ -76,6 +79,19 @@ export default function AddProduct({ fetchProducts }) {
   };
 
   const addVariant = () => {
+    const baseBuyPrice = Number(newProduct.buyPrice) || 0;
+    const conversionFactor = parseFloat(newVariant.conversionFactor);
+    const marginPercent = parseFloat(newVariant.marginPercent);
+
+    if (!newVariant.name || !Number.isFinite(conversionFactor) || conversionFactor <= 0 || !Number.isFinite(marginPercent) || marginPercent >= 100) {
+      toast({
+        title: "Variant details missing",
+        description: "Enter a variant name, conversion factor, and a margin percent below 100 before adding the variant.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setNewProduct((prev) => ({
       ...prev,
       variants: [
@@ -84,8 +100,9 @@ export default function AddProduct({ fetchProducts }) {
           ...newVariant,
           _id: `${storeNo}:${uuidv4()}`,
           storeNo: `${storeNo}`,
-          conversionFactor: parseFloat(newVariant.conversionFactor),
-          unitPrice: parseFloat(newVariant.unitPrice),
+          conversionFactor,
+          marginPercent,
+          unitPrice: computeVariantUnitPrice(baseBuyPrice, conversionFactor, marginPercent),
         },
       ],
     }));
@@ -95,7 +112,7 @@ export default function AddProduct({ fetchProducts }) {
       _id: "",
       name: "",
       conversionFactor: "",
-      unitPrice: "",
+      marginPercent: "",
     });
   };
 
@@ -111,7 +128,17 @@ export default function AddProduct({ fetchProducts }) {
         stock: parseFloat(newProduct.stock),
         restockThreshold: parseInt(newProduct.restockThreshold, 10),
         restockPeriod: parseInt(newProduct.restockPeriod, 10),
-        variants: newProduct.variants, // Include the variants
+        expiryDate: newProduct.expiryDate || null,
+        variants: newProduct.variants.map((variant) => ({
+          ...variant,
+          marginPercent: parseFloat(variant.marginPercent),
+          conversionFactor: parseFloat(variant.conversionFactor),
+          unitPrice: computeVariantUnitPrice(
+            parseFloat(newProduct.buyPrice),
+            parseFloat(variant.conversionFactor),
+            parseFloat(variant.marginPercent)
+          ),
+        })),
         state: "Active",
       };
       const result = await window.electronAPI.realmOperation(
@@ -135,6 +162,7 @@ export default function AddProduct({ fetchProducts }) {
           restockThreshold: "",
           restockPeriod: "",
           barCode: "",
+          expiryDate: "",
           variants: [],
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString(),
@@ -154,6 +182,12 @@ export default function AddProduct({ fetchProducts }) {
       setIsAddingProduct(false);
     }
   };
+
+  const variantPreviewPrice = computeVariantUnitPrice(
+    Number(newProduct.buyPrice) || 0,
+    parseFloat(newVariant.conversionFactor),
+    parseFloat(newVariant.marginPercent)
+  );
 
   return (
     <Sheet>
@@ -232,6 +266,19 @@ export default function AddProduct({ fetchProducts }) {
                 />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="expiryDate" className="text-right">
+                  Expiry Date
+                </Label>
+                <Input
+                  id="expiryDate"
+                  name="expiryDate"
+                  type="date"
+                  value={newProduct.expiryDate}
+                  onChange={handleInputChange}
+                  className="col-span-3"
+                />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="status" className="text-right">
                   Status
                 </Label>
@@ -256,13 +303,24 @@ export default function AddProduct({ fetchProducts }) {
                 <Label htmlFor="category" className="text-right">
                   Category
                 </Label>
-                <Input
-                  id="category"
+                <Select
                   name="category"
                   value={newProduct.category}
-                  onChange={handleInputChange}
-                  className="col-span-3"
-                />
+                  onValueChange={(value) =>
+                    setNewProduct((prev) => ({ ...prev, category: value }))
+                  }
+                >
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="Primary">Primary</SelectItem>
+                    <SelectItem value="Secondary">Secondary</SelectItem>
+                    <SelectItem value="Perishable">Perishable</SelectItem>
+                    <SelectItem value="Drinks">Drinks</SelectItem>
+                    <SelectItem value="Reserve">Reserve</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="restockThreshold" className="text-right">
@@ -332,17 +390,23 @@ export default function AddProduct({ fetchProducts }) {
                   />
                 </div>
                 <div className="grid grid-cols-4 gap-4 items-center">
-                  <Label htmlFor="variantUnitPrice" className="text-right">
-                    Unit Price
+                  <Label htmlFor="variantMarginPercent" className="text-right">
+                    Margin %
                   </Label>
                   <Input
-                    id="variantUnitPrice"
-                    name="unitPrice"
+                    id="variantMarginPercent"
+                    name="marginPercent"
                     type="number"
-                    value={newVariant.unitPrice}
+                    value={newVariant.marginPercent}
                     onChange={handleVariantChange}
                     className="col-span-3"
                   />
+                </div>
+                <div className="grid grid-cols-4 gap-4 items-center">
+                  <Label className="text-right">Price Preview</Label>
+                  <div className="col-span-3 rounded-md border px-3 py-2 text-sm font-medium">
+                    KES {variantPreviewPrice.toFixed(2)}
+                  </div>
                 </div>
                 <div className="grid grid-cols-4 gap-4 items-center">
                   <Button
@@ -362,8 +426,13 @@ export default function AddProduct({ fetchProducts }) {
                   <ul>
                     {newProduct.variants.map((variant) => (
                       <li key={variant._id}>
-                        {variant.name} - {variant.unitPrice} (
-                        {variant.conversionFactor})
+                        {variant.name} - {variant.marginPercent}% margin - KES{" "}
+                        {computeVariantUnitPrice(
+                          Number(newProduct.buyPrice) || 0,
+                          Number(variant.conversionFactor),
+                          Number(variant.marginPercent)
+                        ).toFixed(2)}{" "}
+                        ({variant.conversionFactor})
                       </li>
                     ))}
                   </ul>

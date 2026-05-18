@@ -10,6 +10,7 @@ function createExpense(db, expenseData) {
     date: expenseData.date,
     storeNo: expenseData.storeNo,
     account: expenseData.account,
+    accountId: expenseData.accountId || null,
     expenseType: expenseData.expenseType,
     expenseTypeId: expenseData.expenseTypeId,
     createdAt: new Date().toISOString(),
@@ -76,6 +77,7 @@ function updateExpense(db, expenseData) {
     _id: expenseData._id,
     type: "expense",
     state: "Active",
+    accountId: expenseData.accountId || null,
     ...expenseData,
   };
   return db

@@ -2,18 +2,21 @@ import "@/styles/globals.css";
 import Sidebar from "@/components/sidebar";
 import useStaffStore from "@/stores/staffStore";
 import useWsinfoStore from "@/stores/wsinfo";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/router";
 import { Badge } from "@/components/ui/badge";
 import { Toaster } from "@/components/ui/toaster";
-import { Wifi, WifiOff, ArrowLeft, Bell, Menu } from "lucide-react";
+import { Wifi, WifiOff, ArrowLeft, Bell, Menu, Bot } from "lucide-react";
 import { v4 as uuidv4 } from 'uuid';
 import { Button } from "@/components/ui/button"
 import ProfileDialog from "@/components/staff/profileDialog";
 import { MessageDialog } from "@/components/wholesalerComps/messages";
+import { ReminderDialog } from "@/components/reminders/ReminderDialog";
 import { manageRestock } from "@/components/stockManagement/stockManager";
 import Image from 'next/image';
 import posLogo from '@/assets/pos.png';
+import ChatPanel from '@/components/aiAssistant/ChatPanel';
+import { can, canAccessRoute, getDefaultRoute, getRoleLabels, normalizeStaff } from "@/lib/rbac";
 
 export default function App({ Component, pageProps }) {
   const staff = useStaffStore((state) => state.staff);
@@ -36,34 +39,66 @@ export default function App({ Component, pageProps }) {
     updatedAt: new Date().toISOString()
   });
   const [isSubscriptionValid, setIsSubscriptionValid] = useState(true);
+  const [isChatOpen, setIsChatOpen] = useState(false);
+  const normalizedStaff = useMemo(() => normalizeStaff(staff), [staff]);
+  const showAiButton = staff._id && can(normalizedStaff, 'assistant:use');
+  const [accessDeniedPath, setAccessDeniedPath] = useState('');
 
   useEffect(() => {
-    let removeListener;
+    let removeRestockListener;
+    let removeReportListener;
 
-    if ((staff.role === "Admin" || staff.role === "Operator") && isStaffLoaded) {
+    if (can(normalizedStaff, 'stock:manage') && isStaffLoaded) {
       if (wsinfo && wsinfo.storeNo) {
         manageRestock(wsinfo.storeNo);
+        
+        // Start the restock scheduler for morning/evening calculations
+        if (typeof window !== "undefined" && window.electronAPI) {
+          window.electronAPI.restock('startScheduler', wsinfo.storeNo)
+            .then(result => {
+              console.log('[RestockScheduler] Started:', result);
+            })
+            .catch(err => {
+              console.error('[RestockScheduler] Failed to start:', err);
+            });
+        }
       }
-      // console.log(restockData);
     }
     
     if (typeof window !== "undefined" && window.electronAPI) {
-      removeListener = window.electronAPI.onRestockTriggered((productData) => {
-        if ((staff.role === "Admin" || staff.role === "Operator")) {
+      removeRestockListener = window.electronAPI.onRestockTriggered((productData) => {
+        if (can(normalizedStaff, 'stock:manage')) {
           console.log('Restock triggered for product:', productData);
           if (wsinfo && wsinfo.storeNo) {
             manageRestock(wsinfo.storeNo);
           }
         }
       });
+
+      removeReportListener = window.electronAPI.onRestockReportGenerated((data) => {
+        if (can(normalizedStaff, 'stock:manage')) {
+          console.log(`[RestockScheduler] ${data.scheduleType} report generated for ${data.productCount} products`);
+        }
+      });
     }
 
     return () => {
-      if (removeListener) {
-        removeListener();
+      if (removeRestockListener) {
+        removeRestockListener();
+      }
+      if (removeReportListener) {
+        removeReportListener();
       }
     };
-  }, [staff, isStaffLoaded])
+  }, [staff, normalizedStaff, isStaffLoaded, wsinfo])
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.electronAPI?.setAuthenticatedStaff && isStaffLoaded) {
+      window.electronAPI.setAuthenticatedStaff(staff._id ? normalizedStaff : null).catch((error) => {
+        console.error('Failed to sync staff auth context:', error);
+      });
+    }
+  }, [staff, normalizedStaff, isStaffLoaded]);
 
   // useEffect(() => {
   //   createDefaultCustomer();
@@ -130,22 +165,29 @@ export default function App({ Component, pageProps }) {
 
         // If staff is logged in and trying to access public paths, redirect to home
         if (staff._id !== null && isPublicPath) {
-          await router.replace("/");
+          await router.replace(getDefaultRoute(normalizedStaff));
           return;
       }
+
+        if (staff._id !== null && !isPublicPath && !canAccessRoute(normalizedStaff, router.pathname)) {
+          setAccessDeniedPath(router.pathname);
+          setIsLoading(false);
+          return;
+        }
     }
 
+      setAccessDeniedPath('');
       setIsLoading(false);
     };
 
     if (isStaffLoaded && isWsinfoLoaded) {
       checkAuth();
     }
-  }, [staff, wsinfo, router, isStaffLoaded, isWsinfoLoaded]);
+  }, [staff, normalizedStaff, wsinfo, router, isStaffLoaded, isWsinfoLoaded]);
 
   const findDefaultCustomer = async (phoneNumber) => {
     try {
-      const result = await window.electronAPI.searchCustomers(phoneNumber);
+      const result = await window.electronAPI.searchCustomers(phoneNumber, wsinfo.storeNo);
       if (result.success && result.customers.length > 0) {
         console.log(result.customers);
         return result.customers[0];
@@ -209,6 +251,20 @@ export default function App({ Component, pageProps }) {
   );
 };
 
+  const AccessDenied = () => (
+    <div className="min-h-[calc(100vh-90px)] flex items-center justify-center">
+      <div className="max-w-md rounded-md border bg-white p-6 text-center shadow-sm">
+        <h1 className="text-xl font-semibold">Access restricted</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Your current roles ({getRoleLabels(normalizedStaff).join(', ') || 'none'}) do not allow this page.
+        </p>
+        <Button className="mt-4" onClick={() => router.replace(getDefaultRoute(normalizedStaff))}>
+          Go to my workspace
+        </Button>
+      </div>
+    </div>
+  );
+
 if (!isStaffLoaded || !isWsinfoLoaded || isLoading) {
   return <SplashScreen />; 
 }
@@ -227,13 +283,14 @@ if (!isStaffLoaded || !isWsinfoLoaded || isLoading) {
               </Button>
             </div>
             <div className="flex items-center space-x-4">
+              <ReminderDialog />
               <ProfileDialog />
-              <MessageDialog />
+              {can(normalizedStaff, 'message:read') && <MessageDialog />}
             </div>
           </header>
         }
         
-        <Component {...pageProps} />
+        {accessDeniedPath ? <AccessDenied /> : <Component {...pageProps} />}
       </div>
       <div className="fixed bottom-4 right-4 z-50">
         {isOnline ? (
@@ -250,6 +307,21 @@ if (!isStaffLoaded || !isWsinfoLoaded || isLoading) {
       </div>
 
       <Toaster />
+
+      {showAiButton && (
+        <>
+          <ChatPanel open={isChatOpen} onClose={() => setIsChatOpen(false)} />
+          {!isChatOpen && (
+            <button
+              onClick={() => setIsChatOpen(true)}
+              className="fixed bottom-14 right-4 z-50 w-12 h-12 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg flex items-center justify-center transition-all hover:scale-105 active:scale-95"
+              title="Adeego AI Assistant"
+            >
+              <Bot className="h-6 w-6" />
+            </button>
+          )}
+        </>
+      )}
 
     </div>
   );

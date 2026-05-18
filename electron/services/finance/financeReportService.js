@@ -1,3 +1,174 @@
+const {
+  getSaleMetricSign,
+  getSaleNetAmount,
+  getSalePaymentBreakdown,
+  shouldIncludeSaleInMetrics,
+  toNumber,
+} = require('../postingService');
+
+function roundMoney(value) {
+  return Number(toNumber(value).toFixed(2));
+}
+
+function normalizeReportDate(value, fallback) {
+  const parsed = value ? new Date(value) : fallback;
+  return Number.isNaN(parsed.getTime()) ? fallback : parsed;
+}
+
+function getMonthlyReportSaleCost(sale = {}) {
+  const sign = getSaleMetricSign(sale);
+
+  if (!sign) {
+    return 0;
+  }
+
+  const cost = (sale.items || []).reduce((sum, item) => {
+    const quantity = Math.abs(toNumber(item.quantity));
+    const buyPrice = toNumber(item.buyPrice);
+    return sum + (quantity * buyPrice);
+  }, 0);
+
+  return roundMoney(cost * sign);
+}
+
+async function getMonthlyProfitLoss(db, options = {}) {
+  try {
+    const { storeNo, fromDate, toDate } = options;
+
+    if (!storeNo) {
+      return { success: false, error: 'storeNo is required' };
+    }
+
+    const now = new Date();
+    const from = normalizeReportDate(fromDate, new Date(now.getFullYear(), now.getMonth(), 1));
+    from.setHours(0, 0, 0, 0);
+
+    const to = normalizeReportDate(toDate, new Date(now.getFullYear(), now.getMonth() + 1, 0));
+    to.setHours(23, 59, 59, 999);
+
+    const salesPromise = db.find({
+      selector: {
+        storeNo,
+        type: 'sale',
+        state: 'Active',
+        createdAt: {
+          $gte: from.toISOString(),
+          $lte: to.toISOString(),
+        },
+      },
+      limit: 100000,
+    });
+
+    const expensesPromise = db.find({
+      selector: {
+        storeNo,
+        type: 'expense',
+        state: 'Active',
+        createdAt: {
+          $gte: from.toISOString(),
+          $lte: to.toISOString(),
+        },
+      },
+      limit: 100000,
+    });
+
+    const expenseTypesPromise = db.find({
+      selector: {
+        storeNo,
+        type: 'expenseType',
+        state: 'Active',
+      },
+      limit: 100000,
+    });
+
+    const [salesResult, expensesResult, expenseTypesResult] = await Promise.all([
+      salesPromise,
+      expensesPromise,
+      expenseTypesPromise,
+    ]);
+
+    const sales = {
+      cashSales: 0,
+      mpesaSales: 0,
+      creditSales: 0,
+      totalSales: 0,
+    };
+    let cogs = 0;
+
+    (salesResult.docs || []).forEach((sale) => {
+      if (!shouldIncludeSaleInMetrics(sale)) {
+        return;
+      }
+
+      const sign = getSaleNetAmount(sale) < 0 ? -1 : 1;
+
+      getSalePaymentBreakdown(sale).forEach((payment) => {
+        const amount = roundMoney(Math.abs(toNumber(payment.amount)) * sign);
+        const method = String(payment.method || 'CASH').toUpperCase();
+
+        if (method === 'MPESA' || method === 'M-PESA' || method === 'PHONE') {
+          sales.mpesaSales += amount;
+        } else if (method === 'CREDIT') {
+          sales.creditSales += amount;
+        } else {
+          sales.cashSales += amount;
+        }
+      });
+
+      sales.totalSales += getSaleNetAmount(sale);
+      cogs += getMonthlyReportSaleCost(sale);
+    });
+
+    const expensesByType = {};
+    (expenseTypesResult.docs || []).forEach((expenseType) => {
+      expensesByType[expenseType.name || 'Uncategorized'] = 0;
+    });
+
+    (expensesResult.docs || []).forEach((expense) => {
+      const key = expense.expenseType || 'Uncategorized';
+      expensesByType[key] = roundMoney((expensesByType[key] || 0) + toNumber(expense.amount));
+    });
+
+    const expenseBreakdown = Object.entries(expensesByType)
+      .map(([expenseType, amount]) => ({
+        expenseType,
+        amount: roundMoney(amount),
+      }))
+      .sort((a, b) => a.expenseType.localeCompare(b.expenseType));
+
+    const totalExpenses = roundMoney(expenseBreakdown.reduce((sum, item) => sum + item.amount, 0));
+    const totalCogs = roundMoney(cogs);
+    const grossProfit = roundMoney(sales.totalSales - totalCogs);
+    const netProfit = roundMoney(grossProfit - totalExpenses);
+
+    return {
+      success: true,
+      data: {
+        period: {
+          fromDate: from.toISOString(),
+          toDate: to.toISOString(),
+        },
+        sales: {
+          cashSales: roundMoney(sales.cashSales),
+          mpesaSales: roundMoney(sales.mpesaSales),
+          creditSales: roundMoney(sales.creditSales),
+          totalSales: roundMoney(sales.totalSales),
+        },
+        cogs: totalCogs,
+        grossProfit,
+        expenses: {
+          byType: expenseBreakdown,
+          totalExpenses,
+        },
+        netProfit,
+      },
+    };
+  } catch (error) {
+    console.error('Error generating monthly P&L:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 function incomeStatement(db, fromDate, toDate) {
   const from = new Date(fromDate);
   from.setHours(0, 0, 0, 0);
@@ -46,17 +217,21 @@ function incomeStatement(db, fromDate, toDate) {
       salesResult.docs.forEach(sale => {
         const totalAmount = Number(sale.totalAmount) || 0;
         
-        switch(sale.paymentMethod) {
-          case 'CASH':
-            cashSales += totalAmount;
-            break;
-          case 'MPESA':
-            mpesaSales += totalAmount;
-            break;
-          case 'CREDIT':
-            creditSales += totalAmount;
-            break;
-        }
+        getSalePaymentBreakdown(sale).forEach((payment) => {
+          const amount = Number(payment.amount) || 0;
+
+          switch(payment.method) {
+            case 'CASH':
+              cashSales += amount;
+              break;
+            case 'MPESA':
+              mpesaSales += amount;
+              break;
+            case 'CREDIT':
+              creditSales += amount;
+              break;
+          }
+        });
 
         sale.items.forEach(item => {
           const quantity = Number(item.quantity) || 0;
@@ -276,6 +451,7 @@ function getBalanceSheet(db, toDate) {
 
       // Calculate accounts payable from unpaid invoices
       const accountsPayableTotal = invoicesResult.docs
+        .filter((invoice) => invoice.status !== 'voided')
         .reduce((sum, invoice) => {
           return sum + (Number(invoice.totalAmount) || 0);
         }, 0);
@@ -659,9 +835,11 @@ function getTrialBalance(db, fromDate, toDate) {
       });
 
       // Calculate total invoices amount
-      const totalInvoicesAmount = invoicesResult.docs.reduce((sum, invoice) => {
-        return sum + (Number(invoice.totalAmount) || 0);
-      }, 0);
+      const totalInvoicesAmount = invoicesResult.docs
+        .filter((invoice) => invoice.status !== 'voided')
+        .reduce((sum, invoice) => {
+          return sum + (Number(invoice.totalAmount) || 0);
+        }, 0);
 
       // Process balance sheet entries
       balanceSheetResult.docs.forEach(entry => {
@@ -708,6 +886,7 @@ function getTrialBalance(db, fromDate, toDate) {
 }
 
 module.exports = {
+  getMonthlyProfitLoss,
   incomeStatement,
   getAccountStatement,
   getBalanceSheet,

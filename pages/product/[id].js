@@ -3,6 +3,8 @@ import { useRouter } from 'next/router'
 import ViewProduct from '@/components/productComps/viewProduct';
 import EditProduct from '@/components/productComps/editProduct';
 import useWsinfoStore from '@/stores/wsinfo';
+import useStaffStore from '@/stores/staffStore';
+import { can } from '@/lib/rbac';
 
 export default function ProductDetails() {
     const [product, setProduct] = useState(null);
@@ -11,7 +13,9 @@ export default function ProductDetails() {
     const router = useRouter()
     const {id} = router.query
     const store = useWsinfoStore((state) => state.wsinfo);
+    const staff = useStaffStore((state) => state.staff);
     const [storeNo, setStoreNo] = useState('');
+    const canWriteProducts = can(staff, 'product:write');
 
     useEffect(() => {
       if (store && store.storeNo) {
@@ -70,6 +74,7 @@ export default function ProductDetails() {
     }
 
     const handleArchiveProduct = async () => {
+      if (!canWriteProducts) return;
       if (!storeNo) return;
       const result = await window.electronAPI.realmOperation('archiveProduct', id, storeNo);
       if (result.success) {
@@ -81,6 +86,7 @@ export default function ProductDetails() {
     }
 
     const handleEditState = () => {
+      if (!canWriteProducts) return;
       if (isEditing){
         setIsEditing(false)
       } else {
@@ -108,6 +114,7 @@ export default function ProductDetails() {
           handleSaleItems={handleSaleItems}
           handleArchiveProduct={handleArchiveProduct}
           handleEditState={handleEditState}
+          canWriteProducts={canWriteProducts}
         />}
     </div>
   )

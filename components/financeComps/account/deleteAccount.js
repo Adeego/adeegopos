@@ -39,7 +39,7 @@ export default function DeleteAccount({accountId, accountName}) {
             title: "Success",
             description: `Product ${accountName} has been deleted.`,
           });
-          router.push('/finance');
+          router.push('/finance?view=accounts');
         } else {
           console.error('Failed to delete account:', result.error);
           toast({

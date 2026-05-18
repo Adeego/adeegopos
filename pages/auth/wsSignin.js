@@ -101,7 +101,7 @@ export default function WsSignin() {
     const result = response.data;
     if (result.wholesaler) {
       addWsinfo(result.wholesaler);
-      router.push('/');
+      router.push('/home');
       } else {
       console.log('Invalid credentials');
       }

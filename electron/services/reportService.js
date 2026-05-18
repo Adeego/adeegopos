@@ -1,3 +1,12 @@
+const {
+  getSaleNetAmount,
+  getSaleNetCost,
+  getSalePaymentBreakdown,
+  shouldIncludeSaleInMetrics,
+  shouldIncludeTransactionInMetrics,
+  toNumber,
+} = require('./postingService');
+
 // Function to get sales metrics for a specific date range
 function getSalesMetricsReport(db, fromDate, toDate) {
   // Ensure dates are Date objects
@@ -16,23 +25,28 @@ function getSalesMetricsReport(db, fromDate, toDate) {
     let totalRevenue = 0;
     let totalCost = 0;
     let customerCredit = 0;
-    const numberOfSales = docs.length;
+    let numberOfSales = 0;
 
     docs.forEach(sale => {
-      // Calculate revenue
-      totalRevenue += Number(sale.totalAmount) || 0;
-
-      // Calculate customer credit (total revenue from credit sales)
-      if (sale.paymentMethod === 'CREDIT') {
-        customerCredit += Number(sale.totalAmount) || 0;
+      if (!shouldIncludeSaleInMetrics(sale)) {
+        return;
       }
 
-      // Calculate total cost of products
-      sale.items.forEach(item => {
-        const quantity = Number(item.quantity) || 0;
-        const buyPrice = Number(item.buyPrice) || 0;
-        totalCost += quantity * buyPrice;
+      numberOfSales += 1;
+
+      // Calculate revenue
+      totalRevenue += getSaleNetAmount(sale);
+
+      // Calculate customer credit (total revenue from credit sales)
+      const sign = getSaleNetAmount(sale) < 0 ? -1 : 1;
+      getSalePaymentBreakdown(sale).forEach((payment) => {
+        if (payment.method === 'CREDIT') {
+          customerCredit += (Math.abs(toNumber(payment.amount)) * sign);
+        }
       });
+
+      // Calculate total cost of products
+      totalCost += getSaleNetCost(sale);
     });
 
     // Calculate profit
@@ -188,11 +202,15 @@ function getDailySalesReport(db, fromDate, toDate) {
 
     // Aggregate sales by day
     result.docs.forEach(sale => {
+      if (!shouldIncludeSaleInMetrics(sale)) {
+        return;
+      }
+
       const saleDate = new Date(sale.createdAt).toISOString().split('T')[0];
       const dayIndex = dailyData.findIndex(data => data.date === saleDate);
 
       if (dayIndex !== -1) {
-        dailyData[dayIndex].sales += Number(sale.totalAmount) || 0;
+        dailyData[dayIndex].sales += getSaleNetAmount(sale);
       }
     });
     return {
@@ -250,13 +268,17 @@ function getTransactionMetricsReport(db, fromDate, toDate) {
     let supplierPayments = 0;
 
     docs.forEach(transaction => {
+      if (!shouldIncludeTransactionInMetrics(transaction)) {
+        return;
+      }
+
       // Calculate customer credits
       if (transaction.source === 'customer') {
-        customerCredits += Number(transaction.amount) || 0;
+        customerCredits += toNumber(transaction.amount);
       }
       // Calculate supplier payments
       if (transaction.destination === 'supplier') {
-        supplierPayments += Number(transaction.amount) || 0;
+        supplierPayments += toNumber(transaction.amount);
       }
     });
 

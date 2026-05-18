@@ -1,161 +1,172 @@
-import { useState, useEffect } from 'react';
+import Link from 'next/link';
+import {
+  AlertCircle,
+  ArrowRight,
+  ArrowRightLeft,
+  BadgeDollarSign,
+  BriefcaseBusiness,
+  Cable,
+  Calculator,
+  CalendarClock,
+  ChartLine,
+  ClipboardCheck,
+  DollarSign,
+  FileText,
+  History,
+  Home as HomeIcon,
+  Landmark,
+  MessageCircle,
+  Package,
+  Receipt,
+  RefreshCw,
+  Settings,
+  ShieldCheck,
+  ShoppingBag,
+  ShoppingCart,
+  Store,
+  TrendingUp,
+  UsersRound,
+  WalletCards,
+} from 'lucide-react';
+
+import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import useStaffStore from '@/stores/staffStore';
 import useWsinfoStore from '@/stores/wsinfo';
+import { getRoleHomeSections, getRoleLabels } from '@/lib/rbac';
+
+const icons = {
+  alertCircle: AlertCircle,
+  arrowRightLeft: ArrowRightLeft,
+  badgeDollarSign: BadgeDollarSign,
+  briefcaseBusiness: BriefcaseBusiness,
+  cable: Cable,
+  calculator: Calculator,
+  calendarClock: CalendarClock,
+  chartLine: ChartLine,
+  clipboardCheck: ClipboardCheck,
+  dollarSign: DollarSign,
+  fileText: FileText,
+  history: History,
+  home: HomeIcon,
+  landmark: Landmark,
+  lineChart: ChartLine,
+  messageCircle: MessageCircle,
+  package: Package,
+  receipt: Receipt,
+  refreshCw: RefreshCw,
+  settings: Settings,
+  shieldCheck: ShieldCheck,
+  shoppingBag: ShoppingBag,
+  shoppingCart: ShoppingCart,
+  store: Store,
+  trendingUp: TrendingUp,
+  usersRound: UsersRound,
+  walletCards: WalletCards,
+};
+
+const renderIcon = (name, className = 'h-5 w-5') => {
+  const Icon = icons[name] || Settings;
+  return <Icon className={className} strokeWidth={2} />;
+};
 
 export default function Home() {
-  const [newCustomer, setNewCustomer] = useState(null);
-  const [name, setName] = useState('');
-  const [phoneNumber, setPhoneNumber] = useState(0);
-  const [address, setAddress] = useState('');
-  const [balance, setBalance] = useState(0);
-  const [credit, setCredit] = useState(false);
-  const [disciplinary, setDisciplinary] = useState('Neutral');
-  const store = useWsinfoStore((state) => state.wsinfo);
-  const [storeNo, setStoreNo] = useState('');
-
-  useEffect(() => {
-    if (store && store.storeNo) {
-      setStoreNo(store.storeNo);
-    }
-  }, [store]);
-
-  const handleInputChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    if (type === 'checkbox') {
-      setCredit(checked);
-    } else {
-      switch (name) {
-        case 'name':
-          setName(value);
-          break;
-        case 'phoneNumber':
-          setPhoneNumber(value);
-          break;
-        case 'address':
-          setAddress(value);
-          break;
-        case 'balance':
-          setBalance(value);
-          break;
-        case 'disciplinary':
-          setDisciplinary(value);
-          break;
-        default:
-          break;
-      }
-    }
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    if (!storeNo) {
-      alert('Store not selected. Please select a store first.');
-      return;
-    }
-    const customerData = {
-      name: name,
-      phoneNumber: parseInt(phoneNumber),
-      address: address,
-      balance: parseInt(balance),
-      credit: credit,
-      disciplinery: disciplinary,
-      storeNo: storeNo
-    }
-    console.log(customerData)
-    try {
-      const result = await window.electronAPI.realmOperation('createCustomer', customerData);
-      if (result.success) {
-        alert('Customer created successfully!');
-        setNewCustomer(result.customer);
-        // Clear the input fields
-        setName('');
-        setPhoneNumber(0);
-        setAddress('');
-        setBalance(0);
-        setCredit(false);
-        setDisciplinary('Neutral');
-      } else {
-        console.error('Error creating customer:', result.error);
-      }
-    } catch (error) {
-      console.error('Error creating customer:', error);
-      alert('Failed to create customer. Please try again.');
-    }
-  };
-
-  console.log(newCustomer)
+  const staff = useStaffStore((state) => state.staff);
+  const wsinfo = useWsinfoStore((state) => state.wsinfo);
+  const sections = getRoleHomeSections(staff);
+  const roleLabels = getRoleLabels(staff);
+  const quickActions = sections.flatMap((section) => section.links.slice(0, 2)).slice(0, 6);
 
   return (
-    <div>
-      <h1>Create New Customer</h1>
-      <form onSubmit={handleSubmit}>
+    <main className="space-y-6">
+      <section className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
         <div>
-          <label htmlFor="name">Name:</label>
-          <input
-            type="text"
-            id="name"
-            name="name"
-            value={name}
-            onChange={handleInputChange}
-            required
-          />
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-2xl font-bold tracking-tight">
+              {staff.firstName ? `${staff.firstName}'s Workspace` : 'Workspace'}
+            </h1>
+            {roleLabels.map((role) => (
+              <Badge key={role} variant="secondary">{role}</Badge>
+            ))}
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">
+            {wsinfo.name || wsinfo.storeName || wsinfo.storeNo || 'Adeego POS'}
+          </p>
         </div>
-        <div>
-          <label htmlFor="phoneNumber">Phone:</label>
-          <input
-            type="number"
-            id="phoneNumber"
-            name="phoneNumber"
-            value={phoneNumber}
-            onChange={handleInputChange}
-            required
-          />
-        </div>
-        <div>
-          <label htmlFor="address">Address:</label>
-          <input
-            type="text"
-            id="address"
-            name="address"
-            value={address}
-            onChange={handleInputChange}
-            required
-          />
-        </div>
-        <div>
-          <label htmlFor="balance">Balance:</label>
-          <input
-            type="number"
-            id="balance"
-            name="balance"
-            value={balance}
-            onChange={handleInputChange}
-          />
-        </div>
-        <div>
-          <label htmlFor="credit">Credit:</label>
-          <input
-            type="checkbox"
-            id="credit"
-            name="credit"
-            checked={credit}
-            onChange={handleInputChange}
-          />
-        </div>
-        <div>
-          <label htmlFor="disciplinary">Disciplinary Status:</label>
-          <select
-            id="disciplinary"
-            name="disciplinary"
-            value={disciplinary}
-            onChange={handleInputChange}
-          >
-            <option value="Neutral">Neutral</option>
-            <option value="Good">Good</option>
-            <option value="Bad">Bad</option>
-          </select>
-        </div>
-        <button type="submit">Create Customer</button>
-      </form>
-    </div>
+
+        {quickActions.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {quickActions.slice(0, 3).map((action) => (
+              <Button key={action.pageLink} asChild>
+                <Link href={action.pageLink}>
+                  {renderIcon(action.icon, 'mr-2 h-4 w-4')}
+                  {action.label}
+                </Link>
+              </Button>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {quickActions.length > 0 && (
+        <section className="grid gap-3 md:grid-cols-3">
+          {quickActions.slice(3).map((action) => (
+            <Link key={action.pageLink} href={action.pageLink} className="rounded-md border bg-white p-4 transition hover:border-neutral-400 hover:bg-neutral-50">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="grid h-10 w-10 place-items-center rounded-md bg-neutral-100 text-neutral-700">
+                    {renderIcon(action.icon)}
+                  </div>
+                  <span className="font-medium">{action.label}</span>
+                </div>
+                <ArrowRight className="h-4 w-4 text-muted-foreground" />
+              </div>
+            </Link>
+          ))}
+        </section>
+      )}
+
+      <section className="grid gap-4 xl:grid-cols-2">
+        {sections.map((section) => (
+          <Card key={section.key} className="overflow-hidden">
+            <CardHeader className="pb-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <CardTitle className="flex items-center gap-2 text-lg">
+                    <span className="grid h-9 w-9 place-items-center rounded-md bg-neutral-100 text-neutral-700">
+                      {renderIcon(section.icon, 'h-4 w-4')}
+                    </span>
+                    {section.label}
+                  </CardTitle>
+                  <CardDescription className="mt-2">{section.description}</CardDescription>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {section.links.map((link) => (
+                  <Button key={link.pageLink} variant="outline" asChild className="h-11 justify-start">
+                    <Link href={link.pageLink}>
+                      {renderIcon(link.icon, 'mr-2 h-4 w-4')}
+                      {link.label}
+                    </Link>
+                  </Button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </section>
+
+      {sections.length === 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Access restricted</CardTitle>
+            <CardDescription>No workspace sections are available for the current staff account.</CardDescription>
+          </CardHeader>
+        </Card>
+      )}
+    </main>
   );
 }

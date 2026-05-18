@@ -10,6 +10,8 @@ import { Search, Mail, Bell, Inbox, Archive } from 'lucide-react'
 import { Badge } from "@/components/ui/badge"
 import { useToast } from "@/components/ui/use-toast"
 import useWsinfoStore from '@/stores/wsinfo';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
 export function MessageDialog() {
   const [messages, setMessages] = useState([]);
@@ -210,8 +212,8 @@ export function MessageDialog() {
                         </Button>
                       )}
                     </div>
-                    <div className="prose prose-sm max-w-none">
-                      <p>{selectedMessage.content}</p>
+                    <div className="prose prose-sm max-w-none dark:prose-invert">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{selectedMessage.content}</ReactMarkdown>
                     </div>
                   </div>
                 ) : (

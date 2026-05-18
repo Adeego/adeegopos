@@ -9,6 +9,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { AlertCircle } from "lucide-react"
 import useStaffStore from "@/stores/staffStore"
+import useWsinfoStore from "@/stores/wsinfo"
 import { useRouter } from 'next/router'
 
 export default function Login() {
@@ -16,7 +17,23 @@ export default function Login() {
   const [passcode, setPasscode] = useState('')
   const [error, setError] = useState('')
   const addStaff = useStaffStore((state) => state.addStaff)
+  const wsinfo = useWsinfoStore((state) => state.wsinfo)
   const router = useRouter()
+
+  const tryLocalSignIn = async () => {
+    if (!window.electronAPI?.signInStaff || !wsinfo.storeNo) {
+      return false;
+    }
+
+    const localResult = await window.electronAPI.signInStaff(phoneNumber, passcode, wsinfo.storeNo);
+    if (localResult.success && localResult.staff) {
+      addStaff(localResult.staff);
+      router.push('/home');
+      return true;
+    }
+
+    return false;
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -40,12 +57,15 @@ export default function Login() {
       const result = response.data;
       if (result.staff) {
         addStaff(result.staff)
-        router.push('/')
+        router.push('/home')
       } else {
         setError('Invalid credentials')
       }
     } catch (error) {
       console.error('Error during submission:', error);
+      if (await tryLocalSignIn()) {
+        return;
+      }
       if (error.response) {
         setError(error.response.data.message || 'Invalid credentials')
       } else if (error.request) {

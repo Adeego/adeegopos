@@ -14,6 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "@/components/ui/use-toast";
+import { can } from '@/lib/rbac';
 
 export default function SubscriptionTable() {
   const [subscriptions, setSubscriptions] = useState([]);
@@ -21,8 +22,8 @@ export default function SubscriptionTable() {
   const [currentPage, setCurrentPage] = useState(1);
   const [rowsPerPage, setRowsPerPage] = useState(10);
   const [searchTerm, setSearchTerm] = useState('');
-  const [role, setRole] = useState(null);
   const staff = useStaffStore((state) => state.staff);
+  const canManageSubscriptions = can(staff, 'subscription:manage');
   const store = useWsinfoStore((state) => state.wsinfo);
   const [storeNo, setStoreNo] = useState('');
 
@@ -31,12 +32,6 @@ export default function SubscriptionTable() {
       setStoreNo(store.storeNo);
     }
   }, [store]);
-
-  useEffect(() => {
-    if (staff.role) {
-      setRole(staff.role);
-    }
-  }, [staff.role]);
 
   useEffect(() => {
     if (storeNo) {
@@ -115,7 +110,7 @@ export default function SubscriptionTable() {
           </div>
 
           <div className="space-x-2">
-            {role && (role === 'Admin' || role === 'Operator') && (
+            {canManageSubscriptions && (
               <AddSubscription fetchSubscriptions={fetchSubscriptions} />
             )}
           </div>
@@ -196,7 +191,7 @@ export default function SubscriptionTable() {
                   <TableCell>
                     <div className="flex items-center gap-2">
                       <SubscriptionDetails subscription={subscription} />
-                      <DropdownMenu>
+                      {canManageSubscriptions && <DropdownMenu>
                         <DropdownMenuTrigger asChild>
                           <Button variant="ghost" className="h-8 w-8 p-0">
                             <span className="sr-only">Open menu</span>
@@ -214,7 +209,7 @@ export default function SubscriptionTable() {
                             fetchSubscriptions={fetchSubscriptions} 
                           />
                         </DropdownMenuContent>
-                      </DropdownMenu>
+                      </DropdownMenu>}
                     </div>
                   </TableCell>
                 </TableRow>

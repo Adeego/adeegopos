@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { DollarSign, Smartphone, CreditCard, UserCheck, Truck, Loader2, Phone, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { CreditCard, UserCheck, Truck, Loader2, Phone, CheckCircle2, XCircle, Clock, Split, Wallet } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
@@ -23,11 +23,18 @@ function SaleDetailsDialog({
   onCompleteSale,
   amountPaid,
   setAmountPaid,
+  transactionCost,
+  setTransactionCost,
+  paymentBreakdown,
+  setPaymentBreakdown,
   note,
   setNote,
   servedBy,
   change,
   totalAmount,
+  cashierAccounts = [],
+  buildPaymentEntry,
+  buildDefaultPaymentBreakdown,
 }) {
   const [mpesaPhone, setMpesaPhone] = useState('');
   const [mpesaLoading, setMpesaLoading] = useState(false);
@@ -36,6 +43,52 @@ function SaleDetailsDialog({
   const [paymentConfirmed, setPaymentConfirmed] = useState(false);
   const pollingRef = useRef(null);
   const pollCountRef = useRef(0);
+  const hybridTotal = (paymentBreakdown || []).reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
+  const hybridRemaining = Number(((Number(totalAmount) || 0) - hybridTotal).toFixed(2));
+  const paymentOptions = [
+    ...cashierAccounts.map((account) => ({
+      value: account._id,
+      label: account.name,
+      account,
+    })),
+    { value: 'CREDIT', label: 'Credit' },
+  ];
+  const canUseHybrid = paymentOptions.length > 1;
+
+  const handlePaymentMethodChange = (value) => {
+    setPaymentMethod(value);
+    if (value === 'HYBRID' && (!Array.isArray(paymentBreakdown) || paymentBreakdown.length === 0)) {
+      setPaymentBreakdown(buildDefaultPaymentBreakdown ? buildDefaultPaymentBreakdown(cashierAccounts) : []);
+    }
+  };
+
+  const updatePaymentSplit = (index, field, value) => {
+    if (field === 'method') {
+      setPaymentBreakdown((current) => (
+        (current || []).map((payment, paymentIndex) => {
+          if (paymentIndex !== index) {
+            return payment;
+          }
+
+          const nextPayment = buildPaymentEntry
+            ? buildPaymentEntry(value, {
+                amount: payment.amount,
+                transactionCost: payment.transactionCost,
+              })
+            : { ...payment, method: value };
+
+          return nextPayment;
+        })
+      ));
+      return;
+    }
+
+    setPaymentBreakdown((current) => (
+      (current || []).map((payment, paymentIndex) => (
+        paymentIndex === index ? { ...payment, [field]: value } : payment
+      ))
+    ));
+  };
 
   // Cleanup polling on unmount or dialog close
   useEffect(() => {
@@ -70,7 +123,6 @@ function SaleDetailsDialog({
         // Payment successful
         setPaymentConfirmed(true);
         setMpesaStatus({ type: 'confirmed', message: 'Payment confirmed!' });
-        setPaymentMethod('MPESA');
         if (pollingRef.current) {
           clearInterval(pollingRef.current);
           pollingRef.current = null;
@@ -163,7 +215,6 @@ function SaleDetailsDialog({
         const checkoutId = data.CheckoutRequestID || data.checkout_request_id;
         setCheckoutRequestId(checkoutId);
         setMpesaStatus({ type: 'pending', message: 'STK Push sent! Waiting for payment...' });
-        setPaymentMethod('MPESA');
         
         // Start background polling for payment confirmation
         if (checkoutId) {
@@ -193,32 +244,81 @@ function SaleDetailsDialog({
             <CardContent className="grid gap-6 pt-6">
               <div className="space-y-2">
                 <Label htmlFor="payment" className="text-base font-semibold">Payment Method</Label>
-                <Select name="payment" value={paymentMethod} onValueChange={setPaymentMethod}>
+                <Select name="payment" value={paymentMethod} onValueChange={handlePaymentMethodChange}>
                   <SelectTrigger id="payment">
                     <SelectValue placeholder="Select payment method" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="CASH">
-                      <span className="flex items-center">
-                        <DollarSign className="mr-2 h-4 w-4 text-green-500" />
-                        Cash
-                      </span>
-                    </SelectItem>
-                    <SelectItem value="MPESA">
-                      <span className="flex items-center">
-                        <Smartphone className="mr-2 h-4 w-4 text-blue-500" />
-                        M-Pesa
-                      </span>
-                    </SelectItem>
+                    {cashierAccounts.map((account) => (
+                      <SelectItem key={account._id} value={account._id}>
+                        <span className="flex items-center">
+                          <Wallet className="mr-2 h-4 w-4 text-green-500" />
+                          {account.name}
+                        </span>
+                      </SelectItem>
+                    ))}
                     <SelectItem value="CREDIT">
                       <span className="flex items-center">
                         <CreditCard className="mr-2 h-4 w-4 text-purple-500" />
                         Credit
                       </span>
                     </SelectItem>
+                    {canUseHybrid && (
+                      <SelectItem value="HYBRID">
+                        <span className="flex items-center">
+                          <Split className="mr-2 h-4 w-4 text-orange-500" />
+                          Hybrid
+                        </span>
+                      </SelectItem>
+                    )}
                   </SelectContent>
                 </Select>
               </div>
+              {paymentMethod === 'HYBRID' && (
+                <div className="space-y-3 rounded-md border p-3">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-base font-semibold">Hybrid Split</Label>
+                    <span className={hybridRemaining === 0 ? 'text-sm text-green-600' : 'text-sm text-red-600'}>
+                      Remaining: KES {hybridRemaining.toFixed(2)}
+                    </span>
+                  </div>
+                  {(paymentBreakdown || []).map((payment, index) => (
+                    <div key={index} className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                      <Select
+                        value={payment.method === 'CREDIT' ? 'CREDIT' : payment.accountId || ''}
+                        onValueChange={(value) => updatePaymentSplit(index, 'method', value)}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Method" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {paymentOptions.map((option) => (
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="Amount"
+                        value={payment.amount}
+                        onChange={(event) => updatePaymentSplit(index, 'amount', event.target.value)}
+                      />
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        placeholder="Cost"
+                        value={payment.transactionCost}
+                        onChange={(event) => updatePaymentSplit(index, 'transactionCost', event.target.value)}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="space-y-2">
                 <Label className="text-base font-semibold">M-Pesa Payment</Label>
                 <div className="flex space-x-2">
@@ -309,8 +409,25 @@ function SaleDetailsDialog({
                   placeholder="Enter amount paid" 
                   value={amountPaid} 
                   onChange={(e) => setAmountPaid(e.target.value)}
+                  readOnly={paymentMethod === 'HYBRID'}
                   className="text-lg"
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="transaction-cost" className="text-base font-semibold">Transaction Cost</Label>
+                <Input
+                  id="transaction-cost"
+                  type="number"
+                  min="0"
+                  placeholder="Enter transaction cost"
+                  value={transactionCost}
+                  onChange={(e) => setTransactionCost(e.target.value)}
+                  readOnly={paymentMethod === 'HYBRID'}
+                  className="text-lg"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Net received: KES {(Math.max(0, (Number(totalAmount) || 0) - (Number(transactionCost) || 0))).toFixed(2)}
+                </p>
               </div>
               <div className="space-y-2">
                 <Label htmlFor="note" className="text-base font-semibold">Note</Label>

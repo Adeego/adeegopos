@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { ArrowRight, Save } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 
-function TotalAmountCard({ totalAmount, onNext, selectedProducts, customer, paymentMethod, saleType, fulfillmentType, servedBy, note, onClearSale }) {
+function TotalAmountCard({ totalAmount, onNext, selectedProducts, customer, paymentMethod, saleType, fulfillmentType, servedBy, note, transactionCost, paymentBreakdown, onClearSale }) {
     const [isHovered, setIsHovered] = useState(false);
     const addDraft = useDraftSalesStore(state => state.addDraft);
     const { toast } = useToast();
@@ -30,7 +30,9 @@ function TotalAmountCard({ totalAmount, onNext, selectedProducts, customer, paym
         saleType,
         fulfillmentType,
         servedBy,
-        note
+        note,
+        transactionCost,
+        paymentBreakdown
       };
       
       addDraft(draftData);
@@ -43,7 +45,7 @@ function TotalAmountCard({ totalAmount, onNext, selectedProducts, customer, paym
       if (onClearSale) {
         onClearSale();
       }
-    }, [selectedProducts, customer, totalAmount, paymentMethod, saleType, fulfillmentType, servedBy, note, addDraft, onClearSale, toast]);
+    }, [selectedProducts, customer, totalAmount, paymentMethod, saleType, fulfillmentType, servedBy, note, transactionCost, paymentBreakdown, addDraft, onClearSale, toast]);
 
   return (
     <Card className="w-[320px] max-w-md">

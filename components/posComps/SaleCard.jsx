@@ -31,7 +31,7 @@ function SaleCard() {
   const { toast } = useToast();
   const [selectedProducts, setSelectedProducts] = useState([]);
   const [selectedProduct, setSelectedProduct] = useState(null);
-  const [paymentMethod, setPaymentMethod] = useState('CASH');
+  const [paymentMethod, setPaymentMethod] = useState('');
   const [saleType, setSaleType] = useState('NEW SALE');
   const [name, setName] = useState('');
   const [customer, setCustomer] = useState(null);
@@ -52,6 +52,10 @@ function SaleCard() {
   const [saleDetail, setSaleDetail] = useState(false);
   const [servedBy, setServedBy] = useState('');
   const [amountPaid, setAmountPaid] = useState(null);
+  const [transactionCost, setTransactionCost] = useState(0);
+  const [paymentBreakdown, setPaymentBreakdown] = useState([]);
+  const [cashierAccounts, setCashierAccounts] = useState([]);
+  const [cashierAccountsLoaded, setCashierAccountsLoaded] = useState(false);
   const [note, setNote] = useState('');
   const [change, setChange] = useState(null)
   const [discount, setDiscount] = useState(0)
@@ -59,6 +63,92 @@ function SaleCard() {
   const storeNo = store.storeNo;
   const staff = useStaffStore((state) => state.staff)
   const addDraft = useDraftSalesStore(state => state.addDraft);
+
+  const getDefaultPaymentMethod = useCallback((accounts = cashierAccounts) => {
+    return accounts[0]?._id || 'CREDIT';
+  }, [cashierAccounts]);
+
+  const findCashierAccount = useCallback((accountId) => {
+    return cashierAccounts.find((account) => account._id === accountId) || null;
+  }, [cashierAccounts]);
+
+  const buildPaymentEntry = useCallback((value, overrides = {}) => {
+    if (value === 'CREDIT') {
+      return {
+        method: 'CREDIT',
+        accountId: null,
+        amount: overrides.amount ?? '',
+        transactionCost: overrides.transactionCost ?? 0,
+      };
+    }
+
+    const account = findCashierAccount(value);
+    return {
+      method: account?.name || overrides.method || '',
+      accountId: account?._id || value || null,
+      amount: overrides.amount ?? '',
+      transactionCost: overrides.transactionCost ?? 0,
+    };
+  }, [findCashierAccount]);
+
+  const buildDefaultPaymentBreakdown = useCallback((accounts = cashierAccounts) => {
+    const first = accounts[0];
+    const second = accounts[1];
+
+    return [
+      first
+        ? { method: first.name, accountId: first._id, amount: '', transactionCost: 0 }
+        : { method: 'CREDIT', accountId: null, amount: '', transactionCost: 0 },
+      second
+        ? { method: second.name, accountId: second._id, amount: '', transactionCost: 0 }
+        : { method: 'CREDIT', accountId: null, amount: '', transactionCost: 0 },
+    ];
+  }, [cashierAccounts]);
+
+  const fetchDefaultCustomer = useCallback(async (storeNumber) => {
+    try {
+      const result = await window.electronAPI.searchCustomers(storeNumber, storeNumber);
+      if (result.success && result.customers.length > 0) {
+        setCustomer(result.customers[0]);
+      }
+      return null;
+    } catch (error) {
+      console.error('Error searching for customer:', error);
+      return null;
+    }
+  }, []);
+
+  const fetchCashierAccounts = useCallback(async (storeNumber) => {
+    try {
+      const result = await window.electronAPI.realmOperation('getAllAccounts', { storeNo: storeNumber });
+      if (result.success) {
+        setCashierAccounts((result.accounts || []).filter((account) => account.accountType === 'Cashier'));
+      } else {
+        console.error('Failed to fetch cashier accounts:', result.error);
+        setCashierAccounts([]);
+      }
+    } catch (error) {
+      console.error('Error fetching cashier accounts:', error);
+      setCashierAccounts([]);
+    } finally {
+      setCashierAccountsLoaded(true);
+    }
+  }, []);
+
+  const performCustomerSearch = useCallback(async () => {
+    try {
+      const result = await window.electronAPI.searchCustomers(name, storeNo);
+      if (result.success) {
+        setCustomerResult(result.customers);
+      } else {
+        console.error('Search failed:', result.error);
+        setCustomerResult([]);
+      }
+    } catch (error) {
+      console.error('Error during search:', error);
+      setCustomerResult([]);
+    }
+  }, [name, storeNo]);
 
   useEffect(() => {
     const handleKeyPress = (event) => {
@@ -85,7 +175,7 @@ function SaleCard() {
     }, 300);
 
     return () => clearTimeout(delayDebounceFn);
-  }, [name]);
+  }, [name, performCustomerSearch]);
 
 
 
@@ -93,33 +183,59 @@ function SaleCard() {
     if (staff.firstName) {
       setServedBy(staff.firstName + " " + staff.lastName)
     }
-  }, [staff.firstName])
+  }, [staff.firstName, staff.lastName])
+
+  const totalAmount = selectedProducts.reduce(
+    (total, variant) => total + (variant.unitPrice * variant.quantity),
+    0
+  );
 
   useEffect(() => {
-    const changeAmount = amountPaid - totalAmount
+    const paidAmount = Number(amountPaid) || 0;
+    const changeAmount = paidAmount - totalAmount
     setChange(changeAmount);
-  }, [amountPaid])
+  }, [amountPaid, totalAmount])
+
+  useEffect(() => {
+    if (paymentMethod !== 'HYBRID') {
+      return;
+    }
+
+    const paidAmount = paymentBreakdown.reduce((sum, payment) => sum + (Number(payment.amount) || 0), 0);
+    const costAmount = paymentBreakdown.reduce((sum, payment) => sum + (Number(payment.transactionCost) || 0), 0);
+    setAmountPaid(paidAmount ? String(paidAmount) : '');
+    setTransactionCost(Number(costAmount.toFixed(2)));
+  }, [paymentBreakdown, paymentMethod]);
 
   useEffect(() => {
     if (store.storeNo) {
+      setCashierAccountsLoaded(false);
       fetchDefaultCustomer(store.storeNo);
+      fetchCashierAccounts(store.storeNo);
     }
-  }, [store.storeNo]);
+  }, [fetchCashierAccounts, fetchDefaultCustomer, store.storeNo]);
 
-  const fetchDefaultCustomer = async (storeNumber) => {
-    console.log(store.storeNo)
-    try {
-      const result = await window.electronAPI.searchCustomers(storeNumber, '');
-      if (result.success && result.customers.length > 0) {
-        console.log(result.customers);
-        setCustomer(result.customers[0]);
-      }
-      return null;
-    } catch (error) {
-      console.error('Error searching for customer:', error);
-      return null;
+  useEffect(() => {
+    if (!storeNo || !cashierAccountsLoaded) {
+      return;
     }
-  };
+
+    const isValidPaymentMethod = paymentMethod === 'CREDIT' ||
+      paymentMethod === 'HYBRID' ||
+      cashierAccounts.some((account) => account._id === paymentMethod);
+
+    if (!isValidPaymentMethod) {
+      setPaymentMethod(getDefaultPaymentMethod(cashierAccounts));
+    }
+  }, [cashierAccounts, cashierAccountsLoaded, getDefaultPaymentMethod, paymentMethod, storeNo]);
+
+  useEffect(() => {
+    if (paymentMethod !== 'HYBRID' || paymentBreakdown.length > 0) {
+      return;
+    }
+
+    setPaymentBreakdown(buildDefaultPaymentBreakdown(cashierAccounts));
+  }, [buildDefaultPaymentBreakdown, cashierAccounts, paymentBreakdown.length, paymentMethod]);
 
   const handleNameChange = (e) => {
     setName(e.target.value);
@@ -213,26 +329,6 @@ function SaleCard() {
     );
   };
 
-  const totalAmount = selectedProducts.reduce(
-    (total, variant) => total + (variant.unitPrice * variant.quantity),
-    0
-  );
-
-  const performCustomerSearch = async () => {
-    try {
-      const result = await window.electronAPI.searchCustomers(name, storeNo);
-      if (result.success) {
-        setCustomerResult(result.customers);
-      } else {
-        console.error('Search failed:', result.error);
-        setCustomerResult([]);
-      }
-    } catch (error) {
-      console.error('Error during search:', error);
-      setCustomerResult([]);
-    }
-  };
-
   const handleCustomerSelect = (chosenCustomer) => {
     setSelectedCustomer(chosenCustomer);
     setCustomer(chosenCustomer);
@@ -299,7 +395,16 @@ function SaleCard() {
       return false;
     }
 
-    if (!amountPaid) {
+    if (paymentMethod !== 'HYBRID' && paymentMethod !== 'CREDIT' && !findCashierAccount(paymentMethod)) {
+      toast({
+        title: "Error",
+        description: "Please select a cashier account",
+        variant: "destructive"
+      });
+      return false;
+    }
+
+    if (paymentMethod !== 'HYBRID' && !amountPaid) {
       toast({
         title: "Error",
         description: "Please fill the Amount Paid",
@@ -308,8 +413,88 @@ function SaleCard() {
       return false;
     }
 
+    if (paymentMethod === 'HYBRID') {
+      const validPayments = paymentBreakdown.map((payment) => ({
+        ...payment,
+        amount: Number(payment.amount) || 0,
+        transactionCost: Number(payment.transactionCost) || 0,
+      }));
+      const methods = validPayments.map((payment) => payment.method);
+      const paymentKeys = validPayments.map((payment) => payment.method === 'CREDIT' ? 'CREDIT' : payment.accountId);
+      const splitTotal = validPayments.reduce((sum, payment) => sum + payment.amount, 0);
+      const splitCost = validPayments.reduce((sum, payment) => sum + payment.transactionCost, 0);
+
+      if (validPayments.length !== 2 || validPayments.some((payment) => payment.amount <= 0)) {
+        toast({
+          title: "Error",
+          description: "Hybrid payment requires two payment amounts",
+          variant: "destructive"
+        });
+        return false;
+      }
+
+      if (validPayments.some((payment) => payment.method !== 'CREDIT' && !findCashierAccount(payment.accountId))) {
+        toast({
+          title: "Error",
+          description: "Hybrid payment includes an invalid cashier account",
+          variant: "destructive"
+        });
+        return false;
+      }
+
+      if (new Set(paymentKeys).size !== paymentKeys.length) {
+        toast({
+          title: "Error",
+          description: "Choose two different payment methods for a hybrid sale",
+          variant: "destructive"
+        });
+        return false;
+      }
+
+      if (Math.abs(splitTotal - totalAmount) > 0.01) {
+        toast({
+          title: "Error",
+          description: "Hybrid payment amounts must equal the sale total",
+          variant: "destructive"
+        });
+        return false;
+      }
+
+      if (validPayments.some((payment) => payment.transactionCost < 0) || splitCost > totalAmount) {
+        toast({
+          title: "Error",
+          description: "Hybrid transaction costs are invalid",
+          variant: "destructive"
+        });
+        return false;
+      }
+
+      if (methods.includes('CREDIT') && !customer.credit) {
+        setShowNoCreditAlert(true);
+        return false;
+      }
+    }
+
     if (paymentMethod === 'CREDIT' && !customer.credit) {
       setShowNoCreditAlert(true);
+      return false;
+    }
+
+    if ((Number(transactionCost) || 0) < 0) {
+      toast({
+        title: "Error",
+        description: "Transaction cost cannot be negative",
+        variant: "destructive"
+      });
+      return false;
+    }
+
+    if ((Number(transactionCost) || 0) > totalAmount) {
+      toast({
+        title: "Error",
+        description: "Transaction cost cannot be greater than the sale total",
+        variant: "destructive"
+      });
       return false;
     }
 
@@ -319,13 +504,15 @@ function SaleCard() {
   const handleClearSale = useCallback(() => {
     setSelectedProducts([]);
     setCustomer(null);
-    setPaymentMethod('CASH');
+    setPaymentMethod(getDefaultPaymentMethod());
     setSaleType('NEW SALE');
     setDiscount(0);
     setAmountPaid(null);
+    setTransactionCost(0);
+    setPaymentBreakdown(buildDefaultPaymentBreakdown());
     setNote('');
     fetchDefaultCustomer(store.storeNo);
-  }, []);
+  }, [buildDefaultPaymentBreakdown, fetchDefaultCustomer, getDefaultPaymentMethod, store.storeNo]);
 
   const handleLoadDraft = useCallback((draft) => {
     // Check if there's an unfinished sale
@@ -340,7 +527,9 @@ function SaleCard() {
         fulfillmentType,
         note,
         totalAmount,
-        servedBy
+        servedBy,
+        transactionCost,
+        paymentBreakdown
       };
 
       addDraft(currentDraft);
@@ -358,12 +547,31 @@ function SaleCard() {
     setSaleType(draft.saleType);
     setFulfillmentType(draft.fulfillmentType);
     setNote(draft.note);
-  }, [selectedProducts, customer, paymentMethod, saleType, fulfillmentType, note, totalAmount]);
+    setTransactionCost(draft.transactionCost || 0);
+    setPaymentBreakdown(draft.paymentBreakdown || buildDefaultPaymentBreakdown());
+  }, [buildDefaultPaymentBreakdown, selectedProducts, customer, paymentMethod, saleType, fulfillmentType, note, totalAmount, transactionCost, paymentBreakdown, addDraft, servedBy, toast]);
 
   const handleCreateSale = async () => {
     if (!validateSale()) {
       return;
     }
+
+    const selectedAccount = findCashierAccount(paymentMethod);
+    const normalizedPaymentBreakdown = paymentMethod === 'HYBRID'
+      ? paymentBreakdown.map((payment) => ({
+          method: payment.method,
+          accountId: payment.accountId || null,
+          amount: Number(payment.amount) || 0,
+          transactionCost: Number(payment.transactionCost) || 0,
+        }))
+      : [{
+          ...buildPaymentEntry(paymentMethod, {
+            amount: totalAmount,
+            transactionCost: paymentMethod === 'CREDIT' ? 0 : Number(transactionCost) || 0,
+          }),
+          amount: Number(totalAmount) || 0,
+          transactionCost: paymentMethod === 'CREDIT' ? 0 : Number(transactionCost) || 0,
+        }];
 
     const saleData = {
       _id: `${storeNo}:${uuidv4()}`,
@@ -383,10 +591,12 @@ function SaleCard() {
       totalItems: selectedProducts.length,
       totalDiscount: discount,
       servedBy: `${servedBy}`,
-      amountPaid: parseInt(amountPaid),
+      amountPaid: Number(amountPaid) || 0,
+      transactionCost: paymentMethod === 'CREDIT' ? 0 : Number(transactionCost) || 0,
       change: change,
       note: `${note}`,
-      paymentMethod: paymentMethod,
+      paymentMethod: paymentMethod === 'HYBRID' ? 'HYBRID' : paymentMethod === 'CREDIT' ? 'CREDIT' : selectedAccount?.name,
+      paymentBreakdown: normalizedPaymentBreakdown,
       saleType: saleType,
       fullfilmentType: fulfillmentType,
       paid: false,
@@ -486,6 +696,8 @@ function SaleCard() {
               fulfillmentType={fulfillmentType}
               servedBy={servedBy}
               note={note}
+              transactionCost={transactionCost}
+              paymentBreakdown={paymentBreakdown}
               onNext={() => setSaleDetail(true)}
               onClearSale={handleClearSale}
             />
@@ -535,11 +747,18 @@ function SaleCard() {
         onCompleteSale={handleCreateSale}
         amountPaid={amountPaid}
         setAmountPaid={setAmountPaid}
+        transactionCost={transactionCost}
+        setTransactionCost={setTransactionCost}
+        paymentBreakdown={paymentBreakdown}
+        setPaymentBreakdown={setPaymentBreakdown}
         note={note}
         setNote={setNote}
         servedBy={servedBy}
         change={change}
         totalAmount={totalAmount}
+        cashierAccounts={cashierAccounts}
+        buildPaymentEntry={buildPaymentEntry}
+        buildDefaultPaymentBreakdown={buildDefaultPaymentBreakdown}
       />
 
       <AlertDialogs

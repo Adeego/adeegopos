@@ -1,10 +1,30 @@
+const FINANCIAL_ACCOUNT_TYPES = require('../../../lib/financialAccountTypes.json');
+
+function validateAccountType(accountType) {
+  if (!FINANCIAL_ACCOUNT_TYPES.includes(accountType)) {
+    return `Account type must be one of: ${FINANCIAL_ACCOUNT_TYPES.join(', ')}`;
+  }
+  return null;
+}
+
+function normalizeStoreNo(storeNoOrPayload) {
+  return typeof storeNoOrPayload === 'object' && storeNoOrPayload !== null
+    ? storeNoOrPayload.storeNo
+    : storeNoOrPayload;
+}
+
 // Create a new account
 function createAccount(db, accountData) {
+  const accountTypeError = validateAccountType(accountData.accountType);
+  if (accountTypeError) {
+    return Promise.resolve({ success: false, error: accountTypeError });
+  }
+
   const account = {
     _id: accountData._id,
     name: accountData.name,
     accountNumber: accountData.accountNumber,
-    accountType: accountData.accountType || '',
+    accountType: accountData.accountType,
     balance: accountData.balance,
     storeNo: accountData.storeNo,
     createdAt: accountData.createdAt,
@@ -22,7 +42,8 @@ function createAccount(db, accountData) {
 }
 
 // Get all accounts
-function getAllAccounts(db, storeNo) {
+function getAllAccounts(db, storeNoOrPayload) {
+  const storeNo = normalizeStoreNo(storeNoOrPayload);
   if (!storeNo) {
     return Promise.resolve({ success: false, error: "storeNo is required" });
   }
@@ -48,6 +69,11 @@ function getAccountById(db, accountId) {
 
 // Update an existing account
 function updateAccount(db, accountData) {
+  const accountTypeError = validateAccountType(accountData.accountType);
+  if (accountTypeError) {
+    return Promise.resolve({ success: false, error: accountTypeError });
+  }
+
   const account = {
     _id: accountData._id,
     type: "account",

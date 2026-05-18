@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react'
-import { v4 as uuidv4 } from "uuid";
+import React, { useEffect, useMemo, useState } from 'react'
+import { v4 as uuidv4 } from "uuid"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -22,157 +22,281 @@ import {
 import { toast } from "@/components/ui/use-toast"
 import useWsinfoStore from '@/stores/wsinfo'
 
+const getBaseUnitName = (product) => product.uom || product.baseUnit || 'PCS'
+
+const getRestockUnits = (product) => {
+  const baseUnit = {
+    key: 'base',
+    name: getBaseUnitName(product),
+    conversionFactor: 1
+  }
+
+  const variants = (product.variants || [])
+    .map((variant) => ({
+      key: variant._id || `${variant.name}-${variant.conversionFactor}`,
+      name: variant.name || getBaseUnitName(product),
+      conversionFactor: Number(variant.conversionFactor) || 1
+    }))
+    .filter((variant) => variant.conversionFactor > 0)
+    .sort((a, b) => b.conversionFactor - a.conversionFactor)
+
+  const seen = new Set()
+
+  return [...variants, baseUnit].filter((unit) => {
+    const signature = `${unit.name}-${unit.conversionFactor}`.toLowerCase()
+    if (seen.has(signature)) {
+      return false
+    }
+    seen.add(signature)
+    return true
+  })
+}
+
+const getDefaultRestockUnit = (product) => getRestockUnits(product)[0] || {
+  key: 'base',
+  name: getBaseUnitName(product),
+  conversionFactor: 1
+}
+
+const normalizeSearchValue = (value) => value.trim().toLowerCase()
+
+const getSearchRank = (product, normalizedSearchTerm) => {
+  const name = String(product.name || '').toLowerCase()
+  const barCode = String(product.barCode || '').toLowerCase()
+
+  if (name === normalizedSearchTerm || barCode === normalizedSearchTerm) {
+    return 0
+  }
+
+  if (name.startsWith(normalizedSearchTerm) || barCode.startsWith(normalizedSearchTerm)) {
+    return 1
+  }
+
+  return 2
+}
+
+const matchesProductSearch = (product, normalizedSearchTerm) => {
+  if (!normalizedSearchTerm) {
+    return false
+  }
+
+  const searchableValues = [
+    product.name,
+    product.barCode,
+    product.category,
+    product.uom,
+    product.baseUnit
+  ]
+
+  return searchableValues.some((value) =>
+    String(value || '').toLowerCase().includes(normalizedSearchTerm)
+  )
+}
+
+const MAX_SEARCH_RESULTS = 50
+
+const recalculateSelectedProduct = (product) => {
+  const purchaseQuantity = Number(product.purchaseQuantity) || 0
+  const restockConversionFactor = Number(product.restockConversionFactor) || 1
+  const unitBuyPrice = Number(product.newBuyPrice) || 0
+  const baseBuyPrice = restockConversionFactor > 0 ? unitBuyPrice / restockConversionFactor : unitBuyPrice
+
+  return {
+    ...product,
+    purchaseQuantity,
+    restockConversionFactor,
+    restockQuantity: purchaseQuantity * restockConversionFactor,
+    baseBuyPrice,
+    amountOwed: purchaseQuantity * unitBuyPrice
+  }
+}
+
 export default function Restock() {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [products, setProducts] = useState([]);
-  const [suppliers, setSuppliers] = useState([]);
-  const [selectedProducts, setSelectedProducts] = useState([]);
-  const store = useWsinfoStore((state) => state.wsinfo);
-  const [storeNo, setStoreNo] = useState('');
+  const [searchTerm, setSearchTerm] = useState('')
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
+  const [allProducts, setAllProducts] = useState([])
+  const [suppliers, setSuppliers] = useState([])
+  const [selectedProducts, setSelectedProducts] = useState([])
+  const [invoiceSupplierId, setInvoiceSupplierId] = useState('')
+  const store = useWsinfoStore((state) => state.wsinfo)
+  const [storeNo, setStoreNo] = useState('')
 
   useEffect(() => {
     if (store && store.storeNo) {
-      setStoreNo(store.storeNo);
+      setStoreNo(store.storeNo)
     }
-  }, [store]);
+  }, [store])
 
   useEffect(() => {
-    if (storeNo) {
-      loadSuppliers();
+    if (!storeNo) return
+
+    const loadProducts = async () => {
+      try {
+        const result = await window.electronAPI.realmOperation('getAllProducts', storeNo)
+        if (result.success) {
+          setAllProducts(result.products)
+        } else {
+          console.error('Failed to fetch products:', result.error)
+        }
+      } catch (error) {
+        console.error('Error fetching products:', error)
+        toast({
+          variant: "destructive",
+          title: "Error loading products",
+          description: error.message
+        })
+      }
     }
-  }, [storeNo]);
+
+    loadProducts()
+  }, [storeNo])
 
   useEffect(() => {
-    if (searchTerm && storeNo) {
-      searchProducts();
-    } else {
-      setProducts([]);
-    }
-  }, [searchTerm, storeNo]);
+    const timeoutId = window.setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm)
+    }, 150)
 
-  console.log(store.storeNo)
+    return () => window.clearTimeout(timeoutId)
+  }, [searchTerm])
 
-  const loadSuppliers = async () => {
-    if (!storeNo) return;
-    try {
-      const result = await window.electronAPI.realmOperation('getAllSuppliers', storeNo);
-      if (result.success) {
-        setSuppliers(result.suppliers);
-      } else {
-        console.error('Failed to fetch suppliers:', result.error);
+  useEffect(() => {
+    if (!storeNo) return
+
+    const loadSuppliers = async () => {
+      try {
+        const result = await window.electronAPI.realmOperation('getAllSuppliers', storeNo)
+        if (result.success) {
+          setSuppliers(result.suppliers)
+        } else {
+          console.error('Failed to fetch suppliers:', result.error)
+        }
+      } catch (error) {
+        console.error('Error fetching suppliers:', error)
+        toast({
+          variant: "destructive",
+          title: "Error loading suppliers",
+          description: error.message
+        })
       }
-    } catch (error) {
-      console.error('Error fetching suppliers:', error);
-      toast({
-        variant: "destructive",
-        title: "Error loading suppliers",
-        description: error.message
-      })
     }
-  }
 
-  const searchProducts = async () => {
-    if (!storeNo) return;
-    try {
-      const result = await window.electronAPI.searchProducts(searchTerm, storeNo);
-      if (result.success) {
-        setProducts(result.products)
-      } else {
-        console.error('Search failed:', result.error);
-      }
-    } catch (error) {
-      console.log(error)
-      toast({
-        variant: "destructive",
-        title: "Error searching products",
-        description: error.message
-      })
+    loadSuppliers()
+  }, [storeNo])
+
+  const products = useMemo(() => {
+    const normalizedSearchTerm = normalizeSearchValue(debouncedSearchTerm)
+
+    if (!normalizedSearchTerm) {
+      return []
     }
-  }
+
+    const selectedProductIds = new Set(selectedProducts.map((product) => product._id))
+
+    return allProducts
+      .filter((product) =>
+        !selectedProductIds.has(product._id) &&
+        matchesProductSearch(product, normalizedSearchTerm)
+      )
+      .sort((leftProduct, rightProduct) => {
+        const rankDifference = getSearchRank(leftProduct, normalizedSearchTerm) - getSearchRank(rightProduct, normalizedSearchTerm)
+        if (rankDifference !== 0) {
+          return rankDifference
+        }
+
+        return String(leftProduct.name || '').localeCompare(String(rightProduct.name || ''))
+      })
+      .slice(0, MAX_SEARCH_RESULTS)
+  }, [allProducts, debouncedSearchTerm, selectedProducts])
 
   const addProductToRestock = (product) => {
-    if (!selectedProducts.find(p => p._id === product._id)) {
-      setSelectedProducts([...selectedProducts, {
-        ...product,
-        restockQuantity: 0,
-        newBuyPrice: product.buyPrice,
-        supplierId: '',
-        amountOwed: 0
-      }])
+    if (selectedProducts.find(p => p._id === product._id)) {
+      return
     }
+
+    const defaultUnit = getDefaultRestockUnit(product)
+    const baseBuyPrice = Number(product.buyPrice) || 0
+
+    setSelectedProducts((current) => [
+      ...current,
+      recalculateSelectedProduct({
+        ...product,
+        purchaseQuantity: 0,
+        restockQuantity: 0,
+        restockUnitKey: defaultUnit.key,
+        restockUnitName: defaultUnit.name,
+        restockConversionFactor: defaultUnit.conversionFactor,
+        newBuyPrice: baseBuyPrice * defaultUnit.conversionFactor,
+        baseBuyPrice,
+        amountOwed: 0,
+        expiryDate: ''
+      })
+    ])
   }
 
   const updateSelectedProduct = (productId, field, value) => {
-    setSelectedProducts(selectedProducts.map(product => {
-      if (product._id === productId) {
-        const updatedProduct = { ...product, [field]: value }
-        
-        // Automatically calculate amountOwed when newBuyPrice or restockQuantity changes
-        if (field === 'newBuyPrice' || field === 'restockQuantity') {
-          updatedProduct.amountOwed = updatedProduct.newBuyPrice * updatedProduct.restockQuantity
-        }
-        
-        return updatedProduct
+    setSelectedProducts((currentProducts) => currentProducts.map((product) => {
+      if (product._id !== productId) {
+        return product
       }
-      return product
+
+      if (field === 'restockUnitKey') {
+        const selectedUnit = getRestockUnits(product).find((unit) => unit.key === value) || getDefaultRestockUnit(product)
+        return recalculateSelectedProduct({
+          ...product,
+          restockUnitKey: selectedUnit.key,
+          restockUnitName: selectedUnit.name,
+          restockConversionFactor: selectedUnit.conversionFactor,
+          newBuyPrice: (Number(product.baseBuyPrice) || 0) * selectedUnit.conversionFactor
+        })
+      }
+
+      return recalculateSelectedProduct({
+        ...product,
+        [field]: value
+      })
     }))
   }
 
   const removeProduct = (productId) => {
-    setSelectedProducts(selectedProducts.filter(p => p._id !== productId))
+    setSelectedProducts((currentProducts) => currentProducts.filter(p => p._id !== productId))
   }
 
-  const generateInvoices = () => {
-    // Group products by supplier
-    const supplierGroups = selectedProducts.reduce((groups, product) => {
-      const supplierId = product.supplierId;
-      if (!groups[supplierId]) {
-        groups[supplierId] = [];
-      }
-      groups[supplierId].push(product);
-      return groups;
-    }, {});
+  const selectedSupplier = useMemo(
+    () => suppliers.find((supplier) => supplier._id === invoiceSupplierId) || null,
+    [invoiceSupplierId, suppliers]
+  )
 
-    // Create invoices for each supplier group
-    const generatedInvoices = Object.entries(supplierGroups).map(([supplierId, products]) => {
-      const items = products.map(product => ({
-        productId: product._id,
-        productName: `${product.name} ${product.baseUnit}`,
-        buyPrice: product.newBuyPrice,
-        quantity: product.restockQuantity,
-        subtotal: product.amountOwed
-      }));
+  const buildInvoice = (productsForInvoice) => {
+    const items = productsForInvoice.map((product) => ({
+      productId: product._id,
+      productName: `${product.name} (${product.restockUnitName})`,
+      buyPrice: Number(product.newBuyPrice),
+      quantity: Number(product.purchaseQuantity),
+      subtotal: Number(product.amountOwed),
+      baseQuantity: Number(product.restockQuantity),
+      baseUnit: getBaseUnitName(product),
+      expiryDate: product.expiryDate || null
+    }))
 
-      const totalAmount = items.reduce((sum, item) => sum + item.subtotal, 0);
-      const totalItems = items.reduce((sum, item) => sum + item.quantity, 0);
+    const totalAmount = items.reduce((sum, item) => sum + item.subtotal, 0)
+    const totalItems = items.reduce((sum, item) => sum + item.quantity, 0)
 
-      return {
-        _id: `${store.storeNo}:${uuidv4()}`,
-        supplierId,
-        items,
-        totalAmount,
-        totalItems,
-        store: `${store.storeNo}`
-      };
-    });
+    return {
+      _id: `${storeNo}:${uuidv4()}`,
+      supplierId: invoiceSupplierId,
+      items,
+      totalAmount,
+      totalItems,
+      storeNo: `${storeNo}`,
+      store: `${storeNo}`
+    }
+  }
 
-    return generatedInvoices;
-  };
-
-  const handleCreateInvoice = async () => {
+  const handleCreateInvoice = async (invoiceData) => {
     try {
-      const generatedInvoices = generateInvoices();
-      console.log(generatedInvoices);
-
-      const result = await window.electronAPI.realmOperation('createInvoice', generatedInvoices);
-      console.log(result);
-      if (result.success) {
-        toast({
-        title: "Success",
-        description: "Invoice created successfully"
-      })
-      } else {
-        throw new Error(result.error);
+      const result = await window.electronAPI.realmOperation('createInvoice', invoiceData)
+      if (!result.success) {
+        throw new Error(result.error)
       }
     } catch (error) {
       toast({
@@ -180,16 +304,28 @@ export default function Restock() {
         title: "Error creating invoice",
         description: error.message
       })
+      throw error
     }
   }
 
   const handleRestock = async () => {
     try {
-      // Validate all fields are filled
-      const isValid = selectedProducts.every(product => 
-        product.restockQuantity > 0 && 
-        product.newBuyPrice > 0 && 
-        product.supplierId && 
+      const sanitizedProducts = selectedProducts.map((product) => ({
+        ...product,
+        supplierId: invoiceSupplierId,
+        purchaseQuantity: Number(product.purchaseQuantity) || 0,
+        restockQuantity: Number(product.restockQuantity) || 0,
+        restockConversionFactor: Number(product.restockConversionFactor) || 1,
+        newBuyPrice: Number(product.newBuyPrice) || 0,
+        baseBuyPrice: Number(product.baseBuyPrice) || 0,
+        amountOwed: Number(product.amountOwed) || 0
+      }))
+
+      const isValid = Boolean(invoiceSupplierId) && sanitizedProducts.length > 0 && sanitizedProducts.every((product) =>
+        product.purchaseQuantity > 0 &&
+        product.restockQuantity > 0 &&
+        product.newBuyPrice > 0 &&
+        product.baseBuyPrice > 0 &&
         product.amountOwed >= 0
       )
 
@@ -197,24 +333,25 @@ export default function Restock() {
         toast({
           variant: "destructive",
           title: "Validation Error",
-          description: "Please fill all required fields for each product"
+          description: "Select one supplier and fill valid quantity and buy price for each product"
         })
         return
       }
 
-      handleCreateInvoice();
-      
-      const result = await window.electronAPI.realmOperation('restockProducts', { products: selectedProducts, storeNo });
-      console.log(result);
-      
+      const invoiceData = buildInvoice(sanitizedProducts)
+      await handleCreateInvoice(invoiceData)
+
+      const result = await window.electronAPI.realmOperation('restockProducts', { products: sanitizedProducts, storeNo })
+
       if (result.success) {
         toast({
           title: "Success",
           description: "Products restocked successfully"
         })
         setSelectedProducts([])
+        setInvoiceSupplierId('')
       } else {
-        throw new Error(result.error);
+        throw new Error(result.error)
       }
     } catch (error) {
       toast({
@@ -225,18 +362,19 @@ export default function Restock() {
     }
   }
 
+  const grandTotal = selectedProducts.reduce((sum, product) => sum + (Number(product.amountOwed) || 0), 0)
+
   return (
     <div className="container mx-auto p-4">
       <h1 className="text-2xl font-bold mb-4">Restock Products</h1>
-      
-      {/* Search Products */}
+
       <Card className="p-4 mb-4">
         <Label htmlFor="search">Search Products</Label>
         <Input
           id="search"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="Search by product name..."
+          placeholder="Search by product name, barcode, category, or unit..."
           className="mb-4"
         />
 
@@ -254,10 +392,10 @@ export default function Restock() {
               {products.map((product) => (
                 <TableRow key={product._id}>
                   <TableCell>{product.name}</TableCell>
-                  <TableCell>{product.stock}</TableCell>
-                  <TableCell>{product.buyPrice}</TableCell>
+                  <TableCell>{product.stock} {getBaseUnitName(product)}</TableCell>
+                  <TableCell>{Number(product.buyPrice || 0).toFixed(2)} / {getBaseUnitName(product)}</TableCell>
                   <TableCell>
-                    <Button 
+                    <Button
                       onClick={() => addProductToRestock(product)}
                       disabled={selectedProducts.some(p => p._id === product._id)}
                     >
@@ -269,19 +407,48 @@ export default function Restock() {
             </TableBody>
           </Table>
         )}
+
+        {searchTerm.trim() && products.length === 0 && (
+          <p className="text-sm text-muted-foreground">No matching products found.</p>
+        )}
       </Card>
 
-      {/* Selected Products */}
       {selectedProducts.length > 0 && (
         <Card className="p-4">
-          <h2 className="text-xl font-semibold mb-4">Selected Products</h2>
+          <div className="flex flex-col gap-4 mb-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <h2 className="text-xl font-semibold">Selected Products</h2>
+              <p className="text-sm text-muted-foreground">
+                One supplier will be used for the whole invoice.
+              </p>
+            </div>
+
+            <div className="w-full lg:w-[280px]">
+              <Label className="mb-2 block">Invoice Supplier</Label>
+              <Select value={invoiceSupplierId} onValueChange={setInvoiceSupplierId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select supplier for this invoice" />
+                </SelectTrigger>
+                <SelectContent>
+                  {suppliers.map((supplier) => (
+                    <SelectItem key={supplier._id} value={supplier._id}>
+                      {supplier.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Product</TableHead>
+                <TableHead>Restock Unit</TableHead>
                 <TableHead>Quantity</TableHead>
+                <TableHead>Stock Added</TableHead>
                 <TableHead>Buy Price</TableHead>
-                <TableHead>Supplier</TableHead>
+                <TableHead>Expiry Date</TableHead>
                 <TableHead>Amount Owed</TableHead>
                 <TableHead>Action</TableHead>
               </TableRow>
@@ -289,35 +456,24 @@ export default function Restock() {
             <TableBody>
               {selectedProducts.map((product) => (
                 <TableRow key={product._id}>
-                  <TableCell>{product.name}</TableCell>
                   <TableCell>
-                    <Input
-                      // type="number"
-                      value={product.restockQuantity}
-                      onChange={(e) => updateSelectedProduct(product._id, 'restockQuantity', Number(e.target.value))}
-                      className="w-24"
-                    />
-                  </TableCell>
-                  <TableCell>
-                    <Input
-                      // type="number"
-                      value={product.newBuyPrice}
-                      onChange={(e) => updateSelectedProduct(product._id, 'newBuyPrice', Number(e.target.value))}
-                      className="w-24"
-                    />
+                    <div className="font-medium">{product.name}</div>
+                    <div className="text-xs text-muted-foreground">
+                      Base unit: {getBaseUnitName(product)}
+                    </div>
                   </TableCell>
                   <TableCell>
                     <Select
-                      value={product.supplierId}
-                      onValueChange={(value) => updateSelectedProduct(product._id, 'supplierId', value)}
+                      value={product.restockUnitKey}
+                      onValueChange={(value) => updateSelectedProduct(product._id, 'restockUnitKey', value)}
                     >
-                      <SelectTrigger className="w-[200px]">
-                        <SelectValue placeholder="Select supplier" />
+                      <SelectTrigger className="w-[160px]">
+                        <SelectValue placeholder="Select unit" />
                       </SelectTrigger>
                       <SelectContent>
-                        {suppliers.map((supplier) => (
-                          <SelectItem key={supplier._id} value={supplier._id}>
-                            {supplier.name}
+                        {getRestockUnits(product).map((unit) => (
+                          <SelectItem key={unit.key} value={unit.key}>
+                            {unit.name}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -326,13 +482,57 @@ export default function Restock() {
                   <TableCell>
                     <Input
                       type="number"
-                      value={product.amountOwed}
-                      readOnly
+                      min="0"
+                      step="any"
+                      value={product.purchaseQuantity}
+                      onChange={(e) => updateSelectedProduct(product._id, 'purchaseQuantity', Number(e.target.value))}
                       className="w-24"
                     />
                   </TableCell>
                   <TableCell>
-                    <Button 
+                    <div className="text-sm font-medium">
+                      {product.restockQuantity} {getBaseUnitName(product)}
+                    </div>
+                    <div className="text-xs text-muted-foreground">
+                      {product.purchaseQuantity || 0} {product.restockUnitName}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="space-y-1">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="any"
+                        value={product.newBuyPrice}
+                        onChange={(e) => updateSelectedProduct(product._id, 'newBuyPrice', Number(e.target.value))}
+                        className="w-28"
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        per {product.restockUnitName}
+                      </p>
+                      {Array.isArray(product.variants) && product.variants.length > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          Variant selling prices will be recalculated from their saved margins after restock.
+                        </p>
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Input
+                      type="date"
+                      value={product.expiryDate}
+                      onChange={(e) => updateSelectedProduct(product._id, 'expiryDate', e.target.value)}
+                      className="w-36"
+                    />
+                  </TableCell>
+                  <TableCell>
+                    <div className="text-sm font-medium">{product.amountOwed.toFixed(2)}</div>
+                    <div className="text-xs text-muted-foreground">
+                      Base buy price: {product.baseBuyPrice.toFixed(2)}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <Button
                       variant="destructive"
                       onClick={() => removeProduct(product._id)}
                     >
@@ -344,10 +544,19 @@ export default function Restock() {
             </TableBody>
           </Table>
 
-          <div className="mt-4">
-            <Button onClick={handleRestock}>
-              Restock Products
-            </Button>
+          <div className="mt-4 flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+            <div className="text-sm text-muted-foreground">
+              {selectedSupplier ? `Invoice supplier: ${selectedSupplier.name}` : 'Choose one supplier before restocking.'}
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <p className="text-xs text-muted-foreground">Invoice Total</p>
+                <p className="text-lg font-semibold">KES {grandTotal.toFixed(2)}</p>
+              </div>
+              <Button onClick={handleRestock}>
+                Restock Products
+              </Button>
+            </div>
           </div>
         </Card>
       )}

@@ -1,14 +1,10 @@
 import React, {useState} from 'react';
-import EditProduct from './editProduct';
-import DeleteProduct from './deleteProduct';
 import ProductSales from './productSales';
 import { v4 as uuidv4 } from "uuid";
-import { Dialog, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogContent, DialogFooter } from '../ui/dialog';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger, SheetFooter, SheetClose } from "@/components/ui/sheet";
+import { Dialog, DialogHeader, DialogTitle, DialogTrigger, DialogDescription, DialogContent } from '../ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Label } from '../ui/label';
 import { Input } from '../ui/input';
-import { Separator } from '@/components/ui/separator';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import {
   Table,
@@ -29,23 +25,61 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
-import Link from 'next/link';
-import { FilePenLine, Trash2, SquarePlus, Pencil } from 'lucide-react';
+import { FilePenLine, Trash2, SquarePlus, Pencil, AlertTriangle, Clock } from 'lucide-react';
+import { toast } from '@/components/ui/use-toast';
 
-export default function ViewProduct({ product, fetchSelectedProduct, saleItems, fetchProductSales, handleArchiveProduct, handleEditState }) {
+const { computeVariantUnitPrice, deriveMarginPercent } = require('../../lib/variantPricing');
+
+export default function ViewProduct({ product, fetchSelectedProduct, saleItems, handleArchiveProduct, handleEditState, canWriteProducts = false }) {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
   const [editingVariant, setEditingVariant] = useState(null)
   const [newVariant, setNewVariant] = useState({
     name: '',
     conversionFactor: '',
-    unitPrice: ''
+    marginPercent: ''
   })
   const [editVariantData, setEditVariantData] = useState({
     name: '',
     conversionFactor: '',
-    unitPrice: ''
+    marginPercent: ''
   })
+
+  const getVariantMarginPercent = (variant) => {
+    if (variant.marginPercent !== undefined && variant.marginPercent !== null && variant.marginPercent !== '') {
+      const explicitMargin = Number(variant.marginPercent)
+      return Number.isFinite(explicitMargin) ? explicitMargin : null
+    }
+
+    return deriveMarginPercent(
+      Number(product.buyPrice),
+      Number(variant.conversionFactor),
+      Number(variant.unitPrice)
+    )
+  }
+
+  const getVariantPreviewPrice = (conversionFactor, marginPercent) => computeVariantUnitPrice(
+    Number(product.buyPrice) || 0,
+    Number(conversionFactor),
+    Number(marginPercent)
+  )
+
+  const validateVariantForm = (variantData) => {
+    const conversionFactor = Number(variantData.conversionFactor)
+    const marginPercent = Number(variantData.marginPercent)
+    const hasMarginPercent = variantData.marginPercent !== undefined && variantData.marginPercent !== null && variantData.marginPercent !== ''
+
+    if (!variantData.name || !Number.isFinite(conversionFactor) || conversionFactor <= 0 || !hasMarginPercent || !Number.isFinite(marginPercent) || marginPercent >= 100) {
+      toast({
+        title: "Variant details missing",
+        description: "Enter a variant name, conversion factor, and a margin percent below 100.",
+        variant: "destructive",
+      })
+      return false
+    }
+
+    return true
+  }
 
   const handleInputChange = (e) => {
     const { name, value } = e.target
@@ -55,28 +89,32 @@ export default function ViewProduct({ product, fetchSelectedProduct, saleItems, 
   const handleSubmit = async (e) => {
     e.preventDefault();
 
-      try {
-        const variantData = {
-          ...newVariant,
-          _id: `${product.storeNo}:${uuidv4()}`,
-          productId: product._id,
-          storeNo: product.storeNo,
-        };
+    if (!validateVariantForm(newVariant)) {
+      return;
+    }
 
-        const productId = product._id;
+    try {
+      const variantData = {
+        ...newVariant,
+        _id: `${product.storeNo}:${uuidv4()}`,
+        productId: product._id,
+        storeNo: product.storeNo,
+      };
 
-        const result = await window.electronAPI.realmOperation("addNewVariant", productId, variantData);
-        if (result.success) {
-          console.log('New variant:', newVariant);
-          fetchSelectedProduct()
-          setIsDialogOpen(false);
-          setNewVariant({ name: '', conversionFactor: '', unitPrice: '' });
-        } else {
-          throw new Error(result.error);
-        }
-      } catch (error) {
-        console.error("Error creating new variant:", error);
+      const productId = product._id;
+
+      const result = await window.electronAPI.realmOperation("addNewVariant", productId, variantData);
+      if (result.success) {
+        console.log('New variant:', newVariant);
+        fetchSelectedProduct()
+        setIsDialogOpen(false);
+        setNewVariant({ name: '', conversionFactor: '', marginPercent: '' });
+      } else {
+        throw new Error(result.error);
       }
+    } catch (error) {
+      console.error("Error creating new variant:", error);
+    }
   };
 
   const handleRemoveVariant = async (vId) => {
@@ -93,12 +131,38 @@ export default function ViewProduct({ product, fetchSelectedProduct, saleItems, 
     }
   }
 
+  const handleRemoveBatch = async (batchId) => {
+    try {
+      const result = await window.electronAPI.realmOperation("removeBatch", product._id, batchId);
+      if (result.success) {
+        fetchSelectedProduct();
+        toast({ title: "Success", description: "Batch removed successfully" });
+      } else {
+        throw new Error(result.error);
+      }
+    } catch (error) {
+      console.error("Error removing batch:", error);
+      toast({ title: "Error", description: "Failed to remove batch", variant: "destructive" });
+    }
+  }
+
+  const getBatchStatus = (expiryDate) => {
+    if (!expiryDate) return { label: 'No Expiry', color: 'bg-gray-100 text-gray-700', rowClass: '' };
+    const now = new Date();
+    const expiry = new Date(expiryDate);
+    const daysUntilExpiry = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
+    if (daysUntilExpiry <= 0) return { label: 'Expired', color: 'bg-red-100 text-red-700', rowClass: 'bg-red-50' };
+    if (daysUntilExpiry <= 7) return { label: `${daysUntilExpiry}d left`, color: 'bg-orange-100 text-orange-700', rowClass: 'bg-orange-50' };
+    if (daysUntilExpiry <= 30) return { label: `${daysUntilExpiry}d left`, color: 'bg-yellow-100 text-yellow-700', rowClass: 'bg-yellow-50' };
+    return { label: `${daysUntilExpiry}d left`, color: 'bg-green-100 text-green-700', rowClass: '' };
+  }
+
   const handleEditVariantClick = (variant) => {
     setEditingVariant(variant)
     setEditVariantData({
       name: variant.name,
       conversionFactor: variant.conversionFactor,
-      unitPrice: variant.unitPrice
+      marginPercent: getVariantMarginPercent(variant) ?? ''
     })
     setIsEditDialogOpen(true)
   }
@@ -110,6 +174,11 @@ export default function ViewProduct({ product, fetchSelectedProduct, saleItems, 
 
   const handleEditSubmit = async (e) => {
     e.preventDefault();
+
+    if (!validateVariantForm(editVariantData)) {
+      return;
+    }
+
     try {
       const result = await window.electronAPI.realmOperation(
         "updateVariant", 
@@ -122,7 +191,7 @@ export default function ViewProduct({ product, fetchSelectedProduct, saleItems, 
         fetchSelectedProduct()
         setIsEditDialogOpen(false);
         setEditingVariant(null)
-        setEditVariantData({ name: '', conversionFactor: '', unitPrice: '' });
+        setEditVariantData({ name: '', conversionFactor: '', marginPercent: '' });
       } else {
         throw new Error(result.error);
       }
@@ -143,7 +212,7 @@ export default function ViewProduct({ product, fetchSelectedProduct, saleItems, 
             <div className="space-y-4">
               {[
                 { label: 'UoM', value: product.uom },
-                { label: 'Unit Price', value: product.buyPrice },
+                { label: 'Buy Price', value: product.buyPrice },
                 { label: 'Stock', value: `${product.stock} ${product.uom}` },
                 { label: 'Status', value: product.status },
                 { label: 'Restock Period', value: `${product.restockPeriod} days` },
@@ -155,33 +224,35 @@ export default function ViewProduct({ product, fetchSelectedProduct, saleItems, 
               ))}
             </div>
           </CardContent>
-          <CardFooter className="flex justify-between">
-            <Button onClick={handleEditState} size="sm" className="text-white">
-              <FilePenLine className="mr-2 h-4 w-4" />
-              Edit
-            </Button>
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button variant="destructive" size="sm">
-                  <Trash2 className="mr-2 h-4 w-4" />
-                  Delete
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
-                  <AlertDialogDescription>
-                    This action cannot be undone. This will permanently delete the product
-                    and remove all associated data from our servers.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleArchiveProduct}>Confirm</AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
-          </CardFooter>
+          {canWriteProducts && (
+            <CardFooter className="flex justify-between">
+              <Button onClick={handleEditState} size="sm" className="text-white">
+                <FilePenLine className="mr-2 h-4 w-4" />
+                Edit
+              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" size="sm">
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    Delete
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This action cannot be undone. This will permanently delete the product
+                      and remove all associated data from our servers.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Cancel</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleArchiveProduct}>Confirm</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </CardFooter>
+          )}
         </Card>
 
         <Card>
@@ -189,9 +260,9 @@ export default function ViewProduct({ product, fetchSelectedProduct, saleItems, 
             <div className="flex items-center justify-between">
               <div>
                 <CardTitle className="text-xl font-bold">Product Variants</CardTitle>
-                <CardDescription>Manage product variants</CardDescription>
+                <CardDescription>Manage margins and derived selling prices for each variant</CardDescription>
               </div>
-              <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+              {canWriteProducts && <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
                 <DialogTrigger asChild>
                   <Button size="sm" className="text-white">
                     <SquarePlus className="mr-2 h-4 w-4" />
@@ -228,21 +299,27 @@ export default function ViewProduct({ product, fetchSelectedProduct, saleItems, 
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="unitPrice">Unit Price</Label>
+                      <Label htmlFor="marginPercent">Margin %</Label>
                       <Input
-                        id="unitPrice"
-                        name="unitPrice"
+                        id="marginPercent"
+                        name="marginPercent"
                         type="number"
-                        value={newVariant.unitPrice}
+                        value={newVariant.marginPercent}
                         onChange={handleInputChange}
                         required
-                        placeholder="Enter unit price"
+                        placeholder="Enter margin percent"
                       />
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Price Preview</Label>
+                      <div className="rounded-md border px-3 py-2 text-sm font-medium">
+                        KES {getVariantPreviewPrice(newVariant.conversionFactor, newVariant.marginPercent).toFixed(2)}
+                      </div>
                     </div>
                     <Button type="submit" className="w-full">Add Variant</Button>
                   </form>
                 </DialogContent>
-              </Dialog>
+              </Dialog>}
             </div>
           </CardHeader>
           <CardContent>
@@ -250,6 +327,7 @@ export default function ViewProduct({ product, fetchSelectedProduct, saleItems, 
               <TableHeader>
                 <TableRow>
                   <TableHead>Name</TableHead>
+                  <TableHead>Margin %</TableHead>
                   <TableHead>Unit Price</TableHead>
                   <TableHead>Conversion</TableHead>
                   <TableHead className="w-[100px]">Actions</TableHead>
@@ -259,10 +337,15 @@ export default function ViewProduct({ product, fetchSelectedProduct, saleItems, 
                 {product.variants && product.variants.map((variant) => (
                   <TableRow key={variant._id}>
                     <TableCell className="font-medium">{variant.name}</TableCell>
-                    <TableCell>{variant.unitPrice}</TableCell>
+                    <TableCell>
+                      {getVariantMarginPercent(variant) !== null
+                        ? `${getVariantMarginPercent(variant).toFixed(2)}%`
+                        : '-'}
+                    </TableCell>
+                    <TableCell>{Number(variant.unitPrice || 0).toFixed(2)}</TableCell>
                     <TableCell>{variant.conversionFactor}</TableCell>
                     <TableCell>
-                      <div className="flex gap-1">
+                      {canWriteProducts && <div className="flex gap-1">
                         <Button 
                           variant="ghost" 
                           size="sm"
@@ -291,7 +374,7 @@ export default function ViewProduct({ product, fetchSelectedProduct, saleItems, 
                             </AlertDialogFooter>
                           </AlertDialogContent>
                         </AlertDialog>
-                      </div>
+                      </div>}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -300,7 +383,94 @@ export default function ViewProduct({ product, fetchSelectedProduct, saleItems, 
           </CardContent>
         </Card>
       </div>
-      
+
+      {/* Batches / Expiry Tracking */}
+      {product.batches && product.batches.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-xl font-bold">Stock Batches</CardTitle>
+                <CardDescription>Track expiry dates for each batch of stock</CardDescription>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Clock className="h-4 w-4" />
+                {product.batches.length} batch{product.batches.length !== 1 ? 'es' : ''}
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Expiry Date</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Quantity</TableHead>
+                  <TableHead>Added</TableHead>
+                  <TableHead className="w-[80px]">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {[...product.batches]
+                  .sort((a, b) => {
+                    if (!a.expiryDate && !b.expiryDate) return 0;
+                    if (!a.expiryDate) return 1;
+                    if (!b.expiryDate) return -1;
+                    return new Date(a.expiryDate) - new Date(b.expiryDate);
+                  })
+                  .map((batch) => {
+                    const status = getBatchStatus(batch.expiryDate);
+                    return (
+                      <TableRow key={batch.batchId} className={status.rowClass}>
+                        <TableCell className="font-medium">
+                          {batch.expiryDate
+                            ? new Date(batch.expiryDate).toLocaleDateString()
+                            : 'No expiry set'}
+                        </TableCell>
+                        <TableCell>
+                          <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-medium ${status.color}`}>
+                            {status.label === 'Expired' && <AlertTriangle className="mr-1 h-3 w-3" />}
+                            {status.label}
+                          </span>
+                        </TableCell>
+                        <TableCell>{batch.quantity} {product.uom}</TableCell>
+                        <TableCell className="text-muted-foreground text-sm">
+                          {batch.addedAt
+                            ? new Date(batch.addedAt).toLocaleDateString()
+                            : '-'}
+                        </TableCell>
+                        <TableCell>
+                          {canWriteProducts && <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button variant="ghost" size="sm">
+                                <Trash2 className="h-4 w-4 text-red-500" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Remove Batch</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Remove this batch ({batch.quantity} {product.uom})? This will also reduce the total stock.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction onClick={() => handleRemoveBatch(batch.batchId)}>
+                                  Remove
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
       <ProductSales saleItems={saleItems || []} />
 
       {/* Edit Variant Dialog */}
@@ -335,16 +505,22 @@ export default function ViewProduct({ product, fetchSelectedProduct, saleItems, 
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="edit-unitPrice">Unit Price</Label>
+              <Label htmlFor="edit-marginPercent">Margin %</Label>
               <Input
-                id="edit-unitPrice"
-                name="unitPrice"
+                id="edit-marginPercent"
+                name="marginPercent"
                 type="number"
-                value={editVariantData.unitPrice}
+                value={editVariantData.marginPercent}
                 onChange={handleEditInputChange}
                 required
-                placeholder="Enter unit price"
+                placeholder="Enter margin percent"
               />
+            </div>
+            <div className="space-y-2">
+              <Label>Price Preview</Label>
+              <div className="rounded-md border px-3 py-2 text-sm font-medium">
+                KES {getVariantPreviewPrice(editVariantData.conversionFactor, editVariantData.marginPercent).toFixed(2)}
+              </div>
             </div>
             <div className="flex gap-2">
               <Button 

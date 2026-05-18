@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "@/components/ui/use-toast";
+import financialAccountTypes from '@/lib/financialAccountTypes.json';
 
 export default function CreateAccount({ fetchAccounts }) {
   const [isAddingAccount, setIsAddingAccount] = useState(false);
@@ -44,6 +45,15 @@ export default function CreateAccount({ fetchAccounts }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!financialAccountTypes.includes(newAccount.accountType)) {
+      toast({
+        title: "Error",
+        description: "Please select a valid account type.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsAddingAccount(true);
     try {
       const accountData = {
@@ -133,8 +143,11 @@ export default function CreateAccount({ fetchAccounts }) {
                   <SelectValue placeholder="Select Account Type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="Bank">Bank</SelectItem>
-                  <SelectItem value="Legible">Legible</SelectItem>
+                  {financialAccountTypes.map((accountType) => (
+                    <SelectItem key={accountType} value={accountType}>
+                      {accountType}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>

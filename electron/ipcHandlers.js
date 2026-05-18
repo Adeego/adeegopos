@@ -13,12 +13,29 @@ const financeReport = require('./services/finance/financeReportService')
 const balanceSheet = require('./services/finance/balanceSheetServices')
 const reportService = require('./services/reportService')
 const stock = require('./services/stockManagement')
+const restockScheduler = require('./services/restockScheduler')
+const stockAiAgent = require('./services/stockAiAgentService')
 const message = require('./services/messageService')
 const expenseType = require('./services/finance/expenseTypeService')
 const aiAnalysis = require('./services/aiAnalysisService')
+const aiAssistant = require('./services/aiAssistant')
+const { updateTelegramBotStoreNo, sendAlert } = require('./services/aiAssistant/telegramBot')
 const printerService = require('./services/printerService')
 const subscriptionService = require('./services/subscriptionService')
 const growthService = require('./services/growthService')
+const stockAuditService = require('./services/stockAuditService')
+const reconciliationService = require('./services/reconciliationService')
+const registerSessionService = require('./services/registerSessionService')
+const openaiAuth = require('./services/openaiAuth')
+const reminderService = require('./services/reminderService')
+const {
+  can,
+  normalizeStaff,
+  getStaffRoles,
+  isOperationAllowed,
+  isRestockTaskAllowed,
+  isMessageTaskAllowed,
+} = require('../lib/rbac')
 
 function getSyncStatus(db) {
   return db.info()
@@ -40,6 +57,30 @@ function checkNetworkConnection() {
 }
 
 function setupIpcHandlers(ipcMain, db, mainWindow) {
+  let authenticatedStaff = null;
+
+  const unauthorized = (scope) => ({
+    success: false,
+    error: `Unauthorized: your role does not allow ${scope}.`
+  });
+
+  const canUpdateOwnProfile = async (nextStaff) => {
+    if (!authenticatedStaff || !nextStaff || nextStaff._id !== authenticatedStaff._id) {
+      return false;
+    }
+
+    try {
+      const current = await db.get(nextStaff._id);
+      const currentRoles = getStaffRoles(current).join(',');
+      const nextRoles = getStaffRoles(nextStaff).join(',');
+
+      return currentRoles === nextRoles
+        && Number(current.salary || 0) === Number(nextStaff.salary || 0);
+    } catch (error) {
+      return false;
+    }
+  };
+
   ipcMain.handle('get-online-status', async () => {
     return checkNetworkConnection();
   });
@@ -48,32 +89,96 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
     return getSyncStatus(db);
   });
 
-  ipcMain.handle('sign-in-staff', async (event, storeNo, phoneNumber, passcode) => {
-    return staffService.signInStaff(db, storeNo, phoneNumber, passcode);
+  ipcMain.handle('openai-auth-status', async () => {
+    return openaiAuth.getOpenAIAuthStatus();
+  });
+
+  ipcMain.handle('openai-auth-login', async () => {
+    return openaiAuth.loginWithOpenAIOAuth();
+  });
+
+  ipcMain.handle('openai-auth-logout', async () => {
+    openaiAuth.logoutOpenAI();
+    return openaiAuth.getOpenAIAuthStatus();
+  });
+
+  ipcMain.handle('set-authenticated-staff', async (event, staff) => {
+    authenticatedStaff = staff && staff._id ? normalizeStaff(staff) : null;
+    return { success: true };
+  });
+
+  ipcMain.handle('sign-in-staff', async (event, phoneNumber, passcode, storeNo) => {
+    return staffService.signInStaff(db, phoneNumber, passcode, storeNo);
   });
 
   ipcMain.handle('search-customers', async (event, name, storeNo) => {
+    if (!can(authenticatedStaff, 'customer:read')) {
+      return unauthorized('customer search');
+    }
     return customerService.searchCustomers(db, name, storeNo);
   });
 
-  ipcMain.handle('search-products', async (event, storeNo, searchTerm) => {
-    return productService.searchProducts(db, storeNo, searchTerm);
+  ipcMain.handle('search-products', async (event, searchTerm, storeNo) => {
+    if (!can(authenticatedStaff, 'product:read')) {
+      return unauthorized('product search');
+    }
+    return productService.searchProducts(db, searchTerm, storeNo);
   });
 
-  ipcMain.handle('search-variants', async (event, storeNo, searchTerm) => {
-    return productService.searchVariants(db, storeNo, searchTerm);
+  ipcMain.handle('search-variants', async (event, searchTerm, storeNo) => {
+    if (!can(authenticatedStaff, 'product:read')) {
+      return unauthorized('variant search');
+    }
+    return productService.searchVariants(db, searchTerm, storeNo);
   });
 
-  ipcMain.handle('search-css', async (event, searchTerm, type) => {
-    return transactionService.searchCSS(db, searchTerm, type);
+  ipcMain.handle('search-css', async (event, searchTerm, type, storeNo) => {
+    if (!can(authenticatedStaff, 'finance:read') && !can(authenticatedStaff, 'customer:read')) {
+      return unauthorized('finance/customer search');
+    }
+    return transactionService.searchCSS(db, searchTerm, type, storeNo);
   });
 
   ipcMain.handle('restock', async (event, task, ...args) => {
+    if (!isRestockTaskAllowed(authenticatedStaff, task)) {
+      return unauthorized(`restock task "${task}"`);
+    }
     switch (task) {
       case 'restockCheckup':
         return stock.getProductsToRestock(db, args[0]);
       case 'calculateRestock':
         return stock.calculateRestock(db, args[0], mainWindow);
+      // Restock list management
+      case 'getRestockList':
+        return restockScheduler.getRestockList(db, args[0], args[1]);
+      case 'addToRestockList':
+        return restockScheduler.addToRestockList(db, args[0], args[1]);
+      case 'removeFromRestockList':
+        // args: storeNo, category, productId -> function expects: db, productId, category, storeNo
+        return restockScheduler.removeFromRestockList(db, args[2], args[1], args[0]);
+      case 'clearRestockList':
+        return restockScheduler.clearRestockList(db, args[0], args[1]);
+      case 'checkLowStock':
+        return restockScheduler.checkAndAddLowStockProducts(db, args[0]);
+      // Stock AI command center
+      case 'generateStockAiPlan':
+        return stockAiAgent.generateStockAiPlan(db, args[0], mainWindow, sendAlert);
+      case 'getLatestStockAiPlan':
+        return stockAiAgent.getLatestStockAiPlan(db, args[0]);
+      case 'approveStockAiRecommendation':
+        return stockAiAgent.approveStockAiRecommendation(db, args[0], args[1], args[2]);
+      case 'dismissStockAiRecommendation':
+        return stockAiAgent.dismissStockAiRecommendation(db, args[0], args[1], args[2], args[3]);
+      // Manual trigger for scheduled calculations
+      case 'runMorningRestock':
+        return restockScheduler.runScheduledRestockCalculation(db, args[0], mainWindow, 'morning');
+      case 'runEveningRestock':
+        return restockScheduler.runScheduledRestockCalculation(db, args[0], mainWindow, 'evening');
+      // Scheduler control
+      case 'startScheduler':
+        return restockScheduler.startRestockScheduler(db, args[0], mainWindow);
+      case 'stopScheduler':
+        return restockScheduler.stopRestockScheduler();
       default:
         throw new Error(`Unknown restock task: ${task}`);
     }  
@@ -89,7 +194,31 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
       });
   });
 
+  // AI Assistant chat
+  ipcMain.on('ai-assistant-chat', (event, { sessionId, message, storeNo }) => {
+    aiAssistant.chat(sessionId, message, db, storeNo, 'in-app', {
+      onChunk: (chunk) => event.reply('ai-assistant-chunk', { chunk }),
+      onToolCall: (toolName) => event.reply('ai-assistant-tool', { toolName }),
+      onComplete: () => event.reply('ai-assistant-done', { done: true }),
+      onError: (error) => event.reply('ai-assistant-error', { error }),
+    }).catch(error => {
+      event.reply('ai-assistant-error', { error: error.message });
+    });
+  });
+
+  ipcMain.handle('ai-assistant-clear', (event, sessionId) => {
+    return aiAssistant.clearConversation(sessionId);
+  });
+
+  // Forward storeNo changes to Telegram bot
+  ipcMain.on('send-storeNo', (event, storeNo) => {
+    updateTelegramBotStoreNo(storeNo);
+  });
+
   ipcMain.handle('message', async(event, sms, ...args) => {
+    if (!isMessageTaskAllowed(authenticatedStaff, sms)) {
+      return unauthorized(`message task "${sms}"`);
+    }
     switch (sms) {
       case 'getAllMessages':
         return message.getAllMessages(db, args[0]);
@@ -102,6 +231,16 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
 
   ipcMain.handle('realm-operation', async (event, operation, ...args) => {
     console.log(`[IPC] realm-operation called: ${operation}`);
+    const isBootstrapOperation = !authenticatedStaff && (
+      operation === 'createWholeSaler'
+      || (operation === 'createStaff' && getStaffRoles(args[0]).includes('admin'))
+    );
+
+    if (!isBootstrapOperation && !isOperationAllowed(authenticatedStaff, operation)) {
+      if (!(operation === 'updateStaff' && await canUpdateOwnProfile(args[0]))) {
+        return unauthorized(`operation "${operation}"`);
+      }
+    }
     switch (operation) {
       case 'createCustomer':
         return customerService.createCustomer(db, args[0]);
@@ -111,6 +250,8 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
         return customerService.deleteCustomer(db, args[0]);
       case 'getAllCustomers':
         return customerService.getAllCustomers(db, args[0]);
+      case 'getCustomerCreditOverview':
+        return customerService.getCustomerCreditOverview(db, args[0]);
       case 'getCustomerById':
         return customerService.getCustomerById(db, args[0]);
       case 'getTodayCreditSales':
@@ -141,6 +282,10 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
         return productService.addNewProduct(db, args[0]);
       case 'archiveProduct':
         return productService.archiveProduct(db, args[0]);
+      case 'getExpiringProducts':
+        return productService.getExpiringProducts(db, args[0], args[1]);
+      case 'removeBatch':
+        return productService.removeBatch(db, args[0], args[1]);
       case 'restockProducts':
         // Accept either an array of products or an object { products, storeNo }
         return productService.restockProducts(
@@ -149,18 +294,34 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
         );
       case 'createSale':
         return saleService.createSale(db, args[0], mainWindow);
+      case 'previewReconciliation':
+        return reconciliationService.previewReconciliation(db, args[0]);
+      case 'createReconciliationCase':
+        return reconciliationService.createReconciliationCase(db, args[0]);
+      case 'approveReconciliationCase':
+        return reconciliationService.approveReconciliationCase(db, args[0], args[1], mainWindow);
+      case 'rejectReconciliationCase':
+        return reconciliationService.rejectReconciliationCase(db, args[0], args[1], args[2]);
+      case 'getReconciliationCases':
+        return reconciliationService.getReconciliationCases(db, args[0], args[1]);
+      case 'getReconciliationBySource':
+        return reconciliationService.getReconciliationBySource(db, args[0], args[1], args[2]);
       case 'archiveSale':
         return saleService.archiveSale(db, args[0]);
       case 'getCashierSales':
         return saleService.getCashierSales(db, args[0].storeNo, args[0].staffId);
       case 'getTodaySalesByPaidStatus':
         return saleService.getTodaySalesByPaidStatus(db, args[0].storeNo, args[0].paidStatus);
+      case 'getUnpaidSalesBeforeToday':
+        return saleService.getUnpaidSalesBeforeToday(db, args[0]);
       case 'updateSalePaidStatus':
         return saleService.updateSalePaidStatus(db, args[0].saleId, args[0].paidStatus);
       case 'createSupplier':
         return supplierService.createSupplier(db, args[0]);
       case 'createInvoice':
         return supplierService.createInvoice(db, args[0]);
+      case 'getInvoices':
+        return supplierService.getInvoices(db, args[0]);
       case 'getTodayInvoices':
         return supplierService.getTodayInvoices(db, args[0]);
       case 'getInvoiceById':
@@ -171,6 +332,8 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
         return supplierService.getAllSuppliers(db, args[0]);
       case 'getSupplierById':
         return supplierService.getSupplierById(db, args[0]);
+      case 'getSupplierStatement':
+        return supplierService.getSupplierStatement(db, args[0], args[1]);
       case 'updateSupplier':
         return supplierService.updateSupplier(db, args[0]);
       case 'archiveSupplier':
@@ -267,8 +430,16 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
         return dashboardService.getHourlySalesData(db, args[0]);
       case 'transactionMetrics':
         return dashboardService.transactionMetrics(db, args[0]);
+      case 'getRegisterSession':
+        return registerSessionService.getRegisterSession(db, args[0], args[1]);
+      case 'saveRegisterSession':
+        return registerSessionService.saveRegisterSession(db, args[0]);
+      case 'closeRegisterSession':
+        return registerSessionService.closeRegisterSession(db, args[0], args[1]);
       case 'incomeStatement':
         return financeReport.incomeStatement(db, args[0], args[1]);
+      case 'getMonthlyProfitLoss':
+        return financeReport.getMonthlyProfitLoss(db, args[0]);
       case 'getAccountStatement':
         return financeReport.getAccountStatement(db, args[0], args[1]);
       case 'getBalanceSheet':
@@ -300,7 +471,7 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
       case 'printReceipt':
         // args[0] should be the sale object to print
         return printerService.printReceipt(args[0]);
-      
+
       // Adeego Plus Subscription Operations
       case 'getAllSubscriptions':
         return subscriptionService.getAllSubscriptions(db, args[0]);
@@ -342,6 +513,36 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
         return growthService.getWeeklyGrossMargin(db, args[0], args[1], args[2]);
       case 'getGrowthMetrics':
         return growthService.getGrowthMetrics(db, args[0]);
+      case 'getWeeklyStockoutRate':
+        return growthService.getWeeklyStockoutRate(db, args[0]);
+      case 'getMonthlyStockoutRate':
+        return growthService.getMonthlyStockoutRate(db, args[0]);
+
+      // Stock Audit Operations
+      case 'createAudit':
+        return stockAuditService.createAudit(db, args[0]);
+      case 'submitAudit':
+        return stockAuditService.submitAudit(db, args[0], args[1]);
+      case 'getAudit':
+        return stockAuditService.getAudit(db, args[0]);
+      case 'getAuditHistory':
+        return stockAuditService.getAuditHistory(db, args[0], args[1]);
+      case 'getAuditSummary':
+        return stockAuditService.getAuditSummary(db, args[0]);
+
+      // Personal Reminder Operations
+      case 'createReminder':
+        return reminderService.createReminder(db, args[0]);
+      case 'getMyReminders':
+        return reminderService.getMyReminders(db, args[0]);
+      case 'updateReminder':
+        return reminderService.updateReminder(db, args[0]);
+      case 'completeReminder':
+        return reminderService.completeReminder(db, args[0]);
+      case 'archiveReminder':
+        return reminderService.archiveReminder(db, args[0]);
+      case 'snoozeReminder':
+        return reminderService.snoozeReminder(db, args[0]);
       
       default:
         throw new Error(`Unknown operation: ${operation}`);

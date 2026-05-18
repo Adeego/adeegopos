@@ -1,545 +1,464 @@
 const { printReceipt } = require('./printerService');
+const {
+  getCurrentCustomerId,
+  getSaleNetAmount,
+  getSaleNetCost,
+  getSaleNetItemSubtotal,
+  getSalePaymentBreakdown,
+  postSale,
+  shouldIncludeSaleInMetrics,
+  toIsoString,
+  toNumber,
+} = require('./postingService');
 
-// Create a sale
-function createSale(db, saleData, mainWindow) {
-  const sale = {
-    _id: saleData._id,
-    type: 'sale',
-    customerId: saleData.customerId,
-    items: saleData.items.map((item) => ({
-     _id: item._id,
-     productId: item.productId,
-     name: item.name,
-     buyPrice: item.buyPrice,
-     unitPrice: item.unitPrice,
-     quantity: item.quantity,
-     subtotal: item.subtotal,
-     discount: item.discount,
-     conversionFactor: item.conversionFactor,
-    })),
-    totalAmount: saleData.totalAmount,
-    totalItems: saleData.totalItems,
-    totalDiscount: saleData.totalDiscount,
-    servedBy: saleData.servedBy,
-    amountPaid: saleData.amountPaid,
-    change: saleData.change,
-    note: saleData.note || '',
-    paymentMethod: saleData.paymentMethod,
-    saleType: saleData.saleType,
-    fullfilmentType: saleData.fullfilmentType,
-    paid: saleData.paid !== undefined ? saleData.paid : false,
-    storeNo: saleData.storeNo,
-    state: 'Active',
-    createdAt: saleData.createdAt,
-    updatedAt: saleData.updatedAt,
-  };
-
-  // Function to update stock based on sale type
-  const updateStock = (saleType, items) => {
-    const updates = items.map(item => {
-      return db.get(item.productId)
-        .then(product => {
-          let stockChange;
-          if (saleType === 'NEW SALE') {
-            stockChange = -(item.conversionFactor * item.quantity);
-          } else if (saleType === 'RETURN SALE') {
-            stockChange = (item.conversionFactor * item.quantity);
-          }
-          const updatedStock = product.stock + stockChange;
-          
-          // Only set restock to true if:
-          // 1. It's a new sale
-          // 2. Updated stock is below threshold
-          // 3. Current stock was NOT already below threshold
-          const wasAboveThreshold = product.stock >= product.restockThreshold;
-          const isNowBelowThreshold = updatedStock < product.restockThreshold;
-          const shouldTriggerRestock = saleType === 'NEW SALE' && 
-                                     wasAboveThreshold && 
-                                     isNowBelowThreshold;
-          
-          const updatedProduct = { 
-            ...product, 
-            stock: updatedStock,
-            restock: shouldTriggerRestock || product.restock
-          };
-          
-          // If restock is triggered, send an event
-          if (shouldTriggerRestock && mainWindow && mainWindow.webContents) {
-            mainWindow.webContents.send('restock-triggered', updatedProduct);
-          }
-          
-          return db.put(updatedProduct);
-        });
-    });
-    return Promise.all(updates);
-  };
-
-  // Function to update customer balance for credit sales
-  const updateCustomerBalance = () => {
-    if (saleData.paymentMethod === 'CREDIT' && saleData.customerId) {
-      return db.get(saleData.customerId)
-        .then(customer => {
-          const updatedCustomer = {
-            ...customer,
-            balance: (Number(customer.balance) || 0) - (Number(saleData.totalAmount) || 0)
-          };
-          return db.put(updatedCustomer);
-        })
-        .catch(error => {
-          console.error('Error updating customer balance:', error);
-          throw error;
-        });
-    }
-    return Promise.resolve();
-  };
-  
-  const UpdateAccountBalance = () => {
-    const paymentMethod = saleData.paymentMethod.toUpperCase();
-    if (paymentMethod !== 'CASH' && paymentMethod !== 'MPESA') {
-      return Promise.resolve();
-    }
-
-    const accountNoSuffix = paymentMethod === 'CASH' ? '001' : '002';
-    const accountNo = `${saleData.storeNo}${accountNoSuffix}`;
-
-    return db
-    .find({
-      selector: { 
-        type: "account",
-        accountNumber: accountNo
-      },
-      limit: 9999
-    })
-    .then((response) => {
-      if (response.docs.length === 0) {
-        console.log(`Account with accountNo ${accountNo} not found.`);
-        return Promise.resolve(); // No account found, do nothing
-      }
-      
-      const accountToUpdate = response.docs[0];
-      
-      const currentBalance = Number(accountToUpdate.balance) || 0;
-      const amount = Number(saleData.totalAmount) || 0;
-
-      let balanceChange = 0;
-      if (saleData.saleType === 'NEW SALE') {
-        balanceChange = amount;
-      } else if (saleData.saleType === 'RETURN SALE') {
-        balanceChange = -amount;
-      }
-
-      if (balanceChange === 0) {
-        return Promise.resolve();
-      }
-
-      const updatedAccount = {
-        ...accountToUpdate,
-        balance: currentBalance + balanceChange
-      };
-      
-      return db.put(updatedAccount);
-    })
-    .catch(error => {
-      console.error('Error updating account balance:', error);
-      throw error;
-    });
-  };
-
-  return db.put(sale)
-    .then(response => {
-      const createdSale = { _id: response.id, ...sale };
-
-      // Chain all necessary updates
-      return updateCustomerBalance()
-        .then(() => UpdateAccountBalance())
-        .then(() => {
-          // Update stock if it's a new sale or return
-          if (saleData.saleType === 'NEW SALE' || saleData.saleType === 'RETURN SALE') {
-            return updateStock(saleData.saleType, saleData.items)
-              .then(() => {
-                // Attempt to print receipt but don't wait for it
-                printReceipt(createdSale).catch(error => {
-                    console.error('Receipt printing failed:', error);
-                  });
-                // Return success regardless of printer status
-                return { success: true, sale: createdSale };
-              })
-              .catch(error => {
-                console.error('Error updating stock:', error);
-                return { success: true, sale: createdSale, stockUpdateError: error.message };
-              });
-          } else {
-            // If no stock update is needed, attempt to print but don't wait
-            printReceipt(createdSale).catch(error => {
-                console.error('Receipt printing failed:', error);
-              });
-            // Return success regardless of printer status
-            return { success: true, sale: createdSale };
-          }
-        })
-        .catch(error => {
-          console.error('Error processing sale:', error);
-          return { success: false, error: error.message };
-        });
-    })
-    .catch(error => ({ success: false, error: error.message }));
+function startOfDay(date = new Date()) {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
 }
 
-// Query all products in a specific sale                             
-function getSaleProducts(db, saleId) {                               
-  return db.get(saleId)                                              
-    .then(sale => sale.products)                                     
-    .catch(error => {                                                
-      console.error('Error fetching sale products:', error);         
-      return { success: false, error: error.message };               
-    });                                                              
-}                                                                    
-                                                                     
-// Function to get the number of sales grouped by payment methods fr date1 to date2                                                       
-function getSalesByPaymentMethod(db, storeNo, date1, date2) {                 
-  return db.find({                                                   
-    selector: { storeNo: storeNo, createdAt: { $gte: new Date(date1), $lte: new Date(date2) } },                                                   
-    limit: 9999
-  })                                                                 
-    .then(result => {                                                
-      const groupedSales = {                                         
-        cash: { pmethod: "CASH", sales: 0, totalAmount: 0 },         
-        credit: { pmethod: "CREDIT", sales: 0, totalAmount: 0 },     
-        mpesa: { pmethod: "MPESA", sales: 0, totalAmount: 0 }        
-      };                                                             
-                                                                     
-      result.docs.forEach(sale => {                                  
-        const method = sale.paymentMethod.toLowerCase();             
-        if (groupedSales[method]) {                                  
-          groupedSales[method].sales++;                              
-          groupedSales[method].totalAmount += sale.totalAmount;      
-        }                                                            
-      });                                                            
-                                                                     
-      return { success: true, data: Object.values(groupedSales) };   
-    })                                                               
-    .catch(error => {                                                
-      console.error('Error getting sales by payment method:', error) 
-      return { success: false, error: error.message };               
-    });                                                              
-}                                                                    
-                                                                     
-// Total sales for a given time period                               
-function getTotalSales(db, storeNo, startDate, endDate) {                     
-  return db.find({                                                   
-    selector: { storeNo: storeNo, createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) } },
-    limit: 9999                                                   
-  })                                                                 
-    .then(result => {                                                
-      const totalSales = result.docs.reduce((sum, sale) => sum + sale.totalAmount, 0);                                                
-      return { success: true, data: totalSales };                    
-    })                                                               
-    .catch(error => {                                                
-      console.error('Error getting total sales:', error);            
-      return { success: false, error: error.message };               
-    });                                                              
-}                                                                    
-                                                                     
-// Average transaction value for a given time period                 
-function getAverageTransactionValue(db, storeNo, startDate, endDate) {        
-  return db.find({                                                   
-    selector: { storeNo: storeNo, createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) } },                                                   
-    limit: 9999
-  })                                                                 
-    .then(result => {                                                
-      const totalSales = result.docs.reduce((sum, sale) => sum + sale.totalAmount, 0);                                                
-      const averageValue = totalSales / result.docs.length;          
-      return { success: true, data: averageValue };                  
-    })                                                               
-    .catch(error => {                                                
-      console.error('Error getting average transaction value:', error);                                                              
-      return { success: false, error: error.message };               
-    });                                                              
-}                                                                    
-                                                                     
-// Sales by product category for a given time period                 
-function getSalesByCategory(db, storeNo, startDate, endDate) {                
-  return db.find({                                                   
-    selector: { storeNo: storeNo, createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) } },                                                   
-    limit: 9999
-  })                                                                 
-    .then(result => {                                                
-      const categoryTotals = {};                                     
-                                                                     
-      result.docs.forEach(sale => {                                  
-        sale.items.forEach(item => {                                  
-          const category = item.productVariant.product.category;     
-          if (!categoryTotals[category]) {                           
-            categoryTotals[category] = 0;                            
-          }                                                          
-          categoryTotals[category] += item.subtotal;                 
-        });                                                          
-      });                                                            
-                                                                     
-      return { success: true, data: categoryTotals };                
-    })                                                               
-    .catch(error => {                                                
-      console.error('Error getting sales by category:', error);      
-      return { success: false, error: error.message };               
-    });                                                              
-}                                                                    
-                                                                     
-// Top-selling items for a given time period                         
-function getTopSellingItems(db, storeNo, startDate, endDate, limit = 50) {    
-  return db.find({                                                   
-    selector: { storeNo: storeNo, createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) } },                                                   
-    limit: 9999
-  })                                                                 
-    .then(result => {                                                
-      const itemSales = {};                                          
-                                                                     
-      result.docs.forEach(sale => {                                  
-        sale.items.forEach(item => {                                  
-          const productId = item.productVariant.product._id;         
-          if (!itemSales[productId]) {                               
-            itemSales[productId] = {                                 
-              productName: item.productVariant.product.name,         
-              quantity: 0,                                           
-              totalSales: 0                                          
-            };                                                       
-          }                                                          
-          itemSales[productId].quantity += item.quantity;            
-          itemSales[productId].totalSales += item.subtotal;          
-        });                                                          
-      });                                                            
-                                                                     
-      const sortedItems = Object.values(itemSales).sort((a, b) => b.totalSales - a.totalSales).slice(0, limit);                        
-      return { success: true, data: sortedItems };                   
-    })                                                               
-    .catch(error => {                                                
-      console.error('Error getting top-selling items:', error);      
-      return { success: false, error: error.message };               
-    });                                                              
-}                                                                    
-                                                                     
-// Gross profit margin for a given time period                       
-function getGrossProfitMargin(db, storeNo, startDate, endDate) {              
-  return db.find({                                                   
-    selector: { storeNo: storeNo, createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) } },                                                   
-    limit: 9999
-  })                                                                 
-    .then(result => {                                                
-      let totalRevenue = 0;                                          
-      let totalCost = 0;                                             
-                                                                     
-      result.docs.forEach(sale => {                                  
-        sale.items.forEach(item => {                                 
-          totalRevenue += item.subtotal;                             
-          totalCost += item.quantity * item.productVariant.product.buyPrice * item.productVariant.conversionFactor;                                
-        });                                                          
-      });                                                            
-                                                                     
-      const grossProfit = totalRevenue - totalCost;                  
-      const grossProfitMargin = (grossProfit / totalRevenue) * 100;  
-                                                                     
-      return { success: true, data: grossProfitMargin };             
-    })                                                               
-    .catch(error => {                                                
-      console.error('Error calculating gross profit margin:', error) 
-      return { success: false, error: error.message };               
-    });                                                              
-}                                                                    
-                                                                     
-// Function to get total sales, revenue, and gross profit            
-function getTotalSalesRevenueAndProfit(db, storeNo, startDate, endDate) {     
-  return db.find({                                                   
-    selector: { storeNo: storeNo, createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) } },                                                   
-    limit: 9999
-  })                                                                 
-    .then(result => {                                                
-      let totalSales = 0;                                            
-      let totalRevenue = 0;                                          
-      let totalCost = 0;                                             
-                                                                     
-      result.docs.forEach(sale => {                                  
-        totalSales++;                                                
-        totalRevenue += Number(sale.totalAmount) || 0;               
-        sale.items.forEach(item => {                                 
-          const quantity = Number(item.quantity) || 0;               
-          const buyPrice = Number(item.productVariant.product.buyPrice) || 0;                   
-          const conversionFactor = Number(item.productVariant.conversionFactor) || 1;                   
-          totalCost += quantity * buyPrice * conversionFactor;       
-        });                                                          
-      });                                                            
-                                                                     
-      const grossProfit = totalRevenue - totalCost;                  
-                                                                     
-      return {                                                       
-        success: true,                                               
-        data: {                                                      
-          totalSales,                                                
-          totalRevenue: Number(totalRevenue.toFixed(2)),             
-          grossProfit: Number(grossProfit.toFixed(2))                
-        }                                                            
-      };                                                             
-    })                                                               
-    .catch(error => {                                                
-      console.error('Error getting total sales, revenue, and profit:', error);                                                              
-      return { success: false, error: error.message };               
-    });                                                              
-}                                                                    
-                                                                     
-// Function to get top customers for a given time period
-function getTopCustomers(db, storeNo, startDate, endDate, limit = 10) {
-  return db.find({
-    selector: { 
-      storeNo: storeNo, 
-      createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) } 
-    },
-    limit: 9999
-  })
-    .then(result => {
-      const customerSales = {};
+function endOfDay(date = new Date()) {
+  const next = new Date(date);
+  next.setHours(23, 59, 59, 999);
+  return next;
+}
 
-      result.docs.forEach(sale => {
-        const customerId = sale.customer._id;
-        if (!customerSales[customerId]) {
-          customerSales[customerId] = {
-            customerName: sale.customer.name,
+function toDateValue(value) {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function remainingReturnableByLine(sale = {}) {
+  const returnedMap = sale.returnedQuantitiesByLine || {};
+  return Object.fromEntries((sale.items || []).map((item) => {
+    const sold = Math.abs(toNumber(item.quantity));
+    const returned = Math.abs(toNumber(returnedMap[item._id]));
+    const remaining = Number(Math.max(0, sold - returned).toFixed(2));
+    return [item._id, remaining];
+  }));
+}
+
+function decorateSale(sale = {}) {
+  return {
+    ...sale,
+    currentCustomerId: getCurrentCustomerId(sale),
+    netTotalAmount: getSaleNetAmount(sale),
+    remainingReturnableByLine: remainingReturnableByLine(sale),
+    status: sale.status || 'posted',
+  };
+}
+
+async function getAllStoreSales(db, storeNo) {
+  const result = await db.find({
+    selector: {
+      type: 'sale',
+      state: 'Active',
+      ...(storeNo ? { storeNo } : {}),
+    },
+    limit: 9999,
+  });
+
+  return (result.docs || []).map(decorateSale);
+}
+
+function inDateRange(value, fromDate, toDate) {
+  const date = toDateValue(value);
+  if (!date) {
+    return false;
+  }
+
+  if (fromDate && date < fromDate) {
+    return false;
+  }
+
+  if (toDate && date > toDate) {
+    return false;
+  }
+
+  return true;
+}
+
+function sortSalesDesc(sales = []) {
+  return [...sales].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+
+async function createSale(db, saleData, mainWindow) {
+  try {
+    const result = await postSale(db, saleData, {
+      mainWindow,
+      printReceipt: false,
+    });
+
+    if (!result.success) {
+      return result;
+    }
+
+    printReceipt(result.sale).catch((error) => {
+      console.error('Receipt printing failed:', error);
+    });
+
+    return {
+      success: true,
+      sale: decorateSale(result.sale),
+      stockMovements: result.stockMovements,
+      ledgerEntries: result.ledgerEntries,
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+function getSaleProducts(db, saleId) {
+  return db.get(saleId)
+    .then((sale) => sale.items || [])
+    .catch((error) => {
+      console.error('Error fetching sale products:', error);
+      return { success: false, error: error.message };
+    });
+}
+
+async function getSalesByPaymentMethod(db, storeNo, date1, date2) {
+  try {
+    const fromDate = toDateValue(date1);
+    const toDate = toDateValue(date2);
+    const sales = (await getAllStoreSales(db, storeNo)).filter((sale) =>
+      shouldIncludeSaleInMetrics(sale) && inDateRange(sale.createdAt, fromDate, toDate)
+    );
+
+    const groupedSales = {};
+
+    for (const sale of sales) {
+      const sign = sale.netTotalAmount < 0 ? -1 : 1;
+      for (const payment of getSalePaymentBreakdown(sale)) {
+        const paymentLabel = String(payment.method || payment.paymentMethod || sale.paymentMethod || 'Unknown').trim() || 'Unknown';
+        const key = paymentLabel.toLowerCase();
+        if (!groupedSales[key]) {
+          groupedSales[key] = { pmethod: paymentLabel, sales: 0, totalAmount: 0 };
+        }
+
+        groupedSales[key].sales += 1;
+        groupedSales[key].totalAmount = Number((groupedSales[key].totalAmount + (Math.abs(Number(payment.amount) || 0) * sign)).toFixed(2));
+      }
+    }
+
+    return { success: true, data: Object.values(groupedSales) };
+  } catch (error) {
+    console.error('Error getting sales by payment method:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function getTotalSales(db, storeNo, startDate, endDate) {
+  try {
+    const fromDate = toDateValue(startDate);
+    const toDate = toDateValue(endDate);
+    const sales = (await getAllStoreSales(db, storeNo)).filter((sale) =>
+      shouldIncludeSaleInMetrics(sale) && inDateRange(sale.createdAt, fromDate, toDate)
+    );
+
+    const totalSales = Number(sales.reduce((sum, sale) => sum + sale.netTotalAmount, 0).toFixed(2));
+    return { success: true, data: totalSales };
+  } catch (error) {
+    console.error('Error getting total sales:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function getAverageTransactionValue(db, storeNo, startDate, endDate) {
+  try {
+    const fromDate = toDateValue(startDate);
+    const toDate = toDateValue(endDate);
+    const sales = (await getAllStoreSales(db, storeNo)).filter((sale) =>
+      shouldIncludeSaleInMetrics(sale) && inDateRange(sale.createdAt, fromDate, toDate)
+    );
+
+    if (sales.length === 0) {
+      return { success: true, data: 0 };
+    }
+
+    const total = sales.reduce((sum, sale) => sum + sale.netTotalAmount, 0);
+    return { success: true, data: Number((total / sales.length).toFixed(2)) };
+  } catch (error) {
+    console.error('Error getting average transaction value:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function getSalesByCategory(db, storeNo, startDate, endDate) {
+  try {
+    const fromDate = toDateValue(startDate);
+    const toDate = toDateValue(endDate);
+    const [sales, productsResult] = await Promise.all([
+      getAllStoreSales(db, storeNo),
+      db.find({
+        selector: {
+          type: 'product',
+          state: 'Active',
+          ...(storeNo ? { storeNo } : {}),
+        },
+        limit: 9999,
+      }),
+    ]);
+
+    const productsById = new Map((productsResult.docs || []).map((product) => [product._id, product]));
+    const categoryTotals = {};
+
+    for (const sale of sales) {
+      if (!shouldIncludeSaleInMetrics(sale) || !inDateRange(sale.createdAt, fromDate, toDate)) {
+        continue;
+      }
+
+      for (const item of sale.items || []) {
+        const category = productsById.get(item.productId)?.category || 'Uncategorized';
+        categoryTotals[category] = Number(((categoryTotals[category] || 0) + getSaleNetItemSubtotal(item, sale)).toFixed(2));
+      }
+    }
+
+    return { success: true, data: categoryTotals };
+  } catch (error) {
+    console.error('Error getting sales by category:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function getTopSellingItems(db, storeNo, startDate, endDate, limit = 50) {
+  try {
+    const fromDate = toDateValue(startDate);
+    const toDate = toDateValue(endDate);
+    const sales = (await getAllStoreSales(db, storeNo)).filter((sale) =>
+      shouldIncludeSaleInMetrics(sale) && inDateRange(sale.createdAt, fromDate, toDate)
+    );
+
+    const itemSales = {};
+    for (const sale of sales) {
+      for (const item of sale.items || []) {
+        if (!item.productId) {
+          continue;
+        }
+
+        if (!itemSales[item.productId]) {
+          itemSales[item.productId] = {
+            productId: item.productId,
+            productName: item.name,
+            quantity: 0,
             totalSales: 0,
-            totalAmount: 0
           };
         }
-        customerSales[customerId].totalSales++;
-        customerSales[customerId].totalAmount += sale.totalAmount;
-      });
 
-      const sortedCustomers = Object.values(customerSales)
-        .sort((a, b) => b.totalAmount - a.totalAmount)
-        .slice(0, limit);
+        const quantityDelta = sale.saleType === 'RETURN SALE'
+          ? -Math.abs(toNumber(item.quantity))
+          : Math.abs(toNumber(item.quantity));
 
-      return { success: true, data: sortedCustomers };
-    })
-    .catch(error => {
-      console.error('Error getting top customers:', error);
-      return { success: false, error: error.message };
-    });
+        itemSales[item.productId].quantity += quantityDelta;
+        itemSales[item.productId].totalSales = Number((itemSales[item.productId].totalSales + getSaleNetItemSubtotal(item, sale)).toFixed(2));
+      }
+    }
+
+    const sortedItems = Object.values(itemSales)
+      .sort((a, b) => b.totalSales - a.totalSales)
+      .slice(0, limit);
+
+    return { success: true, data: sortedItems };
+  } catch (error) {
+    console.error('Error getting top-selling items:', error);
+    return { success: false, error: error.message };
+  }
 }
 
-// Function to get all sales between two dates
-function getAllSalesBetweenDates(db, storeNo, startDate, endDate) {
-  return db
-    .find({
-      selector: {
-        type: 'sale',
-        state: 'Active',
-        storeNo: storeNo,
-        createdAt: { $gte: startDate, $lte: endDate },
+async function getGrossProfitMargin(db, storeNo, startDate, endDate) {
+  try {
+    const summary = await getTotalSalesRevenueAndProfit(db, storeNo, startDate, endDate);
+    if (!summary.success) {
+      return summary;
+    }
+
+    const revenue = toNumber(summary.data.totalRevenue);
+    const profit = toNumber(summary.data.grossProfit);
+    const margin = revenue === 0 ? 0 : Number(((profit / revenue) * 100).toFixed(2));
+
+    return { success: true, data: margin };
+  } catch (error) {
+    console.error('Error calculating gross profit margin:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function getTotalSalesRevenueAndProfit(db, storeNo, startDate, endDate) {
+  try {
+    const fromDate = toDateValue(startDate);
+    const toDate = toDateValue(endDate);
+    const sales = (await getAllStoreSales(db, storeNo)).filter((sale) =>
+      shouldIncludeSaleInMetrics(sale) && inDateRange(sale.createdAt, fromDate, toDate)
+    );
+
+    const totalSales = sales.length;
+    const totalRevenue = Number(sales.reduce((sum, sale) => sum + sale.netTotalAmount, 0).toFixed(2));
+    const totalCost = Number(sales.reduce((sum, sale) => sum + getSaleNetCost(sale), 0).toFixed(2));
+    const grossProfit = Number((totalRevenue - totalCost).toFixed(2));
+
+    return {
+      success: true,
+      data: {
+        totalSales,
+        totalRevenue,
+        grossProfit,
       },
-      sort: [{ createdAt: 'desc' }],
-      limit: 9999
-    })
-    .then((result) => {
-      return { success: true, data: result.docs };
-    })
-    .catch((error) => {
-      console.error('Error getting sales between dates:', error);
-      return { success: false, error: error.message };
-    });
+    };
+  } catch (error) {
+    console.error('Error getting total sales, revenue, and profit:', error);
+    return { success: false, error: error.message };
+  }
 }
 
-// Function to get a specific sale by ID
+async function getTopCustomers(db, storeNo, startDate, endDate, limit = 10) {
+  try {
+    const fromDate = toDateValue(startDate);
+    const toDate = toDateValue(endDate);
+    const [sales, customersResult] = await Promise.all([
+      getAllStoreSales(db, storeNo),
+      db.find({
+        selector: {
+          type: 'customer',
+          state: 'Active',
+          ...(storeNo ? { storeNo } : {}),
+        },
+        limit: 9999,
+      }),
+    ]);
+
+    const customersById = new Map((customersResult.docs || []).map((customer) => [customer._id, customer]));
+    const customerSales = {};
+
+    for (const sale of sales) {
+      if (!shouldIncludeSaleInMetrics(sale) || !inDateRange(sale.createdAt, fromDate, toDate)) {
+        continue;
+      }
+
+      const customerId = getCurrentCustomerId(sale);
+      if (!customerId) {
+        continue;
+      }
+
+      if (!customerSales[customerId]) {
+        customerSales[customerId] = {
+          customerId,
+          customerName: customersById.get(customerId)?.name || 'Unknown Customer',
+          totalSales: 0,
+          totalAmount: 0,
+        };
+      }
+
+      customerSales[customerId].totalSales += 1;
+      customerSales[customerId].totalAmount = Number((customerSales[customerId].totalAmount + sale.netTotalAmount).toFixed(2));
+    }
+
+    const sortedCustomers = Object.values(customerSales)
+      .sort((a, b) => b.totalAmount - a.totalAmount)
+      .slice(0, limit);
+
+    return { success: true, data: sortedCustomers };
+  } catch (error) {
+    console.error('Error getting top customers:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function getAllSalesBetweenDates(db, storeNo, startDate, endDate) {
+  try {
+    const fromDate = toDateValue(startDate);
+    const toDate = toDateValue(endDate);
+    const sales = (await getAllStoreSales(db, storeNo)).filter((sale) =>
+      inDateRange(sale.createdAt, fromDate, toDate)
+    );
+
+    return { success: true, data: sortSalesDesc(sales) };
+  } catch (error) {
+    console.error('Error getting sales between dates:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 function getSaleById(db, saleId) {
   return db.get(saleId)
-    .then(sale => {
-      console.log(sale)
-      return { success: true, data: sale };
-    })
-    .catch(error => ({ success: false, error: error.message }));
-}
-
-// Archive a sale
-function archiveSale(db, saleId) {
-  return db
-    .get(saleId)
-    .then((sale) => {
-      // Update the state field to "Inactive"
-      sale.state = "Inactive";
-      return db.put(sale);
-    })
-    .then((response) => ({ success: true, sale: { _id: response.id, status: "Inactive" } }))
+    .then((sale) => ({ success: true, data: decorateSale(sale) }))
     .catch((error) => ({ success: false, error: error.message }));
 }
 
-// Get sales for a specific cashier/staff member
-function getCashierSales(db, storeNo, staffId) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  
-  return db
-    .find({
-      selector: {
-        type: 'sale',
-        state: 'Active',
-        storeNo: storeNo,
-        servedBy: staffId,
-        createdAt: { $gte: today.toISOString(), $lt: tomorrow.toISOString() }
-      },
-      sort: [{ createdAt: 'desc' }],
-      limit: 9999
+function archiveSale(db, saleId) {
+  return db.get(saleId)
+    .then((sale) => {
+      if ((sale.status || 'posted') === 'posted' || sale.status === 'partially_returned' || sale.status === 'fully_returned' || sale.status === 'reassigned' || sale.status === 'voided') {
+        return { success: false, error: 'Posted sales can no longer be deleted. Use reconciliation instead.' };
+      }
+
+      sale.state = 'Inactive';
+      sale.updatedAt = new Date().toISOString();
+      return db.put(sale).then((response) => ({ success: true, sale: { _id: response.id, status: 'Inactive' } }));
     })
-    .then((result) => {
-      return { success: true, data: result.docs };
-    })
-    .catch((error) => {
-      console.error('Error getting cashier sales:', error);
-      return { success: false, error: error.message };
-    });
+    .catch((error) => ({ success: false, error: error.message }));
 }
 
-// Get today's sales filtered by paid status
-function getTodaySalesByPaidStatus(db, storeNo, paidStatus) {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const tomorrow = new Date(today);
-  tomorrow.setDate(tomorrow.getDate() + 1);
-  
-  const selector = {
-    type: 'sale',
-    state: 'Active',
-    storeNo: storeNo,
-    createdAt: { $gte: today.toISOString(), $lt: tomorrow.toISOString() }
-  };
-  
-  // Add paid filter if specified (not 'all')
-  if (paidStatus !== 'all') {
-    selector.paid = paidStatus === 'paid';
+async function getCashierSales(db, storeNo, staffId) {
+  try {
+    const fromDate = startOfDay();
+    const toDate = endOfDay();
+    const sales = (await getAllStoreSales(db, storeNo)).filter((sale) =>
+      sale.servedBy === staffId && inDateRange(sale.createdAt, fromDate, toDate)
+    );
+
+    return { success: true, data: sortSalesDesc(sales) };
+  } catch (error) {
+    console.error('Error getting cashier sales:', error);
+    return { success: false, error: error.message };
   }
-  
-  return db
-    .find({
-      selector: selector,
-      sort: [{ createdAt: 'desc' }],
-      limit: 9999
-    })
-    .then((result) => {
-      return { success: true, data: result.docs };
-    })
-    .catch((error) => {
-      console.error('Error getting sales by paid status:', error);
-      return { success: false, error: error.message };
-    });
 }
 
-// Update sale paid status
+async function getTodaySalesByPaidStatus(db, storeNo, paidStatus) {
+  try {
+    const fromDate = startOfDay();
+    const toDate = endOfDay();
+    let sales = (await getAllStoreSales(db, storeNo)).filter((sale) =>
+      inDateRange(sale.createdAt, fromDate, toDate)
+    );
+
+    if (paidStatus !== 'all') {
+      const isPaid = paidStatus === 'paid';
+      sales = sales.filter((sale) => sale.paid === isPaid);
+    }
+
+    return { success: true, data: sortSalesDesc(sales) };
+  } catch (error) {
+    console.error('Error getting sales by paid status:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function getUnpaidSalesBeforeToday(db, storeNo) {
+  try {
+    const beforeToday = startOfDay();
+    const sales = (await getAllStoreSales(db, storeNo)).filter((sale) =>
+      !sale.paid && toDateValue(sale.createdAt) < beforeToday
+    );
+
+    return { success: true, data: sortSalesDesc(sales) };
+  } catch (error) {
+    console.error('Error getting unpaid sales before today:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 function updateSalePaidStatus(db, saleId, paidStatus) {
-  return db
-    .get(saleId)
+  return db.get(saleId)
     .then((sale) => {
       sale.paid = paidStatus;
       sale.updatedAt = new Date().toISOString();
       return db.put(sale);
     })
-    .then((response) => {
-      return { success: true, sale: { _id: response.id, paid: paidStatus } };
-    })
+    .then((response) => ({ success: true, sale: { _id: response.id, paid: paidStatus } }))
     .catch((error) => {
       console.error('Error updating sale paid status:', error);
       return { success: false, error: error.message };
@@ -562,5 +481,6 @@ module.exports = {
   archiveSale,
   getCashierSales,
   getTodaySalesByPaidStatus,
+  getUnpaidSalesBeforeToday,
   updateSalePaidStatus,
 };

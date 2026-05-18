@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { CalendarDays, CreditCard, DollarSign, Phone, MapPin, Activity, ShoppingCart, TrendingUp, PrinterIcon, CreditCardIcon, CalendarIcon, EyeIcon, ShoppingCartIcon, ArrowDownLeft, ArrowUpRight, FileText } from 'lucide-react'
+import { CalendarDays, CreditCard, DollarSign, Phone, MapPin, Activity, ShoppingCart, TrendingUp, PrinterIcon, CreditCardIcon, CalendarIcon, EyeIcon, ShoppingCartIcon, ArrowDownLeft, ArrowUpRight, FileText, Check } from 'lucide-react'
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -35,19 +35,23 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { format } from "date-fns"
 import { cn } from "@/lib/utils"
+import { can } from "@/lib/rbac"
 
 export default function CustomerDetail() {
   const [customer, setCustomer] = useState(null);
   const [isEditing, setIsEditing] = useState(false);
   const [editedCustomer, setEditedCustomer] = useState(null);
-  const [role, setRole] = useState(null);
   const [sales, setSales] = useState([]);
+  const [monthlyRevenue, setMonthlyRevenue] = useState(0);
+  const [previousMonthRevenue, setPreviousMonthRevenue] = useState(0);
   const [ledger, setLedger] = useState([]);
   const [aging, setAging] = useState({ "0-30": 0, "30-60": 0, "60+": 0 });
   const [selectedSale, setSelectedSale] = useState(null)
   const [fromDate, setFromDate] = useState(new Date(new Date().setDate(new Date().getDate() - 30)));
   const [toDate, setToDate] = useState(new Date());
   const staff = useStaffStore((state) => state.staff)
+  const canWriteCustomers = can(staff, 'customer:write');
+  const canConfirmPayment = can(staff, 'sale:confirmPayment');
   const store = useWsinfoStore((state) => state.wsinfo);
   const [storeNo, setStoreNo] = useState('');
   const router = useRouter()
@@ -63,6 +67,8 @@ export default function CustomerDetail() {
     if (id && storeNo) {
       fetchSelectedCustomer();
       fetchCustomerSales();
+      fetchMonthlyRevenue();
+      fetchPreviousMonthRevenue();
       fetchCustomerLedger();
       fetchCustomerAging();
     }
@@ -73,12 +79,6 @@ export default function CustomerDetail() {
       setEditedCustomer({ ...customer });
     }
   }, [customer]);
-
-  useEffect(() => {
-    if (staff.role) {
-      setRole(staff.role);
-    }
-  }, [staff.role])
 
   const fetchSelectedCustomer = async () => {
     try {
@@ -143,6 +143,56 @@ export default function CustomerDetail() {
     }
   };
 
+  const fetchMonthlyRevenue = async () => {
+    if (!storeNo) return;
+
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+
+    try {
+      const result = await window.electronAPI.realmOperation('getCustomerSales', id, monthStart, monthEnd, storeNo);
+      if (result.success) {
+        const revenue = result.sales.reduce((sum, sale) => sum + Number(sale.netTotalAmount ?? sale.totalAmount ?? 0), 0);
+        setMonthlyRevenue(revenue);
+      } else {
+        console.error('Failed to fetch monthly customer revenue:', result.error);
+        setMonthlyRevenue(0);
+      }
+    } catch (error) {
+      console.error('Error fetching monthly customer revenue:', error);
+      setMonthlyRevenue(0);
+    }
+  };
+
+  const fetchPreviousMonthRevenue = async () => {
+    if (!storeNo) return;
+
+    const now = new Date();
+    const previousMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const previousMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+
+    try {
+      const result = await window.electronAPI.realmOperation(
+        'getCustomerSales',
+        id,
+        previousMonthStart,
+        previousMonthEnd,
+        storeNo
+      );
+      if (result.success) {
+        const revenue = result.sales.reduce((sum, sale) => sum + Number(sale.netTotalAmount ?? sale.totalAmount ?? 0), 0);
+        setPreviousMonthRevenue(revenue);
+      } else {
+        console.error('Failed to fetch previous month customer revenue:', result.error);
+        setPreviousMonthRevenue(0);
+      }
+    } catch (error) {
+      console.error('Error fetching previous month customer revenue:', error);
+      setPreviousMonthRevenue(0);
+    }
+  };
+
   const fetchCustomerLedger = async () => {
     if (!storeNo) return;
     try {
@@ -175,51 +225,68 @@ export default function CustomerDetail() {
     }
   };
 
-  const handlePrint = () => {
-    alert('No printer connected')
+  const handlePrint = async (saleToPrint) => {
+    const receiptSale = saleToPrint || selectedSale;
+
+    if (!receiptSale) {
+      toast({
+        title: "Error",
+        description: "No sale selected to print.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      const result = await window.electronAPI.realmOperation('printReceipt', receiptSale);
+      if (result && result.success) {
+        toast({
+          title: "Receipt queued",
+          description: "The receipt has been sent to the printer.",
+        });
+      } else {
+        throw new Error(result?.error || 'Failed to queue receipt for printing');
+      }
+    } catch (error) {
+      console.error('Error printing receipt:', error);
+      toast({
+        title: "Print failed",
+        description: error.message || "Failed to print receipt.",
+        variant: "destructive",
+      });
+    }
   }
 
-  // Calculate running balance for display
-  // We will calculate it backwards from the current customer balance
-  // assuming the ledger is sorted by date (which it is from backend)
-  const getLedgerWithBalance = () => {
-    if (!customer) return ledger;
-    
-    // Sort descending (newest first)
-    const sortedLedger = [...ledger].sort((a, b) => new Date(b.date) - new Date(a.date));
-    
-    let currentBalance = customer.balance;
-    
-    // We only can accurately calculate backwards if we assume the latest transaction in the ledger
-    // corresponds to the current balance state, OR if we display relative to current balance.
-    // BUT: There might be transactions AFTER the 'toDate' if 'toDate' is in the past.
-    // So working backwards from current balance is risky if we don't have ALL transactions from now.
-    
-    // Simplified approach: Just show the transactions and their individual amounts.
-    // Displaying "Balance" column might be misleading if we don't have full history.
-    // However, the user requested "Balance".
-    
-    // Let's try to calculate it assuming we have the latest transactions.
-    return sortedLedger.map((entry, index) => {
-       const entryBalance = currentBalance;
-       
-       // Prepare balance for next row (older entry)
-       // If entry is CREDIT (Added to balance), then previous balance was LOWER.
-       // Prev + Credit = Current => Prev = Current - Credit.
-       // If entry is DEBIT (Subtracted from balance), then previous balance was HIGHER.
-       // Prev - Debit = Current => Prev = Current + Debit.
-       
-       if (entry.entryType === 'CREDIT') {
-         currentBalance -= entry.amount;
-       } else {
-         currentBalance += entry.amount;
-       }
-       
-       return { ...entry, runningBalance: entryBalance };
-    });
-  };
+  const handleMarkAsPaid = async (saleId) => {
+    try {
+      const result = await window.electronAPI.realmOperation('updateSalePaidStatus', {
+        saleId,
+        paidStatus: true
+      })
+      if (result.success) {
+        toast({
+          title: "Success",
+          description: "Sale marked as paid successfully"
+        })
+        fetchCustomerSales()
+      } else {
+        toast({
+          title: "Error",
+          description: "Failed to update sale status",
+          variant: "destructive"
+        })
+      }
+    } catch (error) {
+      console.error('Error updating sale:', error)
+      toast({
+        title: "Error",
+        description: "An error occurred while updating sale",
+        variant: "destructive"
+      })
+    }
+  }
 
-  const ledgerWithBalance = getLedgerWithBalance();
+  const ledgerWithBalance = [...ledger].sort((a, b) => new Date(b.date) - new Date(a.date));
 
 
   if (!customer) {
@@ -331,7 +398,7 @@ export default function CustomerDetail() {
                   <CardTitle className="text-3xl font-bold">{customer.name}</CardTitle>
 
                   {
-                    role && (role === 'Admin' || role === 'Operator') && 
+                    canWriteCustomers && 
                     <CardFooter className="flex justify-end">
                       <Button onClick={() => setIsEditing(true)}>Edit Customer</Button>
                     </CardFooter>
@@ -359,13 +426,35 @@ export default function CustomerDetail() {
                   </div>
                 </TabsContent>
                 <TabsContent value="insights" className="mt-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                     <Card>
                       <CardHeader>
                         <CardTitle className="text-xl font-semibold">Current Balance</CardTitle>
                       </CardHeader>
                       <CardContent>
                         <div className="text-3xl font-bold text-primary">KSH {customer.balance.toLocaleString()}</div>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-xl font-semibold">Monthly Revenue</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        <div className="text-3xl font-bold text-primary">KSH {monthlyRevenue.toLocaleString()}</div>
+                        <p className="text-sm text-muted-foreground">
+                          Revenue generated by this customer in {new Date().toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                        </p>
+                      </CardContent>
+                    </Card>
+                    <Card>
+                      <CardHeader>
+                        <CardTitle className="text-xl font-semibold">Previous Month Revenue</CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-2">
+                        <div className="text-3xl font-bold text-primary">KSH {previousMonthRevenue.toLocaleString()}</div>
+                        <p className="text-sm text-muted-foreground">
+                          Revenue generated by this customer in {new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+                        </p>
                       </CardContent>
                     </Card>
                   </div>
@@ -436,6 +525,7 @@ export default function CustomerDetail() {
                                 <TableHead>Total Amount</TableHead>
                                 <TableHead>Payment Method</TableHead>
                                 <TableHead>Sale Type</TableHead>
+                                <TableHead>Status</TableHead>
                                 <TableHead className="text-right">Items</TableHead>
                                 <TableHead className="text-right">Actions</TableHead>
                               </TableRow>
@@ -450,7 +540,7 @@ export default function CustomerDetail() {
                                       day: 'numeric'
                                     })}
                                   </TableCell>
-                                  <TableCell>KSH {sale.totalAmount.toLocaleString()}</TableCell>
+                                  <TableCell>KSH {Number(sale.netTotalAmount ?? sale.totalAmount ?? 0).toLocaleString()}</TableCell>
                                   <TableCell>
                                     <Badge variant="secondary" className="flex items-center gap-1">
                                       <CreditCardIcon className="h-3 w-3" />
@@ -463,8 +553,27 @@ export default function CustomerDetail() {
                                       {sale.saleType}
                                     </Badge>
                                   </TableCell>
+                                  <TableCell>
+                                    {sale.paid ? (
+                                      <Badge variant="success" className="bg-green-500">Paid</Badge>
+                                    ) : (
+                                      <Badge variant="destructive">Unpaid</Badge>
+                                    )}
+                                  </TableCell>
                                   <TableCell className="text-right">{sale.totalItems}</TableCell>
                                   <TableCell className="text-right">
+                                    <div className="flex items-center justify-end gap-2">
+                                    {!sale.paid && canConfirmPayment && (
+                                      <Button
+                                        variant="default"
+                                        size="sm"
+                                        className="flex items-center gap-1 h-8"
+                                        onClick={() => handleMarkAsPaid(sale._id)}
+                                      >
+                                        <Check className="h-3 w-3" />
+                                        Mark Paid
+                                      </Button>
+                                    )}
                                     <Dialog>
                                       <DialogTrigger asChild>
                                         <Button
@@ -544,13 +653,14 @@ export default function CustomerDetail() {
                                           )}
                                         </ScrollArea>
                                         <DialogFooter>
-                                          <Button onClick={handlePrint} className="flex items-center gap-1">
+                                          <Button onClick={() => handlePrint(sale)} className="flex items-center gap-1">
                                             <PrinterIcon className="h-4 w-4" />
                                             Print
                                           </Button>
                                         </DialogFooter>
                                       </DialogContent>
                                     </Dialog>
+                                    </div>
                                   </TableCell>
                                 </TableRow>
                               ))}
@@ -667,9 +777,9 @@ export default function CustomerDetail() {
                             </TableHeader>
                             <TableBody>
                               {ledgerWithBalance.map((entry) => (
-                                <TableRow key={entry.ref}>
+                                <TableRow key={entry._id || entry.ref}>
                                   <TableCell className="font-medium">
-                                    {new Date(entry.date).toLocaleDateString('en-US', {
+                                    {new Date(entry.date).toLocaleString('en-US', {
                                       year: 'numeric',
                                       month: 'short',
                                       day: 'numeric',
@@ -700,7 +810,7 @@ export default function CustomerDetail() {
                                     ) : '-'}
                                   </TableCell>
                                   <TableCell className="text-right font-bold">
-                                    KSH {entry.runningBalance.toLocaleString()}
+                                    KSH {Number(entry.runningBalance ?? 0).toLocaleString()}
                                   </TableCell>
                                 </TableRow>
                               ))}

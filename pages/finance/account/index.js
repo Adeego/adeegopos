@@ -105,7 +105,7 @@ export default function Account() {
               <TableRow className="text-base">
                 <TableHead className="text-left">Name</TableHead>
                 <TableHead className="text-left">Account Number</TableHead>
-                <TableHead className="hidden md:table-cell text-left">Bank</TableHead>
+                <TableHead className="hidden md:table-cell text-left">Type</TableHead>
                 <TableHead className="hidden md:table-cell text-left">Balance</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
@@ -115,7 +115,7 @@ export default function Account() {
                 <TableRow key={a._id} className="text-base">
                   <TableCell className="text-left font-medium">{a.name}</TableCell>
                   <TableCell className="text-left">{a.accountNumber}</TableCell>
-                  <TableCell className="hidden md:table-cell text-left">{a.bank}</TableCell>
+                  <TableCell className="hidden md:table-cell text-left">{a.accountType}</TableCell>
                   <TableCell className="hidden md:table-cell text-left">KES {a.balance}</TableCell>
                   <TableCell className="text-right">
                     <Button onClick={() => router.push(`/finance/account/${a._id}`)}>View</Button>

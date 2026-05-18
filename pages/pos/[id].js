@@ -7,11 +7,24 @@ import { CalendarIcon, CreditCardIcon, UserIcon, TagIcon, CheckCircleIcon, XCirc
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Printer } from 'lucide-react'
+import SaleReconciliationDialog from '@/components/reconciliation/SaleReconciliationDialog';
+import ReconciliationHistory from '@/components/reconciliation/ReconciliationHistory';
+
+const formatPaymentBreakdown = (sale = {}) => {
+  if (!Array.isArray(sale.paymentBreakdown) || sale.paymentBreakdown.length === 0 || sale.paymentMethod !== 'HYBRID') {
+    return sale.paymentMethod;
+  }
+
+  return sale.paymentBreakdown
+    .map((payment) => `${payment.method}: KES ${Number(payment.amount || 0).toFixed(2)}`)
+    .join(', ');
+};
 
 export default function ViewSale() {
   const [sale, setSale] = useState(null);
   const [customer, setCustomer] = useState([])
   const [customerId, setCustomerId] = useState(null)
+  const [reconciliations, setReconciliations] = useState([])
   const router = useRouter();
   const { id } = router.query;
 
@@ -26,6 +39,12 @@ export default function ViewSale() {
       fetchCustomer(customerId);
     }
   }, [customerId])
+
+  useEffect(() => {
+    if (id && sale?.storeNo) {
+      fetchReconciliations();
+    }
+  }, [id, sale?.storeNo])
 
   const fetchCustomer = async () => {
     try {
@@ -45,11 +64,24 @@ export default function ViewSale() {
     const result = await window.electronAPI.realmOperation('getSaleById', saleId);
     if (result.success) {
       setSale(result.data);
-      setCustomerId(result.data.customerId)
+      setCustomerId(result.data.currentCustomerId || result.data.customerId)
     } else {
       console.error('Failed to fetch sale');
     }
   };
+
+  const fetchReconciliations = async () => {
+    try {
+      const result = await window.electronAPI.realmOperation('getReconciliationBySource', 'sale', id, sale?.storeNo);
+      if (result.success) {
+        setReconciliations(result.reconciliations || []);
+      } else {
+        console.error('Failed to fetch reconciliations:', result.error);
+      }
+    } catch (error) {
+      console.error('Error fetching reconciliations:', error);
+    }
+  }
 
   const handlePrint = async () => {
     try {
@@ -70,7 +102,14 @@ export default function ViewSale() {
 
   return (
     <div className="space-y-6 p-6 bg-background">
-      <div className="flex justify-end">
+      <div className="flex justify-end gap-2">
+        <SaleReconciliationDialog
+          sale={sale}
+          onSuccess={() => {
+            fetchSale(id);
+            fetchReconciliations();
+          }}
+        />
         <Button onClick={handlePrint} className="gap-2">
           <Printer className="h-4 w-4" />
           Print Receipt
@@ -84,11 +123,17 @@ export default function ViewSale() {
           <CardContent className="p-6">
             <div className="grid grid-cols-2 gap-6">
               <InfoItem icon={<UserIcon className="w-5 h-5" />} label="Sale Type" value={sale.saleType} />
-              <InfoItem icon={<CreditCardIcon className="w-5 h-5" />} label="Total Amount" value={`KES ${Number(sale.totalAmount || 0).toFixed(2)}`} />
-              <InfoItem icon={<CreditCardIcon className="w-5 h-5" />} label="Payment Method" value={sale.paymentMethod} />
+              <InfoItem icon={<CreditCardIcon className="w-5 h-5" />} label="Net Amount" value={`KES ${Number(sale.netTotalAmount ?? sale.totalAmount ?? 0).toFixed(2)}`} />
+              <InfoItem icon={<CreditCardIcon className="w-5 h-5" />} label="Transaction Cost" value={`KES ${Number(sale.transactionCost || 0).toFixed(2)}`} />
+              <InfoItem icon={<CreditCardIcon className="w-5 h-5" />} label="Payment Method" value={formatPaymentBreakdown(sale)} />
               <InfoItem icon={<CalendarIcon className="w-5 h-5" />} label="Date" value={new Date(sale.createdAt).toLocaleString()} />
               <InfoItem icon={<ShoppingBasketIcon className="w-5 h-5" />} label="Items" value={sale.totalItems.toString()} />
               <InfoItem icon={<TagIcon className="w-5 h-5" />} label="Type" value={sale.fullfilmentType} />
+              <InfoItem
+                icon={<TagIcon className="w-5 h-5" />}
+                label="Status"
+                value={<Badge variant={sale.status === 'voided' ? 'destructive' : 'secondary'}>{sale.status || 'posted'}</Badge>}
+              />
             </div>
           </CardContent>
         </Card>
@@ -128,12 +173,13 @@ export default function ViewSale() {
                   <TableHead>Name</TableHead>
                   <TableHead>Conversion Factor</TableHead>
                   <TableHead>Quantity</TableHead>
-                  <TableHead>Unit Price</TableHead>
-                  <TableHead>Subtotal</TableHead>
-                  <TableHead>Discount</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
+                <TableHead>Unit Price</TableHead>
+                <TableHead>Subtotal</TableHead>
+                <TableHead>Discount</TableHead>
+                <TableHead>Remaining Returnable</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
                 {sale.items.map((item) => (
                   <TableRow key={item._id}>
                     <TableCell className="font-medium">{item.name}</TableCell>
@@ -142,6 +188,7 @@ export default function ViewSale() {
                     <TableCell>KES {Number(item.unitPrice).toFixed(2)}</TableCell>
                     <TableCell>KES {Number(item.subtotal).toFixed(2)}</TableCell>
                     <TableCell>KES {Number(item.discount).toFixed(2)}</TableCell>
+                    <TableCell>{sale.remainingReturnableByLine?.[item._id] ?? item.quantity}</TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -149,6 +196,8 @@ export default function ViewSale() {
           </div>
         </CardContent>
       </Card>
+
+      <ReconciliationHistory reconciliations={reconciliations} />
     </div>
   );
 }

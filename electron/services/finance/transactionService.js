@@ -1,216 +1,161 @@
-// Create a new transaction
+const {
+  postTransaction,
+  shouldIncludeTransactionInMetrics,
+  toNumber,
+} = require('../postingService');
+
+function startOfDay(date = new Date()) {
+  const next = new Date(date);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function endOfDay(date = new Date()) {
+  const next = new Date(date);
+  next.setHours(23, 59, 59, 999);
+  return next;
+}
+
+function toDateValue(value) {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function decorateTransaction(transaction = {}) {
+  return {
+    ...transaction,
+    status: transaction.status || 'posted',
+  };
+}
+
+async function getStoreTransactions(db, storeNo) {
+  const result = await db.find({
+    selector: {
+      type: 'transaction',
+      state: 'Active',
+      ...(storeNo ? { storeNo } : {}),
+    },
+    limit: 9999,
+  });
+
+  return (result.docs || [])
+    .map(decorateTransaction)
+    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+}
+
 async function createTransaction(db, transactionData) {
   try {
-    // Validate transaction data
     if (!transactionData.from || !transactionData.to || !transactionData.amount) {
       throw new Error('Missing required fields');
     }
 
-    // Get source and destination documents
-    let sourceDoc, destDoc;
-    
-    if (transactionData.source === 'account') {
-      sourceDoc = await db.get(transactionData.from);
-    } else {
-      const sourceResult = await db.find({
-        selector: {
-          _id: transactionData.from,
-          type: transactionData.source
-        }
-      });
-      sourceDoc = sourceResult.docs[0];
+    const result = await postTransaction(db, transactionData, { direction: 1 });
+    if (!result.success) {
+      return result;
     }
-
-    if (transactionData.destination === 'account') {
-      destDoc = await db.get(transactionData.to);
-    } else {
-      const destResult = await db.find({
-        selector: {
-          _id: transactionData.to,
-          type: transactionData.destination
-        }
-      });
-      destDoc = destResult.docs[0];
-    }
-
-    if (!sourceDoc || !destDoc) {
-      throw new Error('Source or destination not found');
-    }
-
-    // Validate balance for withdrawals
-    if (transactionData.transType === 'withdraw' && sourceDoc.balance < transactionData.amount) {
-      throw new Error('Insufficient balance in source account');
-    }
-
-    if (transactionData.transType === 'deposit' && transactionData.source === 'account' && sourceDoc.balance < transactionData.amount) {
-      throw new Error('Insufficient balance in source account');
-    }
-
-    // Update balances
-    if (transactionData.transType === 'withdraw') {
-      if (transactionData.destination === 'account') {
-        sourceDoc.balance -= transactionData.amount;
-        destDoc.balance += transactionData.amount;
-      } else if (transactionData.destination !== 'account') {
-        sourceDoc.balance -= transactionData.amount;
-        destDoc.balance -= transactionData.amount;
-      }
-      // if (transactionData.source === 'account') {
-      //   sourceDoc.balance -= transactionData.amount;
-      // }
-      // if (transactionData.destination === 'account') {
-      // destDoc.balance += transactionData.amount;
-      // }
-    } else if (transactionData.transType === 'deposit') {
-      if (transactionData.source === 'account') {
-        sourceDoc.balance -= transactionData.amount;
-        destDoc.balance += transactionData.amount;
-      } else if (transactionData.source !== 'account') {
-        sourceDoc.balance += transactionData.amount;
-        destDoc.balance += transactionData.amount;
-      }
-
-      // if (transactionData.source === 'account') {
-      //   sourceDoc.balance += transactionData.amount;
-      // }
-      // if (transactionData.destination === 'account') {
-      //   destDoc.balance += transactionData.amount;
-      // }
-    }
-
-    // Create transaction record
-    const transaction = {
-      _id: transactionData._id,
-      from: transactionData.from,
-      to: transactionData.to,
-      source: transactionData.source,
-      destination: transactionData.destination,
-      description: transactionData.description,
-      amount: transactionData.amount,
-      transactionCost: transactionData.transactionCost || 0,
-      date: transactionData.date,
-      transType: transactionData.transType,
-      storeNo: transactionData.storeNo,
-      type: "transaction",
-      state: "Active",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-
-    // Update documents in database
-    await db.put(sourceDoc);
-    await db.put(destDoc);
-    await db.put(transaction);
 
     return {
       success: true,
-      transaction: { _id: transaction._id, ...transaction }
+      transaction: decorateTransaction(result.transaction),
+      ledgerEntries: result.ledgerEntries,
     };
   } catch (error) {
     return { success: false, error: error.message };
   }
 }
-  
-// Get all transactions
-function getAllTransactions(db, storeNo) {
-  if (!storeNo) {
-    return Promise.resolve({ success: false, error: "storeNo is required" });
-  }
-  return db
-    .find({
-      selector: { 
-        type: "transaction",
-        state: "Active",
-        storeNo: storeNo,
-      },
-      limit: 9999,
-    })
-    .then((result) => ({ success: true, transactions: result.docs }))
-    .catch((error) => ({ success: false, error: error.message }));
-}
 
-// Get today's transactions
-function getTodayTransactions(db, storeNo) {
-  if (!storeNo) {
-    return Promise.resolve({ success: false, error: "storeNo is required" });
-  }
-  // Get today's date in ISO format (just the date part)
-  const today = new Date().toISOString().split('T')[0];
-  
-  return db
-    .find({
-      selector: { 
-        type: "transaction",
-        state: "Active",
-        storeNo: storeNo,
-        createdAt: { $regex: `^${today}` }
-      },
-      limit: 9999,
-    })
-    .then((result) => {
-      if (!result || !result.docs) {
-        return { success: false, error: "No results found" };
-      }
-      return { 
-        success: true, 
-        transactions: result.docs.filter(trans => trans && trans.destination === "supplier") 
-      };
-    })
-    .catch((error) => ({ success: false, error: error.message }));
-}
-
-// Get a transaction by ID
-function getTransactionById(db, transactionId) {
-  return db
-    .get(transactionId)
-    .then((transaction) => ({ success: true, transaction }))
-    .catch((error) => ({ success: false, error: error.message }));
-}
-
-// Update an existing transaction
-function updateTransaction(db, transactionData) {
-  const transaction = {
-    _id: transactionData._id,
-    type: "transaction",
-    state: "Active",
-    ...transactionData,
-    updatedAt: new Date().toISOString()
-  };
-  return db
-    .put(transaction)
-    .then((response) => ({
-      success: true,
-      transaction: { _id: response.id, ...transaction },
-    }))
-    .catch((error) => ({ success: false, error: error.message }));
-}
-
-// Delete a transaction
-function archiveTransaction(db, transactionId) {
-  return db
-    .get(transactionId)
-    .then((transaction) => {
-      transaction.state = "Inactive";
-      transaction.updatedAt = new Date().toISOString();
-      return db.put(transaction);
-    })
-    .then(() => ({ success: true }))
-    .catch((error) => ({ success: false, error: error.message }));
-}
-
-async function searchCSS(db, searchTerm, type) {
+async function getAllTransactions(db, storeNo) {
   try {
-    const searchResult = await db.find({
+    const transactions = await getStoreTransactions(db, storeNo);
+    return { success: true, transactions, data: transactions };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+async function getTodayTransactions(db, storeNo) {
+  try {
+    const fromDate = startOfDay();
+    const toDate = endOfDay();
+    const transactions = (await getStoreTransactions(db, storeNo)).filter((transaction) => {
+      const createdAt = toDateValue(transaction.createdAt);
+      return createdAt && createdAt >= fromDate && createdAt <= toDate && transaction.destination === 'supplier';
+    });
+
+    return { success: true, transactions };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+function getTransactionById(db, transactionId) {
+  return db.get(transactionId)
+    .then((transaction) => ({ success: true, transaction: decorateTransaction(transaction) }))
+    .catch((error) => ({ success: false, error: error.message }));
+}
+
+async function updateTransaction(db, transactionData) {
+  try {
+    const existingTransaction = await db.get(transactionData._id);
+
+    if (existingTransaction.locked !== false) {
+      return { success: false, error: 'Posted transactions are locked. Use reconciliation instead.' };
+    }
+
+    const transaction = {
+      ...existingTransaction,
+      ...transactionData,
+      updatedAt: new Date().toISOString(),
+    };
+
+    const response = await db.put(transaction);
+    return {
+      success: true,
+      transaction: { _id: response.id, ...decorateTransaction(transaction) },
+    };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+async function archiveTransaction(db, transactionId) {
+  try {
+    const transaction = await db.get(transactionId);
+
+    if ((transaction.status || 'posted') === 'posted' || transaction.reversalOfId || transaction.replacementOfId || transaction.locked !== false) {
+      return { success: false, error: 'Posted transactions can no longer be deleted. Use reconciliation instead.' };
+    }
+
+    transaction.state = 'Inactive';
+    transaction.updatedAt = new Date().toISOString();
+    await db.put(transaction);
+
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+async function searchCSS(db, searchTerm, type, storeNo) {
+  try {
+    const result = await db.find({
       selector: {
         $or: [
-          { name: { $regex: new RegExp(searchTerm, 'i') } },
-          { phoneNumber: { $regex: new RegExp(searchTerm, 'i') } }
+          { name: { $regex: new RegExp(searchTerm || '', 'i') } },
+          { phoneNumber: { $regex: new RegExp(searchTerm || '', 'i') } },
         ],
-        state: "Active",
-        type: type
-      }
+        state: 'Active',
+        type,
+        ...(storeNo ? { storeNo } : {}),
+      },
+      limit: 100,
     });
-    return { success: true, result: searchResult.docs };
+
+    return { success: true, result: result.docs };
   } catch (error) {
     return { success: false, error: error.message };
   }
@@ -224,4 +169,6 @@ module.exports = {
   archiveTransaction,
   searchCSS,
   getTodayTransactions,
+  shouldIncludeTransactionInMetrics,
+  toNumber,
 };

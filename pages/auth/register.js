@@ -27,6 +27,7 @@ export default function Register() {
     lastName: '',
     phone: '',
     role: 'Admin',
+    roles: ['admin'],
     passcode: ''
   });
   const [storeNo, setStoreNo] = useState('');
@@ -98,7 +99,7 @@ export default function Register() {
 
         if (staffResult.success) {
           addWsinfo(wholesalerResult.wholeSaler);
-          router.push('/');
+          router.push('/home');
         } else {
           console.error('Failed to create staff:', staffResult.error);
         }

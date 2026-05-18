@@ -8,6 +8,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import AddStaff from '@/components/staff/addStaff';
 import { useRouter } from 'next/router';
 import useWsinfoStore from '@/stores/wsinfo';
+import useStaffStore from '@/stores/staffStore';
+import { can, getRoleLabels } from '@/lib/rbac';
 
 export default function Staff() {
   const [staff, setStaff] = useState([]);
@@ -17,6 +19,7 @@ export default function Staff() {
   const [searchTerm, setSearchTerm] = useState('');
   const router = useRouter();
   const store = useWsinfoStore((state) => state.wsinfo);
+  const currentStaffUser = useStaffStore((state) => state.staff);
   const [storeNo, setStoreNo] = useState('');
 
   useEffect(() => {
@@ -34,6 +37,7 @@ export default function Staff() {
   useEffect(() => {
     const filtered = staff.filter(s =>
       (s.firstName && s.firstName.toLowerCase().includes(searchTerm.toLowerCase())) ||
+      (s.phone && s.phone.includes(searchTerm)) ||
       (s.phoneNumber && s.phoneNumber.includes(searchTerm))
     );
     setFilteredStaff(filtered);
@@ -69,10 +73,10 @@ export default function Staff() {
           <div>
             <CardTitle className="text-left">Staff</CardTitle>
             <CardDescription className="text-left">
-              Manage your staff members.
+              {can(currentStaffUser, 'staff:manageRoles') ? 'Manage your staff members.' : 'View staff members.'}
             </CardDescription>
           </div>
-          <AddStaff fetchStaff={fetchStaff} />
+          {can(currentStaffUser, 'staff:manageRoles') && <AddStaff fetchStaff={fetchStaff} />}
         </div>
       </CardHeader>
       <CardContent>
@@ -113,7 +117,7 @@ export default function Staff() {
                 <TableRow key={s._id} className="text-base">
                   <TableCell className="text-left font-medium">{s.firstName} {s.lastName}</TableCell>
                   <TableCell className="text-left">{s.phone}</TableCell>
-                  <TableCell className="hidden md:table-cell text-left">{s.role}</TableCell>
+                  <TableCell className="hidden md:table-cell text-left">{getRoleLabels(s).join(', ') || s.role}</TableCell>
                   <TableCell className="hidden md:table-cell text-left">KES {s.salary}</TableCell>
                   <TableCell className="text-right">
                     <Button onClick={() => router.push(`/staff/${s._id}`)}>View</Button>

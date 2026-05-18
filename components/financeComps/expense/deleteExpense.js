@@ -16,7 +16,7 @@ export default function DeleteExpense({expenseId, expenseDescription, storeNo}) 
           title: "Success",
           description: `Expense ${expenseDescription} has been deleted.`,
         });
-        router.push('/finance');
+        router.push('/finance?view=expenses');
       } else {
         throw new Error(result.error);
       }

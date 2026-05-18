@@ -82,6 +82,9 @@ export default function EditProduct({ product, handleEditState, fetchSelectedPro
             <div className="space-y-2">
               <Label htmlFor="buyPrice">Buy Price</Label>
               <Input id="buyPrice" name="buyPrice" type="number" value={formData.buyPrice} onChange={handleInputChange} />
+              <p className="text-xs text-muted-foreground">
+                Variant selling prices are recalculated during restock, not from this edit screen.
+              </p>
             </div>
             <div className="space-y-2">
               <Label htmlFor="barCode">Bar Code</Label>
@@ -104,7 +107,18 @@ export default function EditProduct({ product, handleEditState, fetchSelectedPro
             </div>
             <div className="space-y-2">
               <Label htmlFor="category">Category</Label>
-              <Input id="category" name="category" value={formData.category} onChange={handleInputChange} />
+              <Select onValueChange={(value) => setFormData(prev => ({ ...prev, category: value }))} defaultValue={formData.category}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select category" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="Primary">Primary</SelectItem>
+                  <SelectItem value="Secondary">Secondary</SelectItem>
+                  <SelectItem value="Perishable">Perishable</SelectItem>
+                  <SelectItem value="Drinks">Drinks</SelectItem>
+                  <SelectItem value="Reserve">Reserve</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div className="space-y-2">
               <Label htmlFor="stockLevel">Stock Level</Label>

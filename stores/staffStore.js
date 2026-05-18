@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
+import { normalizeStaff } from '@/lib/rbac';
 
 const useStaffStore = create(
   persist(
@@ -10,13 +11,14 @@ const useStaffStore = create(
         lastName: '',
         phone: '',
         role: '',
+        roles: [],
         salary: null,
         storeNo: '',
         createdAt: null,
         updatedAt: null
       },
-      addStaff: (staffData) => set({ staff: staffData }),
-      updateStaff: (updatedData) => set((state) => ({ staff: { ...state.staff, ...updatedData } })),
+      addStaff: (staffData) => set({ staff: normalizeStaff(staffData) }),
+      updateStaff: (updatedData) => set((state) => ({ staff: normalizeStaff({ ...state.staff, ...updatedData }) })),
       deleteStaff: () => set({
         staff: {
           _id: null,
@@ -24,6 +26,7 @@ const useStaffStore = create(
           lastName: '',
           phone: '',
           role: '',
+          roles: [],
           salary: null,
           createdAt: null,
           updatedAt: null

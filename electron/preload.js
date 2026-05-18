@@ -16,12 +16,16 @@ contextBridge.exposeInMainWorld("electronAPI", {
         ipcRenderer.send(channel, args);
     },
 
-    signInStaff: (phoneNumber, passcode) => ipcRenderer.invoke('sign-in-staff', phoneNumber, passcode),
-    searchCustomers: (name) => ipcRenderer.invoke('search-customers', name),
+    setAuthenticatedStaff: (staff) => ipcRenderer.invoke('set-authenticated-staff', staff),
+    signInStaff: (phoneNumber, passcode, storeNo) => ipcRenderer.invoke('sign-in-staff', phoneNumber, passcode, storeNo),
+    searchCustomers: (name, storeNo) => ipcRenderer.invoke('search-customers', name, storeNo),
     searchVariants: (searchTerm, storeNo) => ipcRenderer.invoke('search-variants', searchTerm, storeNo),
     searchProducts: (searchTerm, storeNo) => ipcRenderer.invoke('search-products', searchTerm, storeNo),
-    searchCSS: (searchTerm, type) => ipcRenderer.invoke('search-css', searchTerm, type),
+    searchCSS: (searchTerm, type, storeNo) => ipcRenderer.invoke('search-css', searchTerm, type, storeNo),
     restock: (task, ...args) => ipcRenderer.invoke('restock', task, ...args),
+    openAIAuthStatus: () => ipcRenderer.invoke('openai-auth-status'),
+    openAIAuthLogin: () => ipcRenderer.invoke('openai-auth-login'),
+    openAIAuthLogout: () => ipcRenderer.invoke('openai-auth-logout'),
     aiAnalysis: (metrics, onData, onComplete, onError) => {
       const responseHandler = (_event, data) => {
         if (data.done) {
@@ -43,6 +47,33 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.on('aiAnalysis-error', errorHandler);
       ipcRenderer.send('aiAnalysis-start', metrics);
     },
+    // AI Assistant
+    aiAssistantChat: (sessionId, message, storeNo, onChunk, onToolCall, onDone, onError) => {
+      const chunkHandler = (_event, data) => onChunk(data.chunk);
+      const toolHandler = (_event, data) => onToolCall(data.toolName);
+      const doneHandler = (_event, data) => {
+        onDone();
+        ipcRenderer.removeListener('ai-assistant-chunk', chunkHandler);
+        ipcRenderer.removeListener('ai-assistant-tool', toolHandler);
+        ipcRenderer.removeListener('ai-assistant-done', doneHandler);
+        ipcRenderer.removeListener('ai-assistant-error', errorHandler);
+      };
+      const errorHandler = (_event, data) => {
+        onError(data.error);
+        ipcRenderer.removeListener('ai-assistant-chunk', chunkHandler);
+        ipcRenderer.removeListener('ai-assistant-tool', toolHandler);
+        ipcRenderer.removeListener('ai-assistant-done', doneHandler);
+        ipcRenderer.removeListener('ai-assistant-error', errorHandler);
+      };
+
+      ipcRenderer.on('ai-assistant-chunk', chunkHandler);
+      ipcRenderer.on('ai-assistant-tool', toolHandler);
+      ipcRenderer.on('ai-assistant-done', doneHandler);
+      ipcRenderer.on('ai-assistant-error', errorHandler);
+      ipcRenderer.send('ai-assistant-chat', { sessionId, message, storeNo });
+    },
+    aiAssistantClear: (sessionId) => ipcRenderer.invoke('ai-assistant-clear', sessionId),
+
     message: (sms, ...args) => ipcRenderer.invoke('message', sms, ...args),
     realmOperation: (operation, ...args) => ipcRenderer.invoke('realm-operation', operation, ...args),
     getSyncStatus: () => ipcRenderer.invoke('get-sync-status'),
@@ -67,6 +98,14 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.on('restock-triggered', subscription);
       return () => {
         ipcRenderer.removeListener('restock-triggered', subscription);
+      };
+    },
+
+    onRestockReportGenerated: (callback) => {
+      const subscription = (_event, data) => callback(data);
+      ipcRenderer.on('restock-report-generated', subscription);
+      return () => {
+        ipcRenderer.removeListener('restock-report-generated', subscription);
       };
     },
 

@@ -1,3 +1,12 @@
+const {
+  getSaleNetAmount,
+  getSaleNetCost,
+  getSalePaymentBreakdown,
+  shouldIncludeSaleInMetrics,
+  shouldIncludeTransactionInMetrics,
+  toNumber,
+} = require('./postingService');
+
 // Function to get today's sales metrics including revenue, number of sales, and profit
 function getTodaysSalesMetrics(db) {
   const today = new Date();
@@ -15,23 +24,28 @@ function getTodaysSalesMetrics(db) {
     let totalRevenue = 0;
     let totalCost = 0;
     let customerCredit = 0;
-    const numberOfSales = docs.length;
+    let numberOfSales = 0;
 
     docs.forEach(sale => {
-      // Calculate revenue
-      totalRevenue += Number(sale.totalAmount) || 0;
-
-      // Calculate customer credit (total revenue from credit sales)
-      if (sale.paymentMethod === 'CREDIT') {
-        customerCredit += Number(sale.totalAmount) || 0;
+      if (!shouldIncludeSaleInMetrics(sale)) {
+        return;
       }
 
-      // Calculate total cost of products
-      sale.items.forEach(item => {
-        const quantity = Number(item.quantity) || 0;
-        const buyPrice = Number(item.buyPrice) || 0;
-        totalCost += quantity * buyPrice;
+      numberOfSales += 1;
+
+      // Calculate revenue
+      totalRevenue += getSaleNetAmount(sale);
+
+      // Calculate customer credit (total revenue from credit sales)
+      const sign = getSaleNetAmount(sale) < 0 ? -1 : 1;
+      getSalePaymentBreakdown(sale).forEach((payment) => {
+        if (payment.method === 'CREDIT') {
+          customerCredit += (Math.abs(toNumber(payment.amount)) * sign);
+        }
       });
+
+      // Calculate total cost of products
+      totalCost += getSaleNetCost(sale);
     });
 
     // Calculate profit
@@ -182,6 +196,10 @@ function getHourlySalesData(db) {
 
     // Aggregate sales by hour
     result.docs.forEach(sale => {
+      if (!shouldIncludeSaleInMetrics(sale)) {
+        return;
+      }
+
       const saleHour = new Date(sale.createdAt).getHours();
       // Find the corresponding hour index in our hourlyData array
       const hourIndex = hourlyData.findIndex(data => {
@@ -195,7 +213,7 @@ function getHourlySalesData(db) {
       });
 
       if (hourIndex !== -1) {
-        hourlyData[hourIndex].sales += Number(sale.totalAmount) || 0;
+        hourlyData[hourIndex].sales += getSaleNetAmount(sale);
       }
     });
 
@@ -209,8 +227,19 @@ function getHourlySalesData(db) {
   });
 }
 
+const getAccountMethod = (account) => {
+  const accountNumber = account?.accountNumber || '';
+  if (accountNumber.endsWith('001')) {
+    return 'cash';
+  }
+  if (accountNumber.endsWith('002')) {
+    return 'mpesa';
+  }
+  return null;
+};
+
 // Function to get transaction metrics including customer credits and supplier payments
-function transactionMetrics(db) {
+function transactionMetrics(db, storeNo) {
   const today = new Date();
   today.setHours(0, 0, 0, 0); // Start of today
   const endOfDay = new Date();
@@ -221,15 +250,32 @@ function transactionMetrics(db) {
   const endOfYesterday = new Date(yesterday);
   endOfYesterday.setHours(23, 59, 59, 999); // End of yesterday
 
+  const transactionSelector = {
+    type: "transaction",
+    state: "Active"
+  };
+
+  if (storeNo) {
+    transactionSelector.storeNo = storeNo;
+  }
+
+  const accountSelector = {
+    type: "account",
+    state: "Active"
+  };
+
+  if (storeNo) {
+    accountSelector.storeNo = storeNo;
+  }
+
   // Promise for today's transactions
   const todayPromise = db.find({
     selector: {
+      ...transactionSelector,
       createdAt: {
         $gte: today.toISOString(),
         $lte: endOfDay.toISOString()
-      },
-      type: "transaction", 
-      state: "Active"
+      }
     },
     limit: 100000
   });
@@ -237,43 +283,71 @@ function transactionMetrics(db) {
   // Promise for yesterday's transactions
   const yesterdayPromise = db.find({
     selector: {
+      ...transactionSelector,
       createdAt: {
         $gte: yesterday.toISOString(),
         $lte: endOfYesterday.toISOString()
-      },
-      type: "transaction",
-      state: "Active"
+      }
     },
     limit: 100000
   });
 
+  const accountsPromise = db.find({
+    selector: accountSelector,
+    limit: 9999
+  });
+
   // Function to calculate transaction metrics from documents
-  const calculateMetrics = (docs) => {
+  const calculateMetrics = (docs, accountsById) => {
     let customerCredits = 0;
     let customerCreditsCash = 0;
     let customerCreditsMpesa = 0;
+    let customerCreditsNet = 0;
+    let customerCreditsCashNet = 0;
+    let customerCreditsMpesaNet = 0;
     let supplierPayments = 0;
+    let transactionCostsCash = 0;
+    let transactionCostsMpesa = 0;
+    let transactionCostsTotal = 0;
 
     docs.forEach(transaction => {
+      if (!shouldIncludeTransactionInMetrics(transaction)) {
+        return;
+      }
+
+      const amount = toNumber(transaction.amount);
+      const transactionCost = toNumber(transaction.transactionCost);
+      const destinationMethod = transaction.destination === 'account'
+        ? getAccountMethod(accountsById[transaction.to])
+        : null;
+
       // Calculate customer credits
       if (transaction.source === 'customer') {
-        const amount = Number(transaction.amount) || 0;
         customerCredits += amount;
-        
-        // Categorize by destination account (001 = Cash, 002 = M-Pesa)
-        const destAccount = transaction.to || '';
-        if (destAccount.endsWith('001')) {
+
+        const netAmount = amount - transactionCost;
+        customerCreditsNet += netAmount;
+
+        if (destinationMethod === 'cash') {
           customerCreditsCash += amount;
-        } else if (destAccount.endsWith('002')) {
+          customerCreditsCashNet += netAmount;
+          transactionCostsCash += transactionCost;
+        } else if (destinationMethod === 'mpesa') {
           customerCreditsMpesa += amount;
+          customerCreditsMpesaNet += netAmount;
+          transactionCostsMpesa += transactionCost;
         } else {
           // Default to cash if unknown
           customerCreditsCash += amount;
+          customerCreditsCashNet += netAmount;
+          transactionCostsCash += transactionCost;
         }
+
+        transactionCostsTotal += transactionCost;
       }
       // Calculate supplier payments
       if (transaction.destination === 'supplier') {
-        supplierPayments += Number(transaction.amount) || 0;
+        supplierPayments += amount;
       }
     });
 
@@ -281,18 +355,29 @@ function transactionMetrics(db) {
         customerCredits: Number(customerCredits.toFixed(2)),
         customerCreditsCash: Number(customerCreditsCash.toFixed(2)),
         customerCreditsMpesa: Number(customerCreditsMpesa.toFixed(2)),
-        supplierPayments: Number(supplierPayments.toFixed(2))
+        customerCreditsNet: Number(customerCreditsNet.toFixed(2)),
+        customerCreditsCashNet: Number(customerCreditsCashNet.toFixed(2)),
+        customerCreditsMpesaNet: Number(customerCreditsMpesaNet.toFixed(2)),
+        supplierPayments: Number(supplierPayments.toFixed(2)),
+        transactionCostsCash: Number(transactionCostsCash.toFixed(2)),
+        transactionCostsMpesa: Number(transactionCostsMpesa.toFixed(2)),
+        transactionCostsTotal: Number(transactionCostsTotal.toFixed(2))
     };
   };
 
   // Execute both promises concurrently
-  return Promise.all([todayPromise, yesterdayPromise])
-    .then(([todayResult, yesterdayResult]) => {
+  return Promise.all([todayPromise, yesterdayPromise, accountsPromise])
+    .then(([todayResult, yesterdayResult, accountsResult]) => {
+      const accountsById = (accountsResult.docs || []).reduce((acc, account) => {
+        acc[account._id] = account;
+        return acc;
+      }, {});
+
       return {
         success: true,
         data: {
-          today: calculateMetrics(todayResult.docs),
-          yesterday: calculateMetrics(yesterdayResult.docs)
+          today: calculateMetrics(todayResult.docs, accountsById),
+          yesterday: calculateMetrics(yesterdayResult.docs, accountsById)
 }
       };
     })

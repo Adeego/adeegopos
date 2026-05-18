@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import AddProduct from './addProduct';
 import ViewProduct from './viewProduct';
 
-import { MoreHorizontal, Search, ChevronDown, ChevronUp, Eye } from "lucide-react";
+import { MoreHorizontal, Search, ChevronDown, ChevronUp, Eye, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -12,6 +12,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import useWsinfoStore from '@/stores/wsinfo';
+import useStaffStore from '@/stores/staffStore';
+import { can } from '@/lib/rbac';
 
 export default function ProductTable() {
   const [products, setProducts] = useState([]);
@@ -21,7 +23,10 @@ export default function ProductTable() {
   const [searchTerm, setSearchTerm] = useState('');
   const router = useRouter();
   const store = useWsinfoStore((state) => state.wsinfo);
+  const staff = useStaffStore((state) => state.staff);
   const [storeNo, setStoreNo] = useState('');
+  const canWriteProducts = can(staff, 'product:write');
+  const canManageStock = can(staff, 'stock:manage');
 
   useEffect(() => {
     if (store && store.storeNo) {
@@ -70,6 +75,25 @@ export default function ProductTable() {
 
   const paginate = (pageNumber) => setCurrentPage(pageNumber);
 
+  const getNearestExpiry = (product) => {
+    const batches = product.batches || [];
+    const batchesWithExpiry = batches.filter(b => b.expiryDate && b.quantity > 0);
+    if (batchesWithExpiry.length === 0) return null;
+    batchesWithExpiry.sort((a, b) => new Date(a.expiryDate) - new Date(b.expiryDate));
+    return batchesWithExpiry[0].expiryDate;
+  };
+
+  const getExpiryBadge = (expiryDate) => {
+    if (!expiryDate) return null;
+    const now = new Date();
+    const expiry = new Date(expiryDate);
+    const days = Math.ceil((expiry - now) / (1000 * 60 * 60 * 24));
+    if (days <= 0) return { text: 'Expired', cls: 'bg-red-100 text-red-700' };
+    if (days <= 7) return { text: `${days}d`, cls: 'bg-orange-100 text-orange-700' };
+    if (days <= 30) return { text: `${days}d`, cls: 'bg-yellow-100 text-yellow-700' };
+    return { text: `${days}d`, cls: 'bg-green-100 text-green-700' };
+  };
+
   const handleDownload = () => {
     const dataStr = JSON.stringify(products, null, 2);
     const dataUri = 'data:application/json;charset=utf-8,'+ encodeURIComponent(dataStr);
@@ -93,9 +117,9 @@ export default function ProductTable() {
             </CardDescription>
           </div>
           <div className=''>
-            <Button className='mr-2' onClick={handleDownload}>Download</Button>
-            <Button className='mr-2' ><Link href={`/product/restock`} >Restock</Link></Button>
-            <AddProduct fetchProducts={fetchProducts} />
+            {canWriteProducts && <Button className='mr-2' onClick={handleDownload}>Download</Button>}
+            {canManageStock && <Button className='mr-2' ><Link href={`/product/restock`} >Restock</Link></Button>}
+            {canWriteProducts && <AddProduct fetchProducts={fetchProducts} />}
           </div>
         </div>
       </CardHeader>
@@ -131,6 +155,7 @@ export default function ProductTable() {
                 <TableHead className="hidden md:table-cell text-left">Buy Price</TableHead>
                 <TableHead className="hidden md:table-cell text-left">Stock</TableHead>
                 <TableHead className="hidden md:table-cell text-left">Status</TableHead>
+                <TableHead className="hidden md:table-cell text-left">Expiry</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -142,6 +167,19 @@ export default function ProductTable() {
                     <TableCell className="hidden md:table-cell text-left">{product.buyPrice}</TableCell>
                     <TableCell className="hidden md:table-cell text-left">{product.stock}</TableCell>
                     <TableCell className="hidden md:table-cell text-left">{product.status}</TableCell>
+                    <TableCell className="hidden md:table-cell text-left">
+                      {(() => {
+                        const nearest = getNearestExpiry(product);
+                        const badge = getExpiryBadge(nearest);
+                        if (!badge) return <span className="text-muted-foreground text-xs">-</span>;
+                        return (
+                          <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${badge.cls}`}>
+                            {badge.text === 'Expired' && <AlertTriangle className="mr-1 h-3 w-3" />}
+                            {badge.text}
+                          </span>
+                        );
+                      })()}
+                    </TableCell>
                     <TableCell className="text-right">
                       <Button className="h-6 w-12" onClick={() => router.push(`/product/${product._id}`)}>View</Button>
                     </TableCell>

@@ -12,9 +12,9 @@ import { cn } from "@/lib/utils";
 import Link from 'next/link';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Card, CardDescription, CardHeader, CardTitle, CardContent, CardFooter } from '@/components/ui/card';
-import ArchiveSale from '@/components/posComps/archiveSale';
-import { Eye } from 'lucide-react';
+import { ArrowRightLeft, Eye } from 'lucide-react';
 import useWsinfoStore from '@/stores/wsinfo';
+import SaleReconciliationDialog from '@/components/reconciliation/SaleReconciliationDialog';
 
 function DatePickerWithPresets({ date, setDate }) {
   return (
@@ -120,11 +120,11 @@ export default function SalesHistory() {
     }
 
     if (minAmount) {
-      filtered = filtered.filter(sale => sale.totalAmount >= parseFloat(minAmount));
+      filtered = filtered.filter(sale => Number(sale.netTotalAmount ?? sale.totalAmount) >= parseFloat(minAmount));
     }
 
     if (maxAmount) {
-      filtered = filtered.filter(sale => sale.totalAmount <= parseFloat(maxAmount));
+      filtered = filtered.filter(sale => Number(sale.netTotalAmount ?? sale.totalAmount) <= parseFloat(maxAmount));
     }
 
     if (fulfillment) {
@@ -191,6 +191,7 @@ export default function SalesHistory() {
                     <SelectItem value="CASH">Cash</SelectItem>
                     <SelectItem value="CREDIT">Credit</SelectItem>
                     <SelectItem value="MPESA">M-Pesa</SelectItem>
+                    <SelectItem value="HYBRID">Hybrid</SelectItem>
                   </SelectContent>
                 </Select>
                 <Button onClick={() => clearFilter(setPaymentMethod)} variant="outline" size="sm">Clear</Button>
@@ -264,9 +265,11 @@ export default function SalesHistory() {
               <TableHead>Date</TableHead>
               <TableHead>Time</TableHead>
               <TableHead>Total Amount</TableHead>
+              <TableHead>Transaction Cost</TableHead>
               <TableHead>Items</TableHead>
               <TableHead>Payment Method</TableHead>
               <TableHead>Type</TableHead>
+              <TableHead>Status</TableHead>
               <TableHead></TableHead>
             </TableRow>
           </TableHeader>
@@ -275,16 +278,31 @@ export default function SalesHistory() {
               <TableRow key={sale._id}>
                 <TableCell>{new Date(sale.createdAt).toLocaleDateString()}</TableCell>
                 <TableCell>{new Date(sale.createdAt).toLocaleTimeString()}</TableCell>
-                                <TableCell>{(sale.totalAmount || 0).toFixed(2)}</TableCell>
+                <TableCell>{Number(sale.netTotalAmount ?? sale.totalAmount ?? 0).toFixed(2)}</TableCell>
+                <TableCell>{(sale.transactionCost || 0).toFixed(2)}</TableCell>
                 <TableCell>{sale.totalItems}</TableCell>
                 <TableCell>{sale.paymentMethod}</TableCell>
                 <TableCell>{sale.saleType}</TableCell>
+                <TableCell>
+                  <span className='inline-flex rounded-full border px-2 py-1 text-xs font-medium'>
+                    {sale.status || 'posted'}
+                  </span>
+                </TableCell>
                 <TableCell>
                   <div className=' flex flex-row gap-2 ' >
                     <Link href={`/pos/${sale._id}`} passHref className='h-8 w-8 flex justify-center items-center rounded-md hover:bg-neutral-200' >
                       <Eye />
                     </Link>
-                    <ArchiveSale saleId={sale._id} onDeleteSuccess={fetchSales} />
+                    <SaleReconciliationDialog
+                      sale={sale}
+                      onSuccess={fetchSales}
+                      trigger={
+                        <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 px-2 text-xs">
+                          <ArrowRightLeft className="h-3.5 w-3.5" />
+                          Reconcile
+                        </Button>
+                      }
+                    />
                   </div>
                 </TableCell>
               </TableRow>

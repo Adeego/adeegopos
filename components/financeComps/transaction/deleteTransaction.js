@@ -16,7 +16,7 @@ export default function DeleteTransaction({onDeleteSuccess, transactionId, trans
           title: "Success",
           description: `Transaction ${transactionDescription} has been deleted.`,
         });
-        router.push("/finance");
+        router.push("/finance?view=transactions");
       } else {
         throw new Error(result.error);
       }

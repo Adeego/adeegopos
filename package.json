@@ -1,7 +1,7 @@
 {
   "name": "adeegopos",
   "description": "POS App",
-  "version": "0.6.4",
+  "version": "0.7.0",
   "private": true,
   "main": "electron/main.js",
   "scripts": {
@@ -10,7 +10,7 @@
     "copy:ubuntu-env": "cp .env ./out/",
     "copy-env": "copy .env .\\out\\",
     "cleanup": "npm run cleanup:win && npm run cleanup:unix",
-    "cleanup:win": "powershell -Command \"Get-Process | Where-Object {$_.ProcessName -match 'electron|CLAUDE'} | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 10; if (Test-Path dist) { Get-ChildItem -Path dist -Recurse | Remove-Item -Force -Recurse; Remove-Item -Path dist -Force -Recurse }; if (Test-Path out) { Remove-Item -Path out -Recurse -Force }; if (Test-Path 'node_modules\\.cache') { Remove-Item -Path 'node_modules\\.cache' -Recurse -Force }\"",
+    "cleanup:win": "powershell -Command \"Get-Process | Where-Object {$_.ProcessName -match 'electron|ADEEGO'} | Stop-Process -Force -ErrorAction SilentlyContinue; Start-Sleep -Seconds 10; if (Test-Path dist) { Get-ChildItem -Path dist -Recurse | Remove-Item -Force -Recurse; Remove-Item -Path dist -Force -Recurse }; if (Test-Path out) { Remove-Item -Path out -Recurse -Force }; if (Test-Path 'node_modules\\.cache') { Remove-Item -Path 'node_modules\\.cache' -Recurse -Force }\"",
     "cleanup:unix": "rm -rf out dist && rm -rf node_modules/.cache",
     "copy-static": "cp -r ./public ./out/",
     "start": "next start",
@@ -26,7 +26,7 @@
   },
   "build": {
     "appId": "com.adeegoltd.adeegopos",
-    "productName": "CLAUDE",
+    "productName": "ADEEGO",
     "copyright": "adeego",
     "files": [
       "electron/**/*",
@@ -67,8 +67,8 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "CLAUDE",
-      "uninstallDisplayName": "Uninstall CLAUDE",
+      "shortcutName": "ADEEGO",
+      "uninstallDisplayName": "Uninstall ADEEGO",
       "artifactName": "${productName}-Setup-${version}.${ext}",
       "deleteAppDataOnUninstall": true
     }
@@ -110,6 +110,7 @@
     "evilscan": "^1.9.1",
     "framer-motion": "^11.11.11",
     "fuse.js": "^7.0.0",
+    "grammy": "^1.39.3",
     "is-online": "^11.0.0",
     "lucide-react": "^0.424.0",
     "next": "14.2.5",
@@ -121,8 +122,10 @@
     "react-day-picker": "^8.10.1",
     "react-dom": "^18",
     "react-hook-form": "^7.52.2",
+    "react-markdown": "^10.1.0",
     "react-router-dom": "^6.26.0",
     "recharts": "^2.12.7",
+    "remark-gfm": "^4.0.1",
     "tailwind-merge": "^2.4.0",
     "tailwindcss-animate": "^1.0.7",
     "uuid": "^10.0.0",

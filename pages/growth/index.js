@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Line, LineChart, Bar, BarChart, ResponsiveContainer, XAxis, YAxis, Tooltip, Legend } from "recharts"
 import { ChartContainer, ChartTooltip } from "@/components/ui/chart"
-import { TrendingUp, TrendingDown, Minus, Package, DollarSign, ShoppingCart, Percent } from 'lucide-react'
+import { TrendingUp, TrendingDown, Minus, Package, DollarSign, ShoppingCart, Percent, AlertTriangle } from 'lucide-react'
 import useWsinfoStore from '@/stores/wsinfo'
 import { Badge } from "@/components/ui/badge"
 
@@ -19,7 +19,9 @@ export default function GrowthAnalytics() {
     weeklySales: [],
     topProducts: [],
     weeklyGrossMargin: [],
-    weeklyFulfillmentType: []
+    weeklyFulfillmentType: [],
+    weeklyStockoutRate: [],
+    monthlyStockoutRate: []
   })
   
   const store = useWsinfoStore((state) => state.wsinfo)
@@ -98,7 +100,35 @@ export default function GrowthAnalytics() {
       </div>
 
       {/* Key Metrics Summary */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium">Stockout Rate</CardTitle>
+            <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${
+              growthData.weeklyStockoutRate.length > 0 
+                && growthData.weeklyStockoutRate[growthData.weeklyStockoutRate.length - 1].avgStockoutRate > 10
+                ? 'text-red-600' : 'text-green-600'
+            }`}>
+              {growthData.weeklyStockoutRate.length > 0
+                ? `${growthData.weeklyStockoutRate[growthData.weeklyStockoutRate.length - 1].avgStockoutRate}%`
+                : 'N/A'}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {growthData.weeklyStockoutRate.length >= 2
+                ? (() => {
+                    const curr = growthData.weeklyStockoutRate[growthData.weeklyStockoutRate.length - 1].avgStockoutRate;
+                    const prev = growthData.weeklyStockoutRate[growthData.weeklyStockoutRate.length - 2].avgStockoutRate;
+                    const diff = Math.round((curr - prev) * 100) / 100;
+                    return diff <= 0 ? `${Math.abs(diff)}% improvement` : `${diff}% increase`;
+                  })()
+                : 'Current week average'}
+            </p>
+          </CardContent>
+        </Card>
+
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Weekly Sales Trend</CardTitle>
@@ -699,12 +729,208 @@ export default function GrowthAnalytics() {
         </CardContent>
       </Card>
 
+      {/* Weekly Stockout Rate */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Weekly Stockout Rate</CardTitle>
+          <CardDescription>
+            Average percentage of tracked products out of stock per week
+            {growthData.weeklyStockoutRate.length > 0 && (
+              <span className="ml-2 font-semibold">
+                • Latest: {growthData.weeklyStockoutRate[growthData.weeklyStockoutRate.length - 1].avgStockoutRate}%
+              </span>
+            )}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {growthData.weeklyStockoutRate.length > 0 ? (
+            <ChartContainer
+              config={{
+                avgStockoutRate: {
+                  label: "Stockout Rate %",
+                  color: "hsl(0, 84%, 60%)",
+                },
+              }}
+              className="aspect-auto h-[300px] w-full"
+            >
+              <LineChart data={growthData.weeklyStockoutRate}>
+                <XAxis 
+                  dataKey="week" 
+                  tick={{ fill: 'hsl(var(--foreground))' }}
+                  tickLine={{ stroke: 'hsl(var(--border))' }}
+                />
+                <YAxis 
+                  tickFormatter={(value) => `${value}%`}
+                  tick={{ fill: 'hsl(var(--foreground))' }}
+                  tickLine={{ stroke: 'hsl(var(--border))' }}
+                />
+                <ChartTooltip
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      return (
+                        <div className="rounded-lg border bg-background p-2 shadow-sm">
+                          <div className="grid gap-2">
+                            <div className="flex flex-col">
+                              <span className="text-[0.70rem] uppercase text-muted-foreground">
+                                Week
+                              </span>
+                              <span className="font-bold text-muted-foreground">
+                                {payload[0].payload.week}
+                              </span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[0.70rem] uppercase text-muted-foreground">
+                                Avg Stockout Rate
+                              </span>
+                              <span className="font-bold text-red-600">
+                                {payload[0].payload.avgStockoutRate}%
+                              </span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[0.70rem] uppercase text-muted-foreground">
+                                Avg Critical Items
+                              </span>
+                              <span className="font-bold">
+                                {payload[0].payload.avgCritical}
+                              </span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[0.70rem] uppercase text-muted-foreground">
+                                Avg Low Stock Items
+                              </span>
+                              <span className="font-bold">
+                                {payload[0].payload.avgLow}
+                              </span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[0.70rem] uppercase text-muted-foreground">
+                                Snapshots
+                              </span>
+                              <span className="font-bold">
+                                {payload[0].payload.count} days
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    }
+                    return null
+                  }}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="avgStockoutRate"
+                  stroke="hsl(0, 84%, 60%)"
+                  strokeWidth={2}
+                  dot={{ r: 4, fill: "hsl(0, 84%, 60%)" }}
+                  activeDot={{ r: 6 }}
+                />
+              </LineChart>
+            </ChartContainer>
+          ) : (
+            <div className="flex items-center justify-center h-[200px] text-muted-foreground">
+              No stockout data yet. Snapshots are recorded during daily stock checks.
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Monthly Stockout Rate */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Monthly Stockout Rate</CardTitle>
+          <CardDescription>
+            Average stockout rate per month — lower is better
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {growthData.monthlyStockoutRate.length > 0 ? (
+            <ChartContainer
+              config={{
+                avgStockoutRate: {
+                  label: "Stockout Rate %",
+                  color: "hsl(25, 95%, 53%)",
+                },
+              }}
+              className="aspect-auto h-[300px] w-full"
+            >
+              <BarChart data={growthData.monthlyStockoutRate}>
+                <XAxis 
+                  dataKey="month" 
+                  tick={{ fill: 'hsl(var(--foreground))' }}
+                  tickLine={{ stroke: 'hsl(var(--border))' }}
+                />
+                <YAxis 
+                  tickFormatter={(value) => `${value}%`}
+                  tick={{ fill: 'hsl(var(--foreground))' }}
+                  tickLine={{ stroke: 'hsl(var(--border))' }}
+                />
+                <ChartTooltip
+                  content={({ active, payload }) => {
+                    if (active && payload && payload.length) {
+                      return (
+                        <div className="rounded-lg border bg-background p-2 shadow-sm">
+                          <div className="grid gap-2">
+                            <div className="flex flex-col">
+                              <span className="text-[0.70rem] uppercase text-muted-foreground">
+                                Month
+                              </span>
+                              <span className="font-bold text-muted-foreground">
+                                {payload[0].payload.month}
+                              </span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[0.70rem] uppercase text-muted-foreground">
+                                Avg Stockout Rate
+                              </span>
+                              <span className="font-bold text-orange-600">
+                                {payload[0].payload.avgStockoutRate}%
+                              </span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[0.70rem] uppercase text-muted-foreground">
+                                Avg Critical / Low
+                              </span>
+                              <span className="font-bold">
+                                {payload[0].payload.avgCritical} critical, {payload[0].payload.avgLow} low
+                              </span>
+                            </div>
+                            <div className="flex flex-col">
+                              <span className="text-[0.70rem] uppercase text-muted-foreground">
+                                Data Points
+                              </span>
+                              <span className="font-bold">
+                                {payload[0].payload.count} days
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    }
+                    return null
+                  }}
+                />
+                <Bar
+                  dataKey="avgStockoutRate"
+                  fill="hsl(25, 95%, 53%)"
+                  radius={[4, 4, 0, 0]}
+                />
+              </BarChart>
+            </ChartContainer>
+          ) : (
+            <div className="flex items-center justify-center h-[200px] text-muted-foreground">
+              No stockout data yet. Snapshots are recorded during daily stock checks.
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {/* Top 50 Performing Products */}
       <Card>
         <CardHeader>
           <CardTitle>Top 50 Performing Products</CardTitle>
           <CardDescription>
-            Best selling products since tracking began
+            Best selling products in the past 30 days
           </CardDescription>
         </CardHeader>
         <CardContent>
