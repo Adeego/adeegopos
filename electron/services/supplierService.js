@@ -4,6 +4,8 @@ const {
   shouldIncludeTransactionInMetrics,
   toNumber,
 } = require('./postingService');
+const { ensureJournalEntryForInvoice } = require('./finance/journalService');
+const { findAll } = require('./pouchQueryService');
 
 function isInvoiceVoided(invoice = {}) {
   return invoice.status === 'voided';
@@ -148,7 +150,7 @@ async function getSupplierInvoicesForStatement(db, supplierId, storeNo) {
 }
 
 async function getSupplierTransactionsForStatement(db, supplierId, storeNo) {
-  const result = await db.find({
+  const result = await findAll(db, {
     selector: {
       type: "transaction",
       state: "Active",
@@ -158,7 +160,6 @@ async function getSupplierTransactionsForStatement(db, supplierId, storeNo) {
         { to: supplierId }
       ]
     },
-    limit: 9999,
   });
 
   const transactions = (result.docs || []).sort(compareRowsByDateDesc);
@@ -211,8 +212,8 @@ function createInvoice(db, invoices) {
       type: "invoice",
       state: "Active",
       status: invoice.status || "posted",
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      createdAt: invoice.createdAt || new Date().toISOString(),
+      updatedAt: invoice.updatedAt || new Date().toISOString()
     };
   });
 
@@ -231,7 +232,7 @@ function createInvoice(db, invoices) {
         }))
     )
   )
-  .then(results => {
+  .then(async results => {
     // Check if all invoices were created successfully
     const failedInvoices = results.filter(result => !result.success);
     
@@ -243,9 +244,19 @@ function createInvoice(db, invoices) {
       };
     }
     
+    const journalResults = [];
+    for (const result of results) {
+      const journalResult = await ensureJournalEntryForInvoice(db, result.invoice);
+      if (!journalResult.success) {
+        return journalResult;
+      }
+      journalResults.push(journalResult.journalEntry);
+    }
+
     return { 
       success: true, 
-      invoices: results.map(result => result.invoice) 
+      invoices: results.map(result => result.invoice),
+      journalEntries: journalResults,
     };
   });
 }

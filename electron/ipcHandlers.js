@@ -28,6 +28,7 @@ const reconciliationService = require('./services/reconciliationService')
 const registerSessionService = require('./services/registerSessionService')
 const openaiAuth = require('./services/openaiAuth')
 const reminderService = require('./services/reminderService')
+const { getCurrentStoreNo, getSyncStatus } = require('./pouchSync')
 const {
   can,
   normalizeStaff,
@@ -36,12 +37,6 @@ const {
   isRestockTaskAllowed,
   isMessageTaskAllowed,
 } = require('../lib/rbac')
-
-function getSyncStatus(db) {
-  return db.info()
-    .then(info => ({ isSyncing: true, progress: info.update_seq }))
-    .catch(error => ({ isSyncing: false, error: error.message }));
-}
 
 function checkNetworkConnection() {
   return new Promise((resolve) => {
@@ -86,7 +81,7 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
   });
 
   ipcMain.handle('get-sync-status', async () => {
-    return getSyncStatus(db);
+    return getSyncStatus();
   });
 
   ipcMain.handle('openai-auth-status', async () => {
@@ -195,13 +190,14 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
   });
 
   // AI Assistant chat
-  ipcMain.on('ai-assistant-chat', (event, { sessionId, message, storeNo }) => {
-    aiAssistant.chat(sessionId, message, db, storeNo, 'in-app', {
+  ipcMain.on('ai-assistant-chat', (event, { sessionId, message, storeNo, storeContext }) => {
+    const effectiveStoreNo = storeNo || storeContext?.storeNo || getCurrentStoreNo() || '';
+    aiAssistant.chat(sessionId, message, db, effectiveStoreNo, 'in-app', {
       onChunk: (chunk) => event.reply('ai-assistant-chunk', { chunk }),
       onToolCall: (toolName) => event.reply('ai-assistant-tool', { toolName }),
       onComplete: () => event.reply('ai-assistant-done', { done: true }),
       onError: (error) => event.reply('ai-assistant-error', { error }),
-    }).catch(error => {
+    }, { ...(storeContext || {}), storeNo: effectiveStoreNo }).catch(error => {
       event.reply('ai-assistant-error', { error: error.message });
     });
   });
@@ -412,6 +408,8 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
         return saleService.getTopCustomers(db, args[0], args[1], args[2], args[3]);
       case 'getAllSalesBetweenDates':
         return saleService.getAllSalesBetweenDates(db, args[0], args[1], args[2]);
+      case 'getFailedSalesBetweenDates':
+        return saleService.getFailedSalesBetweenDates(db, args[0], args[1], args[2]);
       case 'getSaleById':
         return saleService.getSaleById(db, args[0]);
       case 'getSalesMetricsReport':
@@ -432,22 +430,32 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
         return dashboardService.transactionMetrics(db, args[0]);
       case 'getRegisterSession':
         return registerSessionService.getRegisterSession(db, args[0], args[1]);
+      case 'openRegisterSession':
+        return registerSessionService.openRegisterSession(db, args[0], args[1] || authenticatedStaff);
       case 'saveRegisterSession':
         return registerSessionService.saveRegisterSession(db, args[0]);
       case 'closeRegisterSession':
-        return registerSessionService.closeRegisterSession(db, args[0], args[1]);
+        return registerSessionService.closeRegisterSession(db, args[0], args[1] || authenticatedStaff);
       case 'incomeStatement':
-        return financeReport.incomeStatement(db, args[0], args[1]);
+        return financeReport.incomeStatement(db, args[0], args[1], args[2]);
       case 'getMonthlyProfitLoss':
         return financeReport.getMonthlyProfitLoss(db, args[0]);
       case 'getAccountStatement':
-        return financeReport.getAccountStatement(db, args[0], args[1]);
+        return financeReport.getAccountStatement(db, args[0], args[1], args[2]);
       case 'getBalanceSheet':
         return financeReport.getBalanceSheet(db, args[0], args[1]);
       case 'getChartOfAccounts':
         return financeReport.getChartOfAccounts(db, args[0], args[1]);
       case 'getTrialBalance':
-        return financeReport.getTrialBalance(db, args[0], args[1]);
+        return financeReport.getTrialBalance(db, args[0], args[1], args[2]);
+      case 'getGeneralLedger':
+        return financeReport.getGeneralLedger(db, args[0]);
+      case 'getFinanceLedgerHealth':
+        return financeReport.getFinanceLedgerHealth(db, args[0]);
+      case 'previewFinanceLedgerBackfill':
+        return financeReport.previewFinanceLedgerBackfill(db, args[0]);
+      case 'runFinanceLedgerBackfill':
+        return financeReport.runFinanceLedgerBackfill(db, args[0]);
       case 'createBalanceSheetEntry':
         return balanceSheet.createBalanceSheetEntry(db, args[0]);
       case 'getAllBalanceSheets':

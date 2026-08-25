@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils"
 import { format } from "date-fns"
 import { CalendarIcon, ChevronDown, Search, X } from 'lucide-react'
 
-export default function AddTransaction() {
+export default function AddTransaction({ fetchTransactions }) {
   const wsinfo = useWsinfoStore((state) => state.wsinfo);
   const [amount, setAmount] = useState(0);
   const [transactionCost, setTransactionCost] = useState(0);
@@ -136,8 +136,8 @@ export default function AddTransaction() {
         "destination": destination,
         "from": from,
         "to": to,
-        "amount": parseInt(amount),
-        "transactionCost": parseInt(transactionCost) || 0,
+        "amount": parseFloat(amount),
+        "transactionCost": parseFloat(transactionCost) || 0,
         "storeNo": storeNo,
         "date": date.toISOString()
       }
@@ -167,6 +167,7 @@ export default function AddTransaction() {
         setToLabel("");
         setSearchTerm("");
         setSearchResult([]);
+        setOpen(false);
         
       } else {
         throw new Error(result.error || 'Failed to create transaction');
@@ -175,7 +176,7 @@ export default function AddTransaction() {
       console.error('Error recording transaction:', error);
       setAlert({
         show: true,
-        message: "Failed to record transaction. Please try again.",
+        message: error.message || "Failed to record transaction. Please try again.",
         type: 'error'
       });
     }
@@ -410,7 +411,7 @@ export default function AddTransaction() {
                         </Dialog>
                       </div>
 
-                      <Button type="submit" className="w-full">Deposit</Button>
+                      <Button type="submit" className="w-full">Withdraw</Button>
                     </div>
                   </form>
                 </TabsContent>

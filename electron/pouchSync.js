@@ -1,16 +1,50 @@
 // pouchSync.js
 
 const PouchDB = require("pouchdb");
-const { ipcMain, app } = require('electron');
+const { ipcMain, app, BrowserWindow } = require('electron');
 const path = require('path');
 const fs = require('fs');
 PouchDB.plugin(require("pouchdb-find"));
 
-const COUCHDB_URL = "http://adeegopos:ogeeda2025@139.59.91.36:5984//adeegopos";
-
 let localDB;
 let currentStoreNo = null;
 let syncHandler;
+let syncStatus = {
+  state: 'idle',
+  isSyncing: false,
+  storeNo: null,
+  direction: null,
+  lastChangeAt: null,
+  lastSuccessAt: null,
+  error: null,
+};
+
+function getCouchDbUrl() {
+  const configuredUrl = process.env.ADEEGO_COUCHDB_URL || process.env.COUCHDB_URL || '';
+  return configuredUrl.trim().replace(/\/+$/, '');
+}
+
+function getSyncStatus() {
+  return { ...syncStatus };
+}
+
+function publishSyncStatus(patch = {}) {
+  syncStatus = {
+    ...syncStatus,
+    ...patch,
+    storeNo: currentStoreNo,
+  };
+
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) {
+      window.webContents.send('sync-status-changed', getSyncStatus());
+    }
+  }
+}
+
+function getChangedDocs(info = {}) {
+  return Array.isArray(info.change?.docs) ? info.change.docs : [];
+}
 
 function openPouchDB() {
   const dbPath = path.join(app.getPath('userData'), 'database', 'adeegopos');
@@ -36,6 +70,15 @@ function setupIndexes() {
   const generalIndexFields = ['createdAt', 'type', 'state', 'storeNo'];
 
   const specificIdIndexFields = ['type', 'state', '_id', 'createdAt', 'storeNo'];
+  const salesHistoryIndexFields = ['storeNo', 'type', 'state', 'createdAt'];
+  const transactionHistoryIndexFields = ['storeNo', 'type', 'state', 'createdAt'];
+  const customerActivityIndexes = [
+    ['customer-sales-original', 'customer-sales-original-index', ['storeNo', 'type', 'state', 'customerId', 'createdAt']],
+    ['customer-sales-current', 'customer-sales-current-index', ['storeNo', 'type', 'state', 'currentCustomerId', 'createdAt']],
+    ['customer-transactions-from', 'customer-transactions-from-index', ['storeNo', 'type', 'state', 'from', 'createdAt']],
+    ['customer-transactions-to', 'customer-transactions-to-index', ['storeNo', 'type', 'state', 'to', 'createdAt']],
+    ['customer-ledger', 'customer-ledger-index', ['storeNo', 'type', 'state', 'entityType', 'entityId', 'bucket', 'createdAt']],
+  ];
 
   // Check if the product index already exists
   localDB.getIndexes().then((result) => {
@@ -136,32 +179,156 @@ function setupIndexes() {
   }).catch((error) => {
     console.error('Error checking specific ID indexes:', error);
   });
+
+  localDB.getIndexes().then((result) => {
+    const salesHistoryIndexExists = result.indexes.some(index => index.name === 'sales-history-index');
+
+    if (!salesHistoryIndexExists) {
+      return localDB.createIndex({
+        index: { fields: salesHistoryIndexFields },
+        ddoc: 'sales-history',
+        name: 'sales-history-index',
+      }).then(() => {
+        console.log('Sales history index created successfully');
+      }).catch((error) => {
+        console.error('Error creating sales history index:', error);
+      });
+    }
+
+    console.log('Sales history index already exists');
+  }).catch((error) => {
+    console.error('Error checking sales history indexes:', error);
+  });
+
+  localDB.getIndexes().then((result) => {
+    const transactionHistoryIndexExists = result.indexes.some(index => index.name === 'transaction-history-index');
+
+    if (!transactionHistoryIndexExists) {
+      return localDB.createIndex({
+        index: { fields: transactionHistoryIndexFields },
+        ddoc: 'transaction-history',
+        name: 'transaction-history-index',
+      }).then(() => {
+        console.log('Transaction history index created successfully');
+      }).catch((error) => {
+        console.error('Error creating transaction history index:', error);
+      });
+    }
+
+    console.log('Transaction history index already exists');
+  }).catch((error) => {
+    console.error('Error checking transaction history indexes:', error);
+  });
+
+  localDB.getIndexes().then((result) => Promise.all(customerActivityIndexes.map(([ddoc, name, fields]) => {
+    if (result.indexes.some((index) => index.name === name)) {
+      return null;
+    }
+
+    return localDB.createIndex({
+      index: { fields },
+      ddoc,
+      name,
+    });
+  }))).then(() => {
+    console.log('Customer activity indexes ready');
+  }).catch((error) => {
+    console.error('Error setting up customer activity indexes:', error);
+  });
 }
 
 function setupSync() {
-  if (currentStoreNo) {
-    // Cancel existing sync if it exists
-    if (syncHandler) {
-      syncHandler.cancel();
-    }
-
-    // Start new sync
-    syncHandler = localDB.sync(`${COUCHDB_URL}?partition=${currentStoreNo}`, {
-        live: true,
-        retry: true,
-        filter: function (doc) {
-          return doc._id.startsWith(`${currentStoreNo}:`);
-        }
-      })
-      .on("change", function (info) {
-        console.log("Sync change:", info);
-      })
-      .on("error", function (err) {
-        console.error("Sync error:", err);
-      });
-  } else {
+  if (!currentStoreNo) {
     console.log("No storeNo provided, sync not started");
+    publishSyncStatus({ state: 'idle', isSyncing: false, error: null });
+    return;
   }
+
+  if (syncHandler) {
+    syncHandler.cancel();
+    syncHandler = null;
+  }
+
+  const couchDbUrl = getCouchDbUrl();
+  if (!couchDbUrl) {
+    const error = 'ADEEGO_COUCHDB_URL is not configured; remote synchronization is disabled.';
+    console.error(error);
+    publishSyncStatus({ state: 'error', isSyncing: false, error });
+    return;
+  }
+
+  const storePrefix = `${currentStoreNo}:`;
+  publishSyncStatus({
+    state: 'connecting',
+    isSyncing: true,
+    direction: null,
+    error: null,
+  });
+
+  syncHandler = localDB.sync(couchDbUrl, {
+    live: true,
+    retry: true,
+    selector: {
+      _id: {
+        $gte: storePrefix,
+        $lt: `${storePrefix}\ufff0`,
+      },
+    },
+  })
+    .on('active', () => {
+      publishSyncStatus({ state: 'active', isSyncing: true, error: null, salesChanged: false });
+    })
+    .on('paused', (error) => {
+      if (error) {
+        publishSyncStatus({
+          state: 'error',
+          isSyncing: false,
+          error: error.message || String(error),
+        });
+        return;
+      }
+
+      publishSyncStatus({
+        state: 'up-to-date',
+        isSyncing: false,
+        lastSuccessAt: new Date().toISOString(),
+        error: null,
+        salesChanged: false,
+      });
+    })
+    .on('change', (info) => {
+      const changedDocs = getChangedDocs(info);
+      const pulledSalesChanged = info.direction === 'pull'
+        && changedDocs.some((doc) => doc.type === 'sale');
+
+      console.log(`Sync ${info.direction || 'change'}: ${changedDocs.length} document(s)`);
+      publishSyncStatus({
+        state: 'active',
+        isSyncing: true,
+        direction: info.direction || null,
+        lastChangeAt: new Date().toISOString(),
+        lastSuccessAt: new Date().toISOString(),
+        error: null,
+        salesChanged: pulledSalesChanged,
+        docsChanged: changedDocs.length,
+      });
+    })
+    .on('denied', (error) => {
+      console.error('Sync denied:', error);
+      publishSyncStatus({
+        state: 'denied',
+        isSyncing: false,
+        error: error?.message || error?.reason || String(error),
+      });
+    })
+    .on('error', (error) => {
+      console.error('Sync error:', error);
+      publishSyncStatus({
+        state: 'error',
+        isSyncing: false,
+        error: error.message || String(error),
+      });
+    });
 }
 
 function setupStoreNoListener() {
@@ -193,4 +360,6 @@ function setupStoreNoListener() {
 
 module.exports = {
   openPouchDB,
+  getCurrentStoreNo: () => currentStoreNo,
+  getSyncStatus,
 };

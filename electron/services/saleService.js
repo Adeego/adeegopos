@@ -10,6 +10,8 @@ const {
   toIsoString,
   toNumber,
 } = require('./postingService');
+const { ensureJournalEntryForSale } = require('./finance/journalService');
+const { findAll } = require('./pouchQueryService');
 
 function startOfDay(date = new Date()) {
   const next = new Date(date);
@@ -52,17 +54,79 @@ function decorateSale(sale = {}) {
   };
 }
 
-async function getAllStoreSales(db, storeNo) {
-  const result = await db.find({
-    selector: {
-      type: 'sale',
-      state: 'Active',
-      ...(storeNo ? { storeNo } : {}),
+const SALES_HISTORY_INDEX = 'sales-history-index';
+const SALES_HISTORY_DDOC = 'sales-history';
+const indexedDatabases = new WeakSet();
+
+async function ensureSalesHistoryIndex(db) {
+  if (indexedDatabases.has(db)) {
+    return;
+  }
+
+  await db.createIndex({
+    index: {
+      fields: ['storeNo', 'type', 'state', 'createdAt'],
     },
-    limit: 9999,
+    ddoc: SALES_HISTORY_DDOC,
+    name: SALES_HISTORY_INDEX,
+  });
+  indexedDatabases.add(db);
+}
+
+async function findSales(db, options = {}) {
+  const {
+    storeNo,
+    state = 'Active',
+    status,
+    startDate,
+    endDate,
+  } = options;
+  const selector = {
+    type: 'sale',
+    state,
+    ...(status ? { status } : {}),
+    ...(storeNo ? { storeNo } : {}),
+  };
+  const fromDate = toDateValue(startDate);
+  const toDate = toDateValue(endDate);
+  const canUseHistoryIndex = Boolean(storeNo);
+
+  if (canUseHistoryIndex) {
+    await ensureSalesHistoryIndex(db);
+    selector.createdAt = {
+      $gte: fromDate ? fromDate.toISOString() : '',
+      ...(toDate ? { $lte: toDate.toISOString() } : {}),
+    };
+  }
+
+  const result = await findAll(db, {
+    selector,
+    ...(canUseHistoryIndex ? {
+      sort: [
+        { storeNo: 'asc' },
+        { type: 'asc' },
+        { state: 'asc' },
+        { createdAt: 'asc' },
+      ],
+      use_index: [SALES_HISTORY_DDOC, SALES_HISTORY_INDEX],
+    } : {}),
   });
 
-  return (result.docs || []).map(decorateSale);
+  return result.docs.map(decorateSale);
+}
+
+async function getAllStoreSales(db, storeNo) {
+  return findSales(db, { storeNo, state: 'Active' });
+}
+
+async function getFailedStoreSales(db, storeNo, startDate, endDate) {
+  return findSales(db, {
+    storeNo,
+    state: 'Inactive',
+    status: 'failed',
+    startDate,
+    endDate,
+  });
 }
 
 function inDateRange(value, fromDate, toDate) {
@@ -97,15 +161,39 @@ async function createSale(db, saleData, mainWindow) {
       return result;
     }
 
-    printReceipt(result.sale).catch((error) => {
-      console.error('Receipt printing failed:', error);
-    });
+    let journalEntry = null;
+    let journalError = null;
+    const warnings = [];
+
+    try {
+      const journalResult = await ensureJournalEntryForSale(db, result.sale);
+      if (journalResult.success) {
+        journalEntry = journalResult.journalEntry || null;
+      } else {
+        journalError = journalResult.error || 'Failed to create sale journal entry';
+        warnings.push(journalError);
+        console.error('Sale journal creation failed:', journalError);
+      }
+    } catch (error) {
+      journalError = error.message || 'Failed to create sale journal entry';
+      warnings.push(journalError);
+      console.error('Sale journal creation failed:', error);
+    }
+
+    if (global.printer?.printer && global.printer?.device) {
+      printReceipt(result.sale).catch((error) => {
+        console.error('Receipt printing failed:', error);
+      });
+    }
 
     return {
       success: true,
       sale: decorateSale(result.sale),
       stockMovements: result.stockMovements,
       ledgerEntries: result.ledgerEntries,
+      journalEntry,
+      journalError,
+      warnings,
     };
   } catch (error) {
     return { success: false, error: error.message };
@@ -369,15 +457,27 @@ async function getTopCustomers(db, storeNo, startDate, endDate, limit = 10) {
 
 async function getAllSalesBetweenDates(db, storeNo, startDate, endDate) {
   try {
-    const fromDate = toDateValue(startDate);
-    const toDate = toDateValue(endDate);
-    const sales = (await getAllStoreSales(db, storeNo)).filter((sale) =>
-      inDateRange(sale.createdAt, fromDate, toDate)
-    );
+    const sales = await findSales(db, {
+      storeNo,
+      state: 'Active',
+      startDate,
+      endDate,
+    });
 
     return { success: true, data: sortSalesDesc(sales) };
   } catch (error) {
     console.error('Error getting sales between dates:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function getFailedSalesBetweenDates(db, storeNo, startDate, endDate) {
+  try {
+    const sales = await getFailedStoreSales(db, storeNo, startDate, endDate);
+
+    return { success: true, data: sortSalesDesc(sales) };
+  } catch (error) {
+    console.error('Error getting failed sales between dates:', error);
     return { success: false, error: error.message };
   }
 }
@@ -477,6 +577,7 @@ module.exports = {
   getTotalSalesRevenueAndProfit,
   getTopCustomers,
   getAllSalesBetweenDates,
+  getFailedSalesBetweenDates,
   getSaleById,
   archiveSale,
   getCashierSales,

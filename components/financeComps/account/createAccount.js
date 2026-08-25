@@ -59,7 +59,7 @@ export default function CreateAccount({ fetchAccounts }) {
       const accountData = {
         ...newAccount,
         _id: `${storeNo}:${uuidv4()}`,
-        balance: parseInt(newAccount.balance),
+        balance: parseFloat(newAccount.balance),
         storeNo: `${storeNo}`
       };
       console.log(accountData);

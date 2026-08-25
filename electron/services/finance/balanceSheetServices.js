@@ -1,4 +1,5 @@
 // Balance Sheet CRUD Operations
+const { ensureJournalEntryForManualAdjustment } = require('./journalService');
 
 // Create a new balance sheet entry
 function createBalanceSheetEntry(db, balanceSheetData) {
@@ -15,10 +16,17 @@ function createBalanceSheetEntry(db, balanceSheetData) {
   };
   return db
     .put(balanceEntry)
-    .then((response) => ({
-      success: true,
-      balanceEntry: { _id: response.id, ...balanceEntry },
-    }))
+    .then(async (response) => {
+      const journalResult = await ensureJournalEntryForManualAdjustment(db, balanceEntry);
+      if (!journalResult.success) {
+        return journalResult;
+      }
+      return {
+        success: true,
+        balanceEntry: { _id: response.id, ...balanceEntry },
+        journalEntry: journalResult.journalEntry,
+      };
+    })
     .catch((error) => ({ success: false, error: error.message }));
 }
 

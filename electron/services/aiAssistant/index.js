@@ -1,5 +1,8 @@
 const { toolDefinitions, executeTool } = require('./tools');
 const { getOpenAIClient, getOpenAIModel } = require('../openaiAuth');
+const accountService = require('../finance/accountService');
+const expenseTypeService = require('../finance/expenseTypeService');
+const { getOpenRegisterSession } = require('../postingService');
 
 // In-memory conversation histories keyed by session ID
 const conversations = new Map();
@@ -14,6 +17,154 @@ function getShoppingPeriod() {
   if (day >= 13 && day <= 17) return { name: 'Mid-Month', description: 'Moderate spending — mid-month budgets' };
   if (dayOfWeek === 5 || dayOfWeek === 6) return { name: 'Weekend', description: 'Higher foot traffic expected' };
   return { name: 'Regular Weekday', description: 'Standard business day' };
+}
+
+function safeList(items = [], mapper, limit = 20) {
+  return items.slice(0, limit).map(mapper).filter(Boolean);
+}
+
+function findDefaultAccount(accounts = [], suffix, namePattern) {
+  return accounts.find((account) => String(account.accountNumber || '').endsWith(suffix)) ||
+    accounts.find((account) => namePattern.test(String(account.name || '')));
+}
+
+function cleanStoreNo(value) {
+  return String(value || '').trim();
+}
+
+function storeNoFromDocumentId(value) {
+  const text = String(value || '').trim();
+  if (!text.includes(':')) {
+    return '';
+  }
+
+  return cleanStoreNo(text.split(':')[0]);
+}
+
+async function getStoreNosFromDocs(db) {
+  const docs = await db.find({
+    selector: {
+      storeNo: { $exists: true },
+    },
+    limit: 500,
+  }).then((result) => result.docs || []).catch(() => []);
+
+  return [...new Set(
+    docs
+      .map((doc) => cleanStoreNo(doc.storeNo))
+      .filter(Boolean)
+  )];
+}
+
+async function resolveStoreNo(db, incomingStoreNo, storeContext = {}) {
+  const directStoreNo = cleanStoreNo(incomingStoreNo || storeContext.storeNo);
+  if (directStoreNo) {
+    return directStoreNo;
+  }
+
+  const prefixedStoreNo = storeNoFromDocumentId(storeContext.defaultCustId || storeContext.defaultCustomerId);
+  if (prefixedStoreNo) {
+    return prefixedStoreNo;
+  }
+
+  const wholeSalers = await db.find({
+    selector: { type: 'wholeSaler' },
+    limit: 20,
+  }).then((result) => result.docs || []).catch(() => []);
+
+  const contextName = String(storeContext.name || '').trim().toLowerCase();
+  if (contextName) {
+    const matchedStore = wholeSalers.find((store) =>
+      String(store.name || '').trim().toLowerCase() === contextName && cleanStoreNo(store.storeNo)
+    );
+    if (matchedStore) {
+      return cleanStoreNo(matchedStore.storeNo);
+    }
+  }
+
+  const wholeSalerStoreNos = [...new Set(wholeSalers.map((store) => cleanStoreNo(store.storeNo)).filter(Boolean))];
+  if (wholeSalerStoreNos.length === 1) {
+    return wholeSalerStoreNos[0];
+  }
+
+  const docStoreNos = await getStoreNosFromDocs(db);
+  if (docStoreNos.length === 1) {
+    return docStoreNos[0];
+  }
+
+  return '';
+}
+
+async function buildRuntimeContext(db, storeNo, channel, storeContext = {}) {
+  const now = new Date();
+  const [accountsResult, expenseTypesResult, openRegister] = await Promise.all([
+    storeNo ? accountService.getAllAccounts(db, storeNo).catch((error) => ({ success: false, error: error.message })) : null,
+    storeNo ? expenseTypeService.getAllExpenseTypes(db, storeNo).catch((error) => ({ success: false, error: error.message })) : null,
+    storeNo ? getOpenRegisterSession(db, storeNo).catch(() => null) : null,
+  ]);
+
+  const accounts = accountsResult?.success ? accountsResult.accounts || [] : [];
+  const expenseTypes = expenseTypesResult?.success ? expenseTypesResult.expenseTypes || [] : [];
+  const cashAccount = findDefaultAccount(accounts, '001', /cash/i);
+  const mpesaAccount = findDefaultAccount(accounts, '002', /m-?pesa|till/i);
+
+  const profile = {
+    storeNo,
+    name: storeContext.name || '',
+    phone: storeContext.phone || '',
+    location: storeContext.location || '',
+    defaultCustId: storeContext.defaultCustId || '',
+    channel,
+    nowIso: now.toISOString(),
+    storeNoSource: cleanStoreNo(storeContext.storeNo) ? 'frontend wsinfo' : (storeNo ? 'backend fallback' : 'missing'),
+  };
+
+  return `Runtime store context:
+- Prefilled storeNo: ${profile.storeNo || 'missing'}
+- storeNo source: ${profile.storeNoSource}
+- Store name: ${profile.name || 'unknown'}
+- Store phone: ${profile.phone || 'unknown'}
+- Store location: ${profile.location || 'unknown'}
+- Current timestamp: ${profile.nowIso}
+- Channel: ${profile.channel}
+- Register status: ${openRegister?._id ? `open (${openRegister._id})` : 'not open or unavailable'}
+- Default cash account: ${cashAccount ? `${cashAccount.name} (${cashAccount._id})` : 'not found'}
+- Default M-Pesa account: ${mpesaAccount ? `${mpesaAccount.name} (${mpesaAccount._id})` : 'not found'}
+- Active accounts: ${JSON.stringify(safeList(accounts, (account) => ({
+    id: account._id,
+    name: account.name,
+    accountNumber: account.accountNumber,
+    accountType: account.accountType,
+    balance: account.balance,
+  })))}
+- Active expense types: ${JSON.stringify(safeList(expenseTypes, (type) => ({
+    id: type._id,
+    name: type.name,
+    description: type.description || '',
+  }), 30))}
+
+Prefill rules:
+- Do not ask the user for storeNo; it is already provided above and all tools receive it server-side.
+- If Prefilled storeNo is present, trust it. Never say you cannot access storeNo from tool context.
+- If the user says cash and the default cash account exists, use it.
+- If the user says M-Pesa, mpesa, till, or phone payment and the default M-Pesa account exists, use it.
+- If there is only one sensible account or expense type for the user's wording, use it in draftFinanceRecord.
+- Ask only for missing or ambiguous customer, supplier, account, expense type, amount, or date details.`;
+}
+
+function upsertRuntimeContext(messages, runtimeContext) {
+  const marker = 'Runtime store context:';
+  const index = messages.findIndex((message) =>
+    message.role === 'system' && String(message.content || '').startsWith(marker)
+  );
+
+  const nextMessage = { role: 'system', content: runtimeContext };
+  if (index >= 0) {
+    messages[index] = nextMessage;
+    return;
+  }
+
+  messages.splice(Math.min(1, messages.length), 0, nextMessage);
 }
 
 function buildSystemPrompt(storeNo, channel) {
@@ -36,8 +187,16 @@ Rules:
 - Format monetary values as "KES X,XXX" with comma separators.
 - Be concise and direct. Use bullet points for lists.
 - If a query returns too many results, summarize the top/most relevant items.
-- You can record expenses. Before calling createExpense, ALWAYS summarize the details (amount, description, expense type, account, date) and ask the user to confirm. Only call createExpense after explicit confirmation.
-- To record an expense, first call getAllExpenseTypes and getAllAccounts to discover valid options, then present the details for confirmation.
+- You can help record expenses, customer payments/refunds, supplier payments/refunds, and supplier invoices.
+- Recording workflow is strict:
+  1. Use the runtime store context for prefilled storeNo, default accounts, and expense types when it is clear.
+  2. Use getRecordingReferenceData when you need valid accounts, expense types, customers, or suppliers not already clear from runtime context.
+  3. Call draftFinanceRecord to validate details, resolve real records, and check possible duplicates. This does not save anything.
+  4. Show the returned summary, warnings, and duplicate matches to the user.
+  5. Ask for explicit confirmation. Do not call commitFinanceRecord until the user clearly confirms the exact draft.
+  6. If draftFinanceRecord reports ambiguity, missing data, or possible duplicate matches, pause and ask the user to choose or confirm.
+- Never invent customer, supplier, account, or expense type names. If unsure, look them up and ask the user to pick.
+- Never directly record financial data without the draftFinanceRecord -> user confirmation -> commitFinanceRecord sequence.
 - A negative customer balance means they owe money (debt). A positive balance means store credit.
 - When showing dates, use a human-readable format (e.g. "Feb 9, 2026").
 - For Telegram responses, use Telegram-compatible markdown (bold with *, not **).`;
@@ -107,20 +266,32 @@ function trimToolResult(toolName, result) {
 }
 
 // Main chat function — handles a single user message through the agent loop
-async function chat(sessionId, userMessage, db, storeNo, channel = 'in-app', callbacks = {}) {
+async function chat(sessionId, userMessage, db, storeNo, channel = 'in-app', callbacks = {}, storeContext = {}) {
   const { onChunk, onToolCall, onComplete, onError } = callbacks;
 
   try {
+    const resolvedStoreNo = await resolveStoreNo(db, storeNo, storeContext);
+    const resolvedStoreContext = {
+      ...storeContext,
+      storeNo: resolvedStoreNo,
+    };
+
     // Get or create conversation history
     if (!conversations.has(sessionId)) {
       conversations.set(sessionId, []);
     }
     const messages = conversations.get(sessionId);
 
-    // Add system prompt if this is the first message
-    if (messages.length === 0) {
-      messages.push({ role: 'system', content: buildSystemPrompt(storeNo, channel) });
+    // Keep base context fresh in case the chat opened before wsinfo/storeNo was hydrated.
+    const baseSystemPrompt = { role: 'system', content: buildSystemPrompt(resolvedStoreNo, channel) };
+    if (messages.length === 0 || messages[0].role !== 'system') {
+      messages.unshift(baseSystemPrompt);
+    } else {
+      messages[0] = baseSystemPrompt;
     }
+
+    const runtimeContext = await buildRuntimeContext(db, resolvedStoreNo, channel, resolvedStoreContext);
+    upsertRuntimeContext(messages, runtimeContext);
 
     // Add user message
     messages.push({ role: 'user', content: userMessage });
@@ -172,7 +343,7 @@ async function chat(sessionId, userMessage, db, storeNo, channel = 'in-app', cal
         console.log(`[AI Assistant] Calling tool: ${toolName}`, args);
         if (onToolCall) onToolCall(toolName);
 
-        const rawResult = await executeTool(toolName, args, db, storeNo);
+        const rawResult = await executeTool(toolName, args, db, resolvedStoreNo);
         const trimmedResult = trimToolResult(toolName, rawResult);
 
         // Add tool result to conversation

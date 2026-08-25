@@ -18,6 +18,10 @@ function toIsoString(value) {
   return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
 }
 
+function isConflictError(error = {}) {
+  return error.status === 409 || error.name === 'conflict';
+}
+
 function normalizeRole(role) {
   return String(role || '').trim().toLowerCase();
 }
@@ -162,6 +166,7 @@ function buildSaleDocument(saleData = {}, overrides = {}) {
     status: saleData.status || 'posted',
     originSaleId: saleData.originSaleId || null,
     replacementOfSaleId: saleData.replacementOfSaleId || null,
+    registerSessionId: saleData.registerSessionId || null,
     reconciliationCaseIds: dedupeIds(saleData.reconciliationCaseIds || []),
     reconciliationCaseType: saleData.reconciliationCaseType || null,
     voidedAt: saleData.voidedAt || null,
@@ -194,6 +199,7 @@ function buildTransactionDocument(transactionData = {}, overrides = {}) {
     state: transactionData.state || 'Active',
     status: transactionData.status || 'posted',
     reconciliationCaseId: transactionData.reconciliationCaseId || null,
+    registerSessionId: transactionData.registerSessionId || null,
     reversalOfId: transactionData.reversalOfId || null,
     replacementOfId: transactionData.replacementOfId || null,
     locked: transactionData.locked !== undefined ? transactionData.locked : true,
@@ -213,7 +219,7 @@ function getSaleMetricSign(sale = {}) {
     return 0;
   }
 
-  if (sale.status === 'voided') {
+  if (sale.status === 'voided' || sale.status === 'failed' || sale.status === 'posting') {
     return 0;
   }
 
@@ -267,6 +273,191 @@ function shouldIncludeTransactionInMetrics(transaction = {}) {
   return true;
 }
 
+const REGISTER_SESSION_REQUIRED_ERROR = 'Open register first before recording cash or M-Pesa cashier movements.';
+
+function isCashierAccount(account = {}) {
+  if (!account || account.state !== 'Active') {
+    return false;
+  }
+
+  const accountNumber = String(account.accountNumber || '');
+  return account.accountType === 'Cashier' || accountNumber.endsWith('001') || accountNumber.endsWith('002');
+}
+
+function accountLooksLikePaymentMethod(account = {}, paymentMethod = '') {
+  const method = String(paymentMethod || '').trim();
+  const normalizedMethod = normalizePaymentMethod(method);
+  const accountName = String(account.name || '').trim().toLowerCase();
+  const accountNumber = String(account.accountNumber || '');
+
+  if (accountName && method.toLowerCase() === accountName) {
+    return true;
+  }
+
+  if (normalizedMethod === 'CASH' && accountNumber.endsWith('001')) {
+    return true;
+  }
+
+  if (normalizedMethod === 'MPESA' && accountNumber.endsWith('002')) {
+    return true;
+  }
+
+  return false;
+}
+
+async function getStoreCashierAccounts(db, storeNo) {
+  if (!storeNo) {
+    return [];
+  }
+
+  const result = await db.find({
+    selector: {
+      type: 'account',
+      state: 'Active',
+      storeNo,
+    },
+    limit: 9999,
+  });
+
+  return (result.docs || []).filter(isCashierAccount);
+}
+
+async function getOpenRegisterSession(db, storeNo) {
+  if (!storeNo) {
+    return null;
+  }
+
+  const result = await db.find({
+    selector: {
+      type: 'register-session',
+      state: 'Active',
+      storeNo,
+      status: 'open',
+    },
+    limit: 9999,
+  });
+
+  const openSessions = (result.docs || []).filter((session) => session.openedAt);
+  if (openSessions.length > 1) {
+    throw new Error('Multiple open register sessions were found. Close one before continuing.');
+  }
+
+  return openSessions[0] || null;
+}
+
+async function attachOpenRegisterSession(db, doc, options = {}) {
+  if (options.skipRegisterSessionRequirement) {
+    return doc;
+  }
+
+  const openSession = await getOpenRegisterSession(db, doc.storeNo);
+  if (!openSession?._id) {
+    throw new Error(REGISTER_SESSION_REQUIRED_ERROR);
+  }
+
+  if (doc.registerSessionId && doc.registerSessionId !== openSession._id) {
+    throw new Error('This register session is no longer open. Refresh and try again.');
+  }
+
+  return {
+    ...doc,
+    registerSessionId: openSession._id,
+    metadata: {
+      ...(doc.metadata || {}),
+      registerSessionId: openSession._id,
+    },
+  };
+}
+
+async function saleRequiresRegisterSession(db, sale) {
+  const cashierAccounts = await getStoreCashierAccounts(db, sale.storeNo);
+  const cashierAccountIds = new Set(cashierAccounts.map((account) => account._id));
+
+  for (const payment of getSalePaymentBreakdown(sale)) {
+    const amount = Math.abs(toNumber(payment.amount));
+    const paymentMethod = normalizePaymentMethod(payment.method);
+
+    if (!amount || isCreditPaymentMethod(paymentMethod)) {
+      continue;
+    }
+
+    if (payment.accountId && cashierAccountIds.has(payment.accountId)) {
+      return true;
+    }
+
+    if (!payment.accountId && cashierAccounts.some((account) => accountLooksLikePaymentMethod(account, payment.method))) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+async function attachOpenRegisterSessionToSale(db, sale, options = {}) {
+  if (options.skipRegisterSessionRequirement) {
+    return sale;
+  }
+
+  if (!await saleRequiresRegisterSession(db, sale)) {
+    return sale;
+  }
+
+  return attachOpenRegisterSession(db, sale, options);
+}
+
+async function attachOpenRegisterSessionForAccount(db, doc, accountId, options = {}) {
+  if (options.skipRegisterSessionRequirement || !accountId) {
+    return doc;
+  }
+
+  try {
+    const account = await db.get(accountId);
+    if (!isCashierAccount(account) || (doc.storeNo && account.storeNo !== doc.storeNo)) {
+      return doc;
+    }
+  } catch (error) {
+    return doc;
+  }
+
+  return attachOpenRegisterSession(db, doc, options);
+}
+
+async function transactionRequiresRegisterSession(db, transaction, options = {}) {
+  if (options.skipRegisterSessionRequirement) {
+    return false;
+  }
+
+  const rows = getTransactionImpactRows(transaction, options);
+  const accountIds = dedupeIds(rows
+    .filter((row) => row.entityType === 'account' && row.entityId)
+    .map((row) => row.entityId));
+
+  for (const accountId of accountIds) {
+    try {
+      const account = await db.get(accountId);
+      if (isCashierAccount(account) && (!transaction.storeNo || account.storeNo === transaction.storeNo)) {
+        return true;
+      }
+    } catch (error) {
+      // Validation elsewhere reports missing accounts when they matter.
+    }
+  }
+
+  return false;
+}
+
+async function attachOpenRegisterSessionToTransaction(db, transaction, options = {}) {
+  if (options.skipRegisterSessionRequirement) {
+    return transaction;
+  }
+
+  if (!await transactionRequiresRegisterSession(db, transaction, options)) {
+    return transaction;
+  }
+
+  return attachOpenRegisterSession(db, transaction, options);
+}
+
 function sortBatchesByExpiry(batches = []) {
   return [...batches].sort((a, b) => {
     if (!a.expiryDate && !b.expiryDate) return 0;
@@ -274,6 +465,97 @@ function sortBatchesByExpiry(batches = []) {
     if (!b.expiryDate) return -1;
     return new Date(a.expiryDate) - new Date(b.expiryDate);
   });
+}
+
+function getBatchQuantityTotal(batches = []) {
+  return Number((batches || []).reduce((sum, batch) => sum + Math.max(0, toNumber(batch.quantity)), 0).toFixed(2));
+}
+
+function normalizeStockBatches(product = {}) {
+  const stock = Math.max(0, toNumber(product.stock));
+  const batches = Array.isArray(product.batches) ? [...product.batches] : [];
+  const activeBatches = batches
+    .map((batch) => ({
+      ...batch,
+      quantity: Number(Math.max(0, toNumber(batch.quantity)).toFixed(2)),
+    }))
+    .filter((batch) => toNumber(batch.quantity) > 0);
+
+  const batchTotal = getBatchQuantityTotal(activeBatches);
+  if (stock > batchTotal) {
+    activeBatches.push({
+      batchId: `${product._id || 'product'}:legacy-batch`,
+      expiryDate: null,
+      quantity: Number((stock - batchTotal).toFixed(2)),
+      addedAt: product.createdAt || new Date().toISOString(),
+      source: 'legacy-stock-balance',
+    });
+  }
+
+  return activeBatches;
+}
+
+function applyStockDeltaToProduct(product, quantityDelta) {
+  let updatedBatches = normalizeStockBatches(product);
+
+  if (quantityDelta < 0) {
+    let remaining = Math.abs(quantityDelta);
+    updatedBatches = sortBatchesByExpiry(updatedBatches)
+      .map((batch) => {
+        if (remaining <= 0) {
+          return batch;
+        }
+
+        const available = Math.abs(toNumber(batch.quantity));
+        const deduct = Math.min(available, remaining);
+        remaining = Number((remaining - deduct).toFixed(2));
+
+        return {
+          ...batch,
+          quantity: Number((available - deduct).toFixed(2)),
+        };
+      })
+      .filter((batch) => toNumber(batch.quantity) > 0);
+
+    if (remaining > 0) {
+      throw new Error(`Insufficient batch stock for ${product.name}`);
+    }
+  } else if (quantityDelta > 0) {
+    if (updatedBatches.length > 0) {
+      const firstBatch = updatedBatches[0];
+      updatedBatches[0] = {
+        ...firstBatch,
+        quantity: Number((toNumber(firstBatch.quantity) + quantityDelta).toFixed(2)),
+      };
+    } else {
+      updatedBatches = [{
+        batchId: uuidv4(),
+        expiryDate: null,
+        quantity: Number(quantityDelta.toFixed(2)),
+        addedAt: new Date().toISOString(),
+      }];
+    }
+  }
+
+  const updatedStock = Number((toNumber(product.stock) + quantityDelta).toFixed(2));
+  if (updatedStock < 0) {
+    throw new Error(`${product.name} has insufficient stock for this action`);
+  }
+
+  const wasAboveThreshold = toNumber(product.stock) >= toNumber(product.restockThreshold);
+  const isNowBelowThreshold = updatedStock < toNumber(product.restockThreshold);
+  const shouldTriggerRestock = quantityDelta < 0 && wasAboveThreshold && isNowBelowThreshold;
+
+  return {
+    updatedProduct: {
+      ...product,
+      stock: updatedStock,
+      batches: updatedBatches,
+      restock: shouldTriggerRestock || product.restock,
+      updatedAt: new Date().toISOString(),
+    },
+    shouldTriggerRestock,
+  };
 }
 
 async function findPaymentAccount(db, { storeNo, paymentMethod, accountId }) {
@@ -689,108 +971,152 @@ async function previewSaleEffects(db, saleData, options = {}) {
   };
 }
 
-async function applySaleStockEffects(db, sale, options = {}) {
-  const stockMovements = [];
-
-  for (const item of sale.items) {
-    if (!item.productId) {
-      continue;
-    }
-
-    const product = await db.get(item.productId);
-    const baseUnits = Math.abs(toNumber(item.quantity) * (Math.abs(toNumber(item.conversionFactor)) || 1));
-    const condition = item.condition || 'sellable';
-    let quantityDelta = 0;
-
-    if (sale.saleType === 'NEW SALE') {
-      quantityDelta = -baseUnits;
-    } else if (sale.saleType === 'RETURN SALE') {
-      quantityDelta = condition === 'sellable' ? baseUnits : 0;
-    }
-
-    if (quantityDelta !== 0) {
-      let updatedBatches = Array.isArray(product.batches) ? [...product.batches] : [];
-
-      if (quantityDelta < 0) {
-        let remaining = Math.abs(quantityDelta);
-        updatedBatches = sortBatchesByExpiry(updatedBatches)
-          .map((batch) => {
-            if (remaining <= 0) {
-              return batch;
-            }
-
-            const available = Math.abs(toNumber(batch.quantity));
-            const deduct = Math.min(available, remaining);
-            remaining -= deduct;
-
-            return {
-              ...batch,
-              quantity: Number((available - deduct).toFixed(2)),
-            };
-          })
-          .filter((batch) => toNumber(batch.quantity) > 0);
-
-        if (remaining > 0) {
-          throw new Error(`Insufficient batch stock for ${product.name}`);
-        }
-      } else if (quantityDelta > 0) {
-        if (updatedBatches.length > 0) {
-          const firstBatch = updatedBatches[0];
-          updatedBatches[0] = {
-            ...firstBatch,
-            quantity: Number((toNumber(firstBatch.quantity) + quantityDelta).toFixed(2)),
-          };
-        } else {
-          updatedBatches = [{
-            batchId: uuidv4(),
-            expiryDate: null,
-            quantity: Number(quantityDelta.toFixed(2)),
-            addedAt: new Date().toISOString(),
-          }];
-        }
-      }
-
-      const updatedStock = Number((toNumber(product.stock) + quantityDelta).toFixed(2));
-      const wasAboveThreshold = toNumber(product.stock) >= toNumber(product.restockThreshold);
-      const isNowBelowThreshold = updatedStock < toNumber(product.restockThreshold);
-      const shouldTriggerRestock = quantityDelta < 0 && wasAboveThreshold && isNowBelowThreshold;
-
-      const updatedProduct = {
-        ...product,
-        stock: updatedStock,
-        batches: updatedBatches,
-        restock: shouldTriggerRestock || product.restock,
-        updatedAt: new Date().toISOString(),
-      };
-
-      await db.put(updatedProduct);
-
-      if (shouldTriggerRestock && options.mainWindow?.webContents) {
-        options.mainWindow.webContents.send('restock-triggered', updatedProduct);
-      }
-    }
-
-    const movement = await recordStockMovement(db, {
-      storeNo: sale.storeNo,
-      productId: item.productId,
-      saleLineId: item._id,
-      lineQuantity: item.quantity,
-      conversionFactor: item.conversionFactor,
-      quantityDelta,
-      condition,
-      sourceDocType: 'sale',
-      sourceDocId: sale._id,
-      reconciliationCaseId: options.reconciliationCaseId || null,
-      metadata: {
-        saleType: sale.saleType,
-        reconciliationCaseType: sale.reconciliationCaseType || null,
-      },
+async function restoreProductSnapshot(db, snapshot) {
+  try {
+    const current = await db.get(snapshot._id);
+    await db.put({
+      ...snapshot,
+      _rev: current._rev,
+      updatedAt: new Date().toISOString(),
     });
+  } catch (error) {
+    console.error(`Failed to roll back product stock for ${snapshot._id}:`, error);
+  }
+}
 
-    stockMovements.push(movement);
+async function deactivateStockMovement(db, movement) {
+  try {
+    const current = await db.get(movement._id);
+    await db.put({
+      ...current,
+      state: 'Inactive',
+      status: 'rolled_back',
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error(`Failed to roll back stock movement ${movement._id}:`, error);
+  }
+}
+
+async function rollbackSaleStockEffects(db, productSnapshots = new Map(), stockMovements = []) {
+  await Promise.all([
+    ...Array.from(productSnapshots.values()).map((snapshot) => restoreProductSnapshot(db, snapshot)),
+    ...stockMovements.map((movement) => deactivateStockMovement(db, movement)),
+  ]);
+}
+
+async function markSalePostingFailed(db, sale, error) {
+  try {
+    const current = await db.get(sale._id);
+    await db.put({
+      ...current,
+      state: 'Inactive',
+      status: 'failed',
+      postingError: error.message || String(error),
+      updatedAt: new Date().toISOString(),
+    });
+  } catch (rollbackError) {
+    console.error(`Failed to mark sale ${sale._id} as failed:`, rollbackError);
+  }
+}
+
+function sendRestockNotifications(products = [], mainWindow) {
+  if (!mainWindow?.webContents) {
+    return;
   }
 
-  return stockMovements;
+  for (const product of products) {
+    mainWindow.webContents.send('restock-triggered', product);
+  }
+}
+
+async function applySaleStockEffects(db, sale, options = {}) {
+  const movementInputs = [];
+  const stockMovements = [];
+  const productSnapshots = new Map();
+  const restockProducts = [];
+
+  try {
+    for (const item of sale.items) {
+      if (!item.productId) {
+        continue;
+      }
+
+      const baseUnits = Math.abs(toNumber(item.quantity) * (Math.abs(toNumber(item.conversionFactor)) || 1));
+      const condition = item.condition || 'sellable';
+      let quantityDelta = 0;
+
+      if (sale.saleType === 'NEW SALE') {
+        quantityDelta = -baseUnits;
+      } else if (sale.saleType === 'RETURN SALE') {
+        quantityDelta = condition === 'sellable' ? baseUnits : 0;
+      }
+
+      if (quantityDelta !== 0) {
+        const maxAttempts = 3;
+        let attempt = 0;
+        let updatedProduct = null;
+        let shouldTriggerRestock = false;
+
+        while (attempt < maxAttempts) {
+          attempt += 1;
+          const product = await db.get(item.productId);
+
+          const stockResult = applyStockDeltaToProduct(product, quantityDelta);
+          updatedProduct = stockResult.updatedProduct;
+          shouldTriggerRestock = stockResult.shouldTriggerRestock;
+
+          try {
+            await db.put(updatedProduct);
+            if (!productSnapshots.has(product._id)) {
+              productSnapshots.set(product._id, product);
+            }
+            break;
+          } catch (error) {
+            if (isConflictError(error) && attempt < maxAttempts) {
+              continue;
+            }
+            throw error;
+          }
+        }
+
+        if (shouldTriggerRestock && updatedProduct) {
+          restockProducts.push(updatedProduct);
+        }
+      }
+
+      movementInputs.push({
+        storeNo: sale.storeNo,
+        productId: item.productId,
+        saleLineId: item._id,
+        lineQuantity: item.quantity,
+        conversionFactor: item.conversionFactor,
+        quantityDelta,
+        condition,
+        sourceDocType: 'sale',
+        sourceDocId: sale._id,
+        reconciliationCaseId: options.reconciliationCaseId || null,
+        metadata: {
+          saleType: sale.saleType,
+          reconciliationCaseType: sale.reconciliationCaseType || null,
+        },
+      });
+    }
+
+    for (const movementInput of movementInputs) {
+      const movement = await recordStockMovement(db, movementInput);
+      stockMovements.push(movement);
+    }
+  } catch (error) {
+    await rollbackSaleStockEffects(db, productSnapshots, stockMovements);
+    throw error;
+  }
+
+  return {
+    stockMovements,
+    productSnapshots,
+    restockProducts,
+  };
 }
 
 async function applySaleBalanceEffects(db, sale, options = {}) {
@@ -826,26 +1152,44 @@ async function applySaleBalanceEffects(db, sale, options = {}) {
 }
 
 async function postSale(db, saleData, options = {}) {
-  const sale = buildSaleDocument(saleData, {
+  const sale = await attachOpenRegisterSessionToSale(db, buildSaleDocument(saleData, {
     reconciliationCaseIds: dedupeIds([
       ...(saleData.reconciliationCaseIds || []),
       options.reconciliationCaseId,
     ]),
-  });
+  }), options);
 
   const preview = await previewSaleEffects(db, sale, options);
   if (preview.validationErrors.length > 0) {
     return { success: false, error: preview.validationErrors.join(', ') };
   }
 
-  await db.put(sale);
-  const stockMovements = await applySaleStockEffects(db, sale, options);
-  const { ledgerEntries } = await applySaleBalanceEffects(db, sale, options);
+  let salePersisted = false;
+  let stockEffects = null;
+  let ledgerEntries = [];
+
+  try {
+    await db.put(sale);
+    salePersisted = true;
+    stockEffects = await applySaleStockEffects(db, sale, options);
+    ({ ledgerEntries } = await applySaleBalanceEffects(db, sale, options));
+    sendRestockNotifications(stockEffects.restockProducts, options.mainWindow);
+  } catch (error) {
+    if (stockEffects) {
+      await rollbackSaleStockEffects(db, stockEffects.productSnapshots, stockEffects.stockMovements);
+    }
+
+    if (salePersisted) {
+      await markSalePostingFailed(db, sale, error);
+    }
+
+    throw error;
+  }
 
   return {
     success: true,
     sale,
-    stockMovements,
+    stockMovements: stockEffects.stockMovements,
     ledgerEntries,
   };
 }
@@ -909,9 +1253,9 @@ async function applyTransactionBalanceEffects(db, transaction, options = {}) {
 }
 
 async function postTransaction(db, transactionData, options = {}) {
-  const transaction = buildTransactionDocument(transactionData, {
+  const transaction = await attachOpenRegisterSessionToTransaction(db, buildTransactionDocument(transactionData, {
     reconciliationCaseId: transactionData.reconciliationCaseId || options.reconciliationCaseId || null,
-  });
+  }), options);
 
   const preview = await previewTransactionEffects(db, transaction, options);
   if (preview.validationErrors.length > 0) {
@@ -931,9 +1275,11 @@ async function postTransaction(db, transactionData, options = {}) {
 
 module.exports = {
   applyEntityBalanceDelta,
+  attachOpenRegisterSessionForAccount,
   buildActorReference,
   buildSaleDocument,
   buildTransactionDocument,
+  getOpenRegisterSession,
   getCurrentCustomerId,
   getSaleMetricSign,
   getSaleNetAmount,

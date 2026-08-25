@@ -116,7 +116,7 @@ export default function FilteredStatements({ statements }) {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredStatements.length === 0 ? (
+                {(!statements || statements.length === 0) ? (
                   <TableRow>
                     <TableCell colSpan={5} className="text-center h-32 text-muted-foreground">
                       No transactions found

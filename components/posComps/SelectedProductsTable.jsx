@@ -68,8 +68,16 @@ function SelectedProductsTable({ selectedProducts, handleProductRemove, handleQu
                 <TableCell>
                   <Input
                     type="number"
+                    min="0.01"
+                    step="0.01"
                     value={variant.quantity}
-                    onChange={(e) => handleQuantityChange(variant._id, parseInt(e.target.value, 10))}
+                    onChange={(e) => handleQuantityChange(variant._id, e.target.value)}
+                    onBlur={(e) => {
+                      const quantity = Number(e.target.value);
+                      if (!Number.isFinite(quantity) || quantity <= 0) {
+                        handleQuantityChange(variant._id, '1');
+                      }
+                    }}
                     className="w-20"
                     ref={(el) => inputRefs.current[index].quantity = el}
                     onKeyDown={(e) => handleKeyDown(e, index, 'quantity')}

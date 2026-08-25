@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { ArrowRightLeft, Calculator, CheckCircle2, Clock, Lock, RefreshCw, Save, Smartphone, Wallet } from 'lucide-react';
+import { ArrowRightLeft, Calculator, CheckCircle2, Clock, Lock, PlayCircle, RefreshCw, Save, Smartphone, Wallet } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -9,6 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
+import { Textarea } from '@/components/ui/textarea';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { useToast } from '@/components/ui/use-toast';
 import useStaffStore from '@/stores/staffStore';
@@ -126,21 +127,49 @@ const AccountSummaryCard = ({ icon: Icon, title, account, openingBalance, expect
   </Card>
 );
 
+const getCloseTransferEntries = (transfer) => {
+  if (!transfer) {
+    return [];
+  }
+
+  if (Object.prototype.hasOwnProperty.call(transfer, 'cash') || Object.prototype.hasOwnProperty.call(transfer, 'mpesa')) {
+    return [
+      { key: 'cash', label: 'Cash Transfer', transfer: transfer.cash },
+      { key: 'mpesa', label: 'M-Pesa Transfer', transfer: transfer.mpesa },
+    ].filter((entry) => entry.transfer && (entry.transfer.amount > 0 || entry.transfer.transactionId));
+  }
+
+  return transfer.amount > 0 || transfer.transactionId
+    ? [{ key: 'legacy-cash', label: 'Cash Transfer', transfer }]
+    : [];
+};
+
 export default function RegisterBalancing({ defaultOpen = false }) {
   const { toast } = useToast();
   const staff = useStaffStore((state) => state.staff);
   const store = useWsinfoStore((state) => state.wsinfo);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [opening, setOpening] = useState(false);
   const [saving, setSaving] = useState(false);
   const [closing, setClosing] = useState(false);
   const [session, setSession] = useState(null);
+  const [previousClosedSession, setPreviousClosedSession] = useState(null);
+  const [openingDefaults, setOpeningDefaults] = useState({ cash: 0, mpesa: 0, total: 0 });
+  const [statusSetupError, setStatusSetupError] = useState('');
+  const [openingCash, setOpeningCash] = useState('0');
+  const [openingMpesa, setOpeningMpesa] = useState('0');
   const [countedCash, setCountedCash] = useState('0');
   const [countedMpesa, setCountedMpesa] = useState('0');
-  const [transferAmount, setTransferAmount] = useState('0');
-  const [transferCost, setTransferCost] = useState('0');
-  const [destinationAccountId, setDestinationAccountId] = useState('');
-  const [transferDescription, setTransferDescription] = useState('');
+  const [cashTransferAmount, setCashTransferAmount] = useState('0');
+  const [cashTransferCost, setCashTransferCost] = useState('0');
+  const [cashDestinationAccountId, setCashDestinationAccountId] = useState('');
+  const [cashTransferDescription, setCashTransferDescription] = useState('');
+  const [mpesaTransferAmount, setMpesaTransferAmount] = useState('0');
+  const [mpesaTransferCost, setMpesaTransferCost] = useState('0');
+  const [mpesaDestinationAccountId, setMpesaDestinationAccountId] = useState('');
+  const [mpesaTransferDescription, setMpesaTransferDescription] = useState('');
+  const [notes, setNotes] = useState('');
 
   const canManageCashier = can(staff, 'cashier:manage');
   const storeNo = store?.storeNo || '';
@@ -153,13 +182,23 @@ export default function RegisterBalancing({ defaultOpen = false }) {
   }, [defaultOpen]);
 
   const syncLocalState = useCallback((nextSession) => {
+    const closeTransfer = nextSession?.transfer || {};
+    const legacyCashTransfer = closeTransfer.amount !== undefined || closeTransfer.transactionId;
+    const cashTransfer = closeTransfer.cash || (legacyCashTransfer ? closeTransfer : {});
+    const mpesaTransfer = closeTransfer.mpesa || {};
+
     setSession(nextSession);
     setCountedCash(String(nextSession?.countedBalances?.cash ?? 0));
     setCountedMpesa(String(nextSession?.countedBalances?.mpesa ?? 0));
-    setTransferAmount(String(nextSession?.transfer?.amount ?? 0));
-    setTransferCost(String(nextSession?.transfer?.transactionCost ?? 0));
-    setDestinationAccountId(nextSession?.transfer?.destinationAccountId || '');
-    setTransferDescription(nextSession?.transfer?.description || `Register close transfer for ${nextSession?.businessDate || businessDate}`);
+    setCashTransferAmount(String(cashTransfer.amount ?? 0));
+    setCashTransferCost(String(cashTransfer.transactionCost ?? 0));
+    setCashDestinationAccountId(cashTransfer.destinationAccountId || '');
+    setCashTransferDescription(cashTransfer.description || `Cash close transfer for ${nextSession?.businessDate || businessDate}`);
+    setMpesaTransferAmount(String(mpesaTransfer.amount ?? 0));
+    setMpesaTransferCost(String(mpesaTransfer.transactionCost ?? 0));
+    setMpesaDestinationAccountId(mpesaTransfer.destinationAccountId || '');
+    setMpesaTransferDescription(mpesaTransfer.description || `M-Pesa close transfer for ${nextSession?.businessDate || businessDate}`);
+    setNotes(nextSession?.notes || '');
   }, [businessDate]);
 
   const fetchRegisterSession = useCallback(async () => {
@@ -169,12 +208,34 @@ export default function RegisterBalancing({ defaultOpen = false }) {
 
     setLoading(true);
     try {
-      const result = await window.electronAPI.realmOperation('getRegisterSession', storeNo, businessDate);
+      const result = await window.electronAPI.realmOperation('getRegisterSession', storeNo);
       if (!result.success) {
         throw new Error(result.error || 'Failed to load register session');
       }
 
-      syncLocalState(result.session);
+      setPreviousClosedSession(result.previousClosedSession || null);
+      setStatusSetupError(result.setupError || '');
+      const defaults = result.openingDefaults || { cash: 0, mpesa: 0, total: 0 };
+      setOpeningDefaults(defaults);
+
+      if (result.activeSession) {
+        syncLocalState(result.activeSession);
+      } else {
+        setSession(null);
+        setOpeningCash(String(defaults.cash ?? 0));
+        setOpeningMpesa(String(defaults.mpesa ?? 0));
+        setCountedCash('0');
+        setCountedMpesa('0');
+        setCashTransferAmount('0');
+        setCashTransferCost('0');
+        setCashDestinationAccountId('');
+        setCashTransferDescription(`Cash close transfer for ${businessDate}`);
+        setMpesaTransferAmount('0');
+        setMpesaTransferCost('0');
+        setMpesaDestinationAccountId('');
+        setMpesaTransferDescription(`M-Pesa close transfer for ${businessDate}`);
+        setNotes('');
+      }
     } catch (error) {
       console.error('Error loading register session:', error);
       toast({
@@ -208,14 +269,75 @@ export default function RegisterBalancing({ defaultOpen = false }) {
     mpesa: Number((liveCountedTotals.mpesa - Number(expectedBalances.mpesa || 0)).toFixed(2)),
     total: Number((liveCountedTotals.total - Number(expectedBalances.total || 0)).toFixed(2)),
   };
+  const adminTransferAccounts = session?.availableTransferAccounts || [];
+  const closeTransferEntries = getCloseTransferEntries(session?.transfer);
 
-  const transferAmountValue = toInputNumber(transferAmount);
-  const transferCostValue = toInputNumber(transferCost);
-  const remainingDrawerCash = Number((liveCountedTotals.cash - transferAmountValue - transferCostValue).toFixed(2));
-  const setupError = session?.setupError || '';
+  const cashTransferAmountValue = toInputNumber(cashTransferAmount);
+  const cashTransferCostValue = toInputNumber(cashTransferCost);
+  const mpesaTransferAmountValue = toInputNumber(mpesaTransferAmount);
+  const mpesaTransferCostValue = toInputNumber(mpesaTransferCost);
+  const remainingDrawerCash = Number((liveCountedTotals.cash - cashTransferAmountValue - cashTransferCostValue).toFixed(2));
+  const remainingMpesa = Number((liveCountedTotals.mpesa - mpesaTransferAmountValue - mpesaTransferCostValue).toFixed(2));
+  const cashTransferNeedsDestination = cashTransferAmountValue > 0 || cashTransferCostValue > 0;
+  const mpesaTransferNeedsDestination = mpesaTransferAmountValue > 0 || mpesaTransferCostValue > 0;
+  const cashTransferInvalidCost = cashTransferAmountValue === 0 && cashTransferCostValue > 0;
+  const mpesaTransferInvalidCost = mpesaTransferAmountValue === 0 && mpesaTransferCostValue > 0;
+  const setupError = session?.setupError || statusSetupError || '';
   const sessionClosed = session?.status === 'closed';
   const canEdit = canManageCashier && !setupError && !sessionClosed;
-  const canClose = canEdit && !closing && remainingDrawerCash >= 0 && ((transferAmountValue === 0 && transferCostValue === 0) || destinationAccountId);
+  const canClose = canEdit
+    && !closing
+    && remainingDrawerCash >= 0
+    && remainingMpesa >= 0
+    && !cashTransferInvalidCost
+    && !mpesaTransferInvalidCost
+    && (!cashTransferNeedsDestination || cashDestinationAccountId)
+    && (!mpesaTransferNeedsDestination || mpesaDestinationAccountId);
+  const canOpen = canManageCashier && !setupError && !session && !opening;
+
+  const handleOpenSession = async () => {
+    if (!canOpen) {
+      toast({
+        title: 'Unable to Open',
+        description: setupError || 'Your roles do not allow opening the register.',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setOpening(true);
+    try {
+      const result = await window.electronAPI.realmOperation('openRegisterSession', {
+        storeNo,
+        openingBalances: {
+          cash: toInputNumber(openingCash),
+          mpesa: toInputNumber(openingMpesa),
+        },
+      }, staff);
+
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to open register session');
+      }
+
+      setPreviousClosedSession(result.previousClosedSession || null);
+      setStatusSetupError(result.setupError || '');
+      setOpeningDefaults(result.openingDefaults || openingDefaults);
+      syncLocalState(result.activeSession || result.session);
+      toast({
+        title: 'Register Opened',
+        description: 'Register session opened successfully.',
+      });
+    } catch (error) {
+      console.error('Error opening register session:', error);
+      toast({
+        title: 'Error',
+        description: error.message || 'Failed to open register session',
+        variant: 'destructive',
+      });
+    } finally {
+      setOpening(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!canEdit) {
@@ -231,8 +353,9 @@ export default function RegisterBalancing({ defaultOpen = false }) {
     try {
       const result = await window.electronAPI.realmOperation('saveRegisterSession', {
         storeNo,
-        businessDate,
+        sessionId: session?._id,
         countedBalances,
+        notes,
       });
 
       if (!result.success) {
@@ -260,7 +383,7 @@ export default function RegisterBalancing({ defaultOpen = false }) {
     if (!canClose) {
       toast({
         title: 'Unable to Close',
-        description: setupError || 'Complete the transfer details and ensure the remaining drawer cash is not negative.',
+        description: setupError || 'Complete the transfer details and ensure remaining cash and M-Pesa are not negative.',
         variant: 'destructive',
       });
       return;
@@ -270,13 +393,22 @@ export default function RegisterBalancing({ defaultOpen = false }) {
     try {
       const result = await window.electronAPI.realmOperation('closeRegisterSession', {
         storeNo,
-        businessDate,
+        sessionId: session?._id,
         countedBalances,
+        notes,
         transfer: {
-          destinationAccountId,
-          amount: transferAmountValue,
-          transactionCost: transferCostValue,
-          description: transferDescription,
+          cash: {
+            destinationAccountId: cashDestinationAccountId,
+            amount: cashTransferAmountValue,
+            transactionCost: cashTransferCostValue,
+            description: cashTransferDescription,
+          },
+          mpesa: {
+            destinationAccountId: mpesaDestinationAccountId,
+            amount: mpesaTransferAmountValue,
+            transactionCost: mpesaTransferCostValue,
+            description: mpesaTransferDescription,
+          },
         },
       }, staff);
 
@@ -287,8 +419,8 @@ export default function RegisterBalancing({ defaultOpen = false }) {
       syncLocalState(result.session);
       toast({
         title: 'Register Closed',
-        description: transferAmountValue > 0
-          ? 'Register closed and cash transferred successfully.'
+        description: cashTransferAmountValue > 0 || mpesaTransferAmountValue > 0
+          ? 'Register closed and transfer transactions posted successfully.'
           : 'Register closed successfully.',
       });
     } catch (error) {
@@ -319,7 +451,7 @@ export default function RegisterBalancing({ defaultOpen = false }) {
             {sessionClosed && <Badge className="bg-green-500">Closed</Badge>}
           </DialogTitle>
           <DialogDescription>
-            {formatBusinessDate(session?.businessDate || businessDate)}
+            {session ? formatBusinessDate(session.businessDate || businessDate) : 'No open register session'}
           </DialogDescription>
         </DialogHeader>
 
@@ -352,6 +484,77 @@ export default function RegisterBalancing({ defaultOpen = false }) {
               </Card>
             )}
 
+            {!loading && !session && (
+              <>
+                <Card className="border-muted shadow-none">
+                  <CardHeader className="border-b bg-muted/30 p-4">
+                    <CardTitle className="flex items-center gap-2 text-sm font-medium">
+                      <PlayCircle className="h-4 w-4" />
+                      Start Register Session
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4 p-4">
+                    <div className="grid gap-4 lg:grid-cols-2">
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Opening Cash</Label>
+                        <Input
+                          type="number"
+                          value={openingCash}
+                          onChange={(event) => setOpeningCash(event.target.value)}
+                          disabled={!canOpen}
+                          className="mt-1"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs text-muted-foreground">Opening M-Pesa</Label>
+                        <Input
+                          type="number"
+                          value={openingMpesa}
+                          onChange={(event) => setOpeningMpesa(event.target.value)}
+                          disabled={!canOpen}
+                          className="mt-1"
+                        />
+                      </div>
+                    </div>
+                    <div className="rounded-lg border bg-muted/40 p-3 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Suggested Opening</span>
+                        <span className="font-semibold">{toCurrency(openingDefaults.total)}</span>
+                      </div>
+                      {previousClosedSession?.closedAt && (
+                        <div className="mt-2 flex justify-between">
+                          <span className="text-muted-foreground">Previous Close</span>
+                          <span className="font-semibold">{formatDateTime(previousClosedSession.closedAt)}</span>
+                        </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {previousClosedSession && (
+                  <Card className="border-muted shadow-none">
+                    <CardHeader className="border-b bg-muted/30 p-4">
+                      <CardTitle className="text-sm font-medium">Last Closed Session</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-2 p-4 text-sm">
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Expected Total</span>
+                        <span className="font-semibold">{toCurrency(previousClosedSession.expectedBalances?.total)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Counted Total</span>
+                        <span className="font-semibold">{toCurrency(previousClosedSession.countedBalances?.total)}</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-muted-foreground">Total Variance</span>
+                        <DifferenceBadge value={previousClosedSession.variances?.total || 0} />
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+              </>
+            )}
+
             {!loading && session && (
               <>
                 <Card className="border-muted bg-muted/30 shadow-none">
@@ -360,8 +563,8 @@ export default function RegisterBalancing({ defaultOpen = false }) {
                   </CardHeader>
                   <CardContent className="grid gap-2 p-4 pt-0 text-sm sm:grid-cols-3">
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Created</span>
-                      <span className="font-semibold">{formatDateTime(session.createdAt)}</span>
+                      <span className="text-muted-foreground">Opened</span>
+                      <span className="font-semibold">{formatDateTime(session.openedAt || session.createdAt)}</span>
                     </div>
                     {session.closedAt && (
                       <div className="flex justify-between">
@@ -429,73 +632,155 @@ export default function RegisterBalancing({ defaultOpen = false }) {
 
                 <Card className="border-muted shadow-none">
                   <CardHeader className="border-b bg-muted/30 p-4">
-                    <CardTitle className="text-sm font-medium">Cash Close Transfer</CardTitle>
+                    <CardTitle className="text-sm font-medium">Session Notes</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4">
+                    <Textarea
+                      value={notes}
+                      onChange={(event) => setNotes(event.target.value)}
+                      disabled={!canEdit}
+                      className="min-h-20"
+                    />
+                  </CardContent>
+                </Card>
+
+                <Card className="border-muted shadow-none">
+                  <CardHeader className="border-b bg-muted/30 p-4">
+                    <CardTitle className="text-sm font-medium">Close Transfers</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4 p-4">
+                    {adminTransferAccounts.length === 0 && (
+                      <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-700">
+                        Create an active Admin account before transferring close balances.
+                      </div>
+                    )}
+
                     <div className="grid gap-4 lg:grid-cols-2">
-                      <div>
-                        <Label className="text-xs text-muted-foreground">Transfer Amount</Label>
-                        <Input
-                          type="number"
-                          value={transferAmount}
-                          onChange={(event) => setTransferAmount(event.target.value)}
-                          disabled={!canEdit}
-                          className="mt-1"
-                        />
+                      <div className="rounded-lg border p-3">
+                        <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+                          <Wallet className="h-4 w-4" />
+                          Cash to Admin
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Amount</Label>
+                            <Input
+                              type="number"
+                              value={cashTransferAmount}
+                              onChange={(event) => setCashTransferAmount(event.target.value)}
+                              disabled={!canEdit || adminTransferAccounts.length === 0}
+                              className="mt-1"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Transfer Cost</Label>
+                            <Input
+                              type="number"
+                              value={cashTransferCost}
+                              onChange={(event) => setCashTransferCost(event.target.value)}
+                              disabled={!canEdit || adminTransferAccounts.length === 0}
+                              className="mt-1"
+                            />
+                          </div>
+                        </div>
+                        <div className="mt-3">
+                          <Label className="text-xs text-muted-foreground">Destination Admin Account</Label>
+                          <Select
+                            value={cashDestinationAccountId}
+                            onValueChange={setCashDestinationAccountId}
+                            disabled={!canEdit || adminTransferAccounts.length === 0}
+                          >
+                            <SelectTrigger className="mt-1">
+                              <SelectValue placeholder="Select Admin account" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {adminTransferAccounts.map((account) => (
+                                <SelectItem key={account._id} value={account._id}>
+                                  {account.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="mt-3">
+                          <Label className="text-xs text-muted-foreground">Description</Label>
+                          <Input
+                            value={cashTransferDescription}
+                            onChange={(event) => setCashTransferDescription(event.target.value)}
+                            disabled={!canEdit || adminTransferAccounts.length === 0}
+                            className="mt-1"
+                          />
+                        </div>
+                        <div className="mt-3 flex items-center justify-between rounded-md bg-muted/40 p-2 text-sm">
+                          <span className="text-muted-foreground">Remaining Cash</span>
+                          <span className={`font-semibold ${remainingDrawerCash < 0 ? 'text-red-600' : ''}`}>
+                            {toCurrency(remainingDrawerCash)}
+                          </span>
+                        </div>
                       </div>
-                      <div>
-                        <Label className="text-xs text-muted-foreground">Transfer Cost</Label>
-                        <Input
-                          type="number"
-                          value={transferCost}
-                          onChange={(event) => setTransferCost(event.target.value)}
-                          disabled={!canEdit}
-                          className="mt-1"
-                        />
+
+                      <div className="rounded-lg border p-3">
+                        <div className="mb-3 flex items-center gap-2 text-sm font-medium">
+                          <Smartphone className="h-4 w-4" />
+                          M-Pesa to Admin
+                        </div>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Amount</Label>
+                            <Input
+                              type="number"
+                              value={mpesaTransferAmount}
+                              onChange={(event) => setMpesaTransferAmount(event.target.value)}
+                              disabled={!canEdit || adminTransferAccounts.length === 0}
+                              className="mt-1"
+                            />
+                          </div>
+                          <div>
+                            <Label className="text-xs text-muted-foreground">Transfer Cost</Label>
+                            <Input
+                              type="number"
+                              value={mpesaTransferCost}
+                              onChange={(event) => setMpesaTransferCost(event.target.value)}
+                              disabled={!canEdit || adminTransferAccounts.length === 0}
+                              className="mt-1"
+                            />
+                          </div>
+                        </div>
+                        <div className="mt-3">
+                          <Label className="text-xs text-muted-foreground">Destination Admin Account</Label>
+                          <Select
+                            value={mpesaDestinationAccountId}
+                            onValueChange={setMpesaDestinationAccountId}
+                            disabled={!canEdit || adminTransferAccounts.length === 0}
+                          >
+                            <SelectTrigger className="mt-1">
+                              <SelectValue placeholder="Select Admin account" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {adminTransferAccounts.map((account) => (
+                                <SelectItem key={account._id} value={account._id}>
+                                  {account.name}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="mt-3">
+                          <Label className="text-xs text-muted-foreground">Description</Label>
+                          <Input
+                            value={mpesaTransferDescription}
+                            onChange={(event) => setMpesaTransferDescription(event.target.value)}
+                            disabled={!canEdit || adminTransferAccounts.length === 0}
+                            className="mt-1"
+                          />
+                        </div>
+                        <div className="mt-3 flex items-center justify-between rounded-md bg-muted/40 p-2 text-sm">
+                          <span className="text-muted-foreground">Remaining M-Pesa</span>
+                          <span className={`font-semibold ${remainingMpesa < 0 ? 'text-red-600' : ''}`}>
+                            {toCurrency(remainingMpesa)}
+                          </span>
+                        </div>
                       </div>
-                    </div>
-                    <div>
-                      <Label className="text-xs text-muted-foreground">Destination Account</Label>
-                      <Select
-                        value={destinationAccountId}
-                        onValueChange={setDestinationAccountId}
-                        disabled={!canEdit || session.availableTransferAccounts?.length === 0}
-                      >
-                        <SelectTrigger className="mt-1">
-                          <SelectValue placeholder="Select account" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {(session.availableTransferAccounts || []).map((account) => (
-                            <SelectItem key={account._id} value={account._id}>
-                              {account.name}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div>
-                      <Label className="text-xs text-muted-foreground">Transfer Description</Label>
-                      <Input
-                        value={transferDescription}
-                        onChange={(event) => setTransferDescription(event.target.value)}
-                        disabled={!canEdit}
-                        className="mt-1"
-                      />
-                    </div>
-                    <div className="rounded-lg border bg-muted/40 p-3 text-sm">
-                      <div className="flex items-center justify-between">
-                        <span className="text-muted-foreground">Remaining Drawer Cash</span>
-                        <span className={`font-semibold ${remainingDrawerCash < 0 ? 'text-red-600' : ''}`}>
-                          {toCurrency(remainingDrawerCash)}
-                        </span>
-                      </div>
-                      <div className="mt-2 flex items-center justify-between">
-                        <span className="text-muted-foreground">Transfer Cost Accounted</span>
-                        <span className="font-semibold">{toCurrency(transferCostValue)}</span>
-                      </div>
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        The remaining drawer cash becomes the next day&apos;s opening cash balance after transfer amount and transfer cost are deducted.
-                      </p>
                     </div>
                   </CardContent>
                 </Card>
@@ -521,21 +806,27 @@ export default function RegisterBalancing({ defaultOpen = false }) {
                       <>
                         <Separator />
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Drawer Cash After Close</span>
+                          <span className="text-muted-foreground">Cash After Close</span>
                           <span className="font-semibold">{toCurrency(session.closeSummary.remainingDrawerCash)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">M-Pesa After Close</span>
+                          <span className="font-semibold">{toCurrency(session.closeSummary.remainingMpesa ?? session.countedBalances?.mpesa)}</span>
                         </div>
                       </>
                     )}
-                    {session.transfer && (
-                      <div className="rounded-lg border bg-muted/40 p-3">
+                    {closeTransferEntries.length > 0 && (
+                      <div className="space-y-2 rounded-lg border bg-muted/40 p-3">
                         <div className="flex items-center gap-2 font-medium">
                           <ArrowRightLeft className="h-4 w-4" />
-                          Cash Transfer
+                          Close Transfers
                         </div>
-                        <p className="mt-2 text-xs text-muted-foreground">
-                          {toCurrency(session.transfer.amount)} moved to {session.transfer.destinationAccountName}
-                          {session.transfer.transactionCost > 0 ? ` with ${toCurrency(session.transfer.transactionCost)} transfer cost.` : '.'}
-                        </p>
+                        {closeTransferEntries.map((entry) => (
+                          <p key={entry.key} className="text-xs text-muted-foreground">
+                            {entry.label}: {toCurrency(entry.transfer.amount)} moved to {entry.transfer.destinationAccountName}
+                            {entry.transfer.transactionCost > 0 ? ` with ${toCurrency(entry.transfer.transactionCost)} transfer cost.` : '.'}
+                          </p>
+                        ))}
                       </div>
                     )}
                   </CardContent>
@@ -566,6 +857,18 @@ export default function RegisterBalancing({ defaultOpen = false }) {
                   {closing ? 'Closing...' : 'Close Register'}
                 </>
               )}
+            </Button>
+          </div>
+        )}
+        {!loading && !session && (
+          <div className="flex flex-col gap-2 border-t bg-background px-4 py-3 sm:flex-row sm:flex-wrap sm:px-6">
+            <Button variant="outline" onClick={fetchRegisterSession} disabled={loading || opening} className="w-full sm:w-auto">
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Refresh
+            </Button>
+            <Button onClick={handleOpenSession} disabled={!canOpen} className="w-full sm:ml-auto sm:w-auto">
+              <PlayCircle className="mr-2 h-4 w-4" />
+              {opening ? 'Opening...' : 'Open Register'}
             </Button>
           </div>
         )}

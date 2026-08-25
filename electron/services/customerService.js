@@ -7,6 +7,67 @@ const {
   shouldIncludeTransactionInMetrics,
   toNumber,
 } = require('./postingService');
+const { findAll } = require('./pouchQueryService');
+
+const CUSTOMER_SALES_INDEXES = [
+  {
+    ddoc: 'customer-sales-original',
+    name: 'customer-sales-original-index',
+    field: 'customerId',
+  },
+  {
+    ddoc: 'customer-sales-current',
+    name: 'customer-sales-current-index',
+    field: 'currentCustomerId',
+  },
+];
+const CUSTOMER_TRANSACTION_INDEXES = [
+  {
+    ddoc: 'customer-transactions-from',
+    name: 'customer-transactions-from-index',
+    field: 'from',
+  },
+  {
+    ddoc: 'customer-transactions-to',
+    name: 'customer-transactions-to-index',
+    field: 'to',
+  },
+];
+const CUSTOMER_LEDGER_INDEX = {
+  ddoc: 'customer-ledger',
+  name: 'customer-ledger-index',
+};
+const indexPromises = new WeakMap();
+
+function ensureCustomerActivityIndexes(db) {
+  if (indexPromises.has(db)) {
+    return indexPromises.get(db);
+  }
+
+  const setupPromise = Promise.all([
+    ...[...CUSTOMER_SALES_INDEXES, ...CUSTOMER_TRANSACTION_INDEXES].map((index) =>
+      db.createIndex({
+        index: {
+          fields: ['storeNo', 'type', 'state', index.field, 'createdAt'],
+        },
+        ddoc: index.ddoc,
+        name: index.name,
+      })
+    ),
+    db.createIndex({
+      index: {
+        fields: ['storeNo', 'type', 'state', 'entityType', 'entityId', 'bucket', 'createdAt'],
+      },
+      ddoc: CUSTOMER_LEDGER_INDEX.ddoc,
+      name: CUSTOMER_LEDGER_INDEX.name,
+    }),
+  ]).then(() => undefined).catch((error) => {
+    indexPromises.delete(db);
+    throw error;
+  });
+  indexPromises.set(db, setupPromise);
+  return setupPromise;
+}
 
 function toDateValue(value) {
   if (!value) {
@@ -224,39 +285,70 @@ function attachRunningBalances(rows = [], currentBalance) {
     .sort(compareRowsByDateAsc);
 }
 
+function mergeUniqueDocs(results = []) {
+  return [...new Map(results
+    .flatMap((result) => result.docs || [])
+    .map((doc) => [doc._id, doc])).values()];
+}
+
+function buildCreatedAtSelector(fromDate, toDate) {
+  return {
+    $gte: fromDate ? fromDate.toISOString() : '',
+    ...(toDate ? { $lte: toDate.toISOString() } : {}),
+  };
+}
+
+async function findCustomerSales(db, customerId, storeNo, fromDate, toDate) {
+  await ensureCustomerActivityIndexes(db);
+  const createdAt = buildCreatedAtSelector(fromDate, toDate);
+  const results = await Promise.all(CUSTOMER_SALES_INDEXES.map((index) => findAll(db, {
+    selector: {
+      storeNo,
+      type: 'sale',
+      state: 'Active',
+      [index.field]: customerId,
+      createdAt,
+    },
+    use_index: [index.ddoc, index.name],
+  })));
+
+  return mergeUniqueDocs(results)
+    .map(decorateSale)
+    .filter((sale) => getCurrentCustomerId(sale) === customerId);
+}
+
+async function findCustomerTransactions(db, customerId, storeNo) {
+  await ensureCustomerActivityIndexes(db);
+  const results = await Promise.all(CUSTOMER_TRANSACTION_INDEXES.map((index) => findAll(db, {
+    selector: {
+      storeNo,
+      type: 'transaction',
+      state: 'Active',
+      [index.field]: customerId,
+      createdAt: { $gte: '' },
+    },
+    use_index: [index.ddoc, index.name],
+  })));
+
+  return mergeUniqueDocs(results);
+}
+
 async function getAllCustomerLedgerRows(db, customerId, storeNo) {
   const [ledgerResult, salesResult, transactionsResult] = await Promise.all([
-    db.find({
+    findAll(db, {
       selector: {
+        storeNo,
         type: 'ledger-entry',
         state: 'Active',
-        storeNo,
         entityType: 'customer',
         entityId: customerId,
         bucket: 'customer_balance',
+        createdAt: { $gte: '' },
       },
-      limit: 9999,
+      use_index: [CUSTOMER_LEDGER_INDEX.ddoc, CUSTOMER_LEDGER_INDEX.name],
     }),
-    db.find({
-      selector: {
-        type: 'sale',
-        state: 'Active',
-        storeNo,
-      },
-      limit: 9999,
-    }),
-    db.find({
-      selector: {
-        type: 'transaction',
-        state: 'Active',
-        storeNo,
-        $or: [
-          { from: customerId },
-          { to: customerId },
-        ],
-      },
-      limit: 9999,
-    }),
+    findCustomerSales(db, customerId, storeNo),
+    findCustomerTransactions(db, customerId, storeNo),
   ]);
 
   const ledgerRows = (ledgerResult.docs || []).map(buildLedgerRowFromEntry);
@@ -271,8 +363,7 @@ async function getAllCustomerLedgerRows(db, customerId, storeNo) {
       .map((row) => row.sourceDocId)
   );
 
-  const legacySales = (salesResult.docs || [])
-    .map(decorateSale)
+  const legacySales = salesResult
     .filter((sale) =>
       getCurrentCustomerId(sale) === customerId &&
       getSalePaymentBreakdown(sale).some((payment) => payment.method === 'CREDIT') &&
@@ -282,7 +373,7 @@ async function getAllCustomerLedgerRows(db, customerId, storeNo) {
     .map(buildLegacySaleLedgerRow)
     .filter(Boolean);
 
-  const legacyTransactions = (transactionsResult.docs || [])
+  const legacyTransactions = transactionsResult
     .filter((transaction) =>
       shouldIncludeTransactionInMetrics(transaction) &&
       !representedTransactionIds.has(transaction._id)
@@ -454,19 +545,8 @@ function deleteCustomer(db, customerId) {
 // Query all sales for a specific customer
 async function getCustomerSales(db, customerId, fromDate, toDate, storeNo) {
   try {
-    const salesResult = await db.find({
-      selector: {
-        type: 'sale',
-        state: 'Active',
-        storeNo,
-      },
-      limit: 9999,
-    });
-
     const { start, end } = normalizeDateRange(fromDate, toDate);
-    const sales = (salesResult.docs || [])
-      .map(decorateSale)
-      .filter((sale) => getCurrentCustomerId(sale) === customerId && inDateRange(sale.createdAt, start, end))
+    const sales = (await findCustomerSales(db, customerId, storeNo, start, end))
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
     return { success: true, sales };
@@ -486,13 +566,12 @@ async function getTodayCreditSales(db, input) {
 
   try {
     const [salesResult, customersResult] = await Promise.all([
-      db.find({
+      findAll(db, {
         selector: {
           type: 'sale',
           state: 'Active',
           storeNo: options.storeNo,
         },
-        limit: 9999,
       }),
       db.find({
         selector: {
@@ -538,14 +617,13 @@ async function getTodayCustomerTransactions(db, input) {
 
   try {
     // First, find all today's transactions from customers
-    const transactionsResult = await db.find({
+    const transactionsResult = await findAll(db, {
     selector: {
       type: "transaction",
       state: "Active",
       source: "customer",
       storeNo: options.storeNo
     },
-    limit: 9999,
     });
 
     // Now, fetch customer details for each transaction

@@ -1,18 +1,24 @@
 // Growth Analytics Service
 // Tracking period starts from 13/9/2025
 
+const {
+  getSaleNetAmount,
+  getSaleNetCost,
+  shouldIncludeSaleInMetrics,
+} = require('./postingService');
+const { findAll } = require('./pouchQueryService');
+
 const TRACKING_START_DATE = new Date('2025-09-13T00:00:00');
 
 // Get daily sales data for current month with 7-day projections
 function getMonthlySalesData(db, storeNo, startDate, endDate) {
-  return db.find({
+  return findAll(db, {
     selector: { 
       type: 'sale',
       state: 'Active',
       storeNo: storeNo, 
       createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) }
     },
-    limit: 9999
   })
     .then(result => {
       const dailyData = {};
@@ -57,14 +63,13 @@ function getMonthlySalesData(db, storeNo, startDate, endDate) {
 
 // Get weekly sales growth with projections
 function getWeeklySalesGrowth(db, storeNo, startDate, endDate) {
-  return db.find({
+  return findAll(db, {
     selector: { 
       type: 'sale',
       state: 'Active',
       storeNo: storeNo, 
       createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) }
     },
-    limit: 9999
   })
     .then(result => {
       const weeklyData = {};
@@ -114,14 +119,13 @@ function getWeeklySalesGrowth(db, storeNo, startDate, endDate) {
 
 // Get average order value over time
 function getAverageOrderValue(db, storeNo, startDate, endDate) {
-  return db.find({
+  return findAll(db, {
     selector: { 
       type: 'sale',
       state: 'Active',
       storeNo: storeNo, 
       createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) }
     },
-    limit: 9999
   })
     .then(result => {
       const weeklyAOV = {};
@@ -165,14 +169,13 @@ function getAverageOrderValue(db, storeNo, startDate, endDate) {
 
 // Get weekly sales bar graph data
 function getWeeklySalesBarData(db, storeNo, startDate, endDate) {
-  return db.find({
+  return findAll(db, {
     selector: { 
       type: 'sale',
       state: 'Active',
       storeNo: storeNo, 
       createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) }
     },
-    limit: 9999
   })
     .then(result => {
       const weeklyData = {};
@@ -208,14 +211,13 @@ function getWeeklySalesBarData(db, storeNo, startDate, endDate) {
 
 // Get top 50 performing products
 function getTopPerformingProducts(db, storeNo, startDate, endDate, limit = 50) {
-  return db.find({
+  return findAll(db, {
     selector: { 
       type: 'sale',
       state: 'Active',
       storeNo: storeNo, 
       createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) }
     },
-    limit: 9999
   })
     .then(result => {
       const productSales = {};
@@ -256,19 +258,22 @@ function getTopPerformingProducts(db, storeNo, startDate, endDate, limit = 50) {
 
 // Get weekly average gross margin
 function getWeeklyGrossMargin(db, storeNo, startDate, endDate) {
-  return db.find({
+  return findAll(db, {
     selector: { 
       type: 'sale',
       state: 'Active',
       storeNo: storeNo, 
       createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) }
     },
-    limit: 9999
   })
     .then(result => {
       const weeklyMargin = {};
       
       result.docs.forEach(sale => {
+        if (!shouldIncludeSaleInMetrics(sale)) {
+          return;
+        }
+
         const date = new Date(sale.createdAt);
         const weekKey = getWeekKey(date);
         
@@ -282,13 +287,8 @@ function getWeeklyGrossMargin(db, storeNo, startDate, endDate) {
           };
         }
         
-        sale.items.forEach(item => {
-          const revenue = item.subtotal;
-          const cost = item.quantity * (item.buyPrice || 0);
-          
-          weeklyMargin[weekKey].totalRevenue += revenue;
-          weeklyMargin[weekKey].totalCost += cost;
-        });
+        weeklyMargin[weekKey].totalRevenue += getSaleNetAmount(sale);
+        weeklyMargin[weekKey].totalCost += getSaleNetCost(sale);
       });
       
       // Calculate gross margin and percentage
@@ -314,14 +314,13 @@ function getWeeklyGrossMargin(db, storeNo, startDate, endDate) {
 
 // Get weekly fulfillment type data (Delivery vs Walk-in)
 function getWeeklyFulfillmentTypeData(db, storeNo, startDate, endDate) {
-  return db.find({
+  return findAll(db, {
     selector: { 
       type: 'sale',
       state: 'Active',
       storeNo: storeNo, 
       createdAt: { $gte: new Date(startDate), $lte: new Date(endDate) }
     },
-    limit: 9999
   })
     .then(result => {
       const weeklyFulfillment = {};

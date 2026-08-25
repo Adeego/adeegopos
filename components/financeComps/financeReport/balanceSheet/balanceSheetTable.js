@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import CreateALESheet from './createALE';
 import { useRouter } from 'next/router';
+import useWsinfoStore from '@/stores/wsinfo';
 
 // Predefined categories for each type
 const CATEGORIES = {
@@ -43,10 +44,14 @@ export default function BalanceSheetTable() {
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [searchTerm, setSearchTerm] = useState('');
   const router = useRouter();
+  const store = useWsinfoStore((state) => state.wsinfo);
+  const storeNo = store?.storeNo || '';
 
   useEffect(() => {
-    fetchBalanceSheetEntries();
-  }, []);
+    if (storeNo) {
+      fetchBalanceSheetEntries();
+    }
+  }, [storeNo]);
 
   useEffect(() => {
     const filtered = balanceSheetEntries.filter(entry =>
@@ -60,7 +65,7 @@ export default function BalanceSheetTable() {
 
   const fetchBalanceSheetEntries = async () => {
     try {
-      const result = await window.electronAPI.realmOperation('getAllBalanceSheets');
+      const result = await window.electronAPI.realmOperation('getAllBalanceSheets', { storeNo });
       if (result.success) {
         setBalanceSheetEntries(result.balanceSheets);
         setFilteredEntries(result.balanceSheets);

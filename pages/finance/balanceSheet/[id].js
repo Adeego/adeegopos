@@ -65,7 +65,7 @@ export default function BalanceSheetDetail() {
   const fetchBalanceSheetDetail = async () => {
     if (!storeNo) return;
     try {
-      const result = await window.electronAPI.realmOperation('getBalanceSheetById', { id, storeNo });
+      const result = await window.electronAPI.realmOperation('getBalanceSheetById', id);
       if (result.success) {
         setBalanceSheet(result.balanceSheet);
         // Initialize edit form with current values
@@ -124,7 +124,7 @@ export default function BalanceSheetDetail() {
   const handleDelete = async () => {
     if (!storeNo) return;
     try {
-      const result = await window.electronAPI.realmOperation('archiveBalanceSheet', { id, storeNo });
+      const result = await window.electronAPI.realmOperation('archiveBalanceSheet', id);
       if (result.success) {
         toast({
           title: "Success",

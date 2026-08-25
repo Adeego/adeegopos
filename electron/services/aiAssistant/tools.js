@@ -12,6 +12,7 @@ const expenseTypeService = require('../finance/expenseTypeService');
 const accountService = require('../finance/accountService');
 const financeReport = require('../finance/financeReportService');
 const transactionService = require('../finance/transactionService');
+const financeRecorder = require('./financeRecorder');
 const { v4: uuidv4 } = require('uuid');
 const { getStockHealthReport } = require('./stockManager');
 const stockAiAgent = require('../stockAiAgentService');
@@ -462,19 +463,82 @@ const toolDefinitions = [
   {
     type: 'function',
     function: {
-      name: 'createExpense',
-      description: 'Record a new expense. ONLY call this after the user has confirmed the details.',
+      name: 'getRecordingReferenceData',
+      description: 'Get valid accounts, expense types, customers, and suppliers before drafting a financial record.',
       parameters: {
         type: 'object',
         properties: {
-          description: { type: 'string', description: 'What the expense is for' },
-          amount: { type: 'number', description: 'Expense amount in KES' },
-          expenseType: { type: 'string', description: 'Expense type name (must match an existing expense type)' },
-          account: { type: 'string', description: 'Account name to debit (must match an existing account)' },
-          date: { type: 'string', description: 'Expense date in ISO format (defaults to today)' },
-          transactionCost: { type: 'number', description: 'Transaction cost if any (default 0)' }
+          include: {
+            type: 'array',
+            items: {
+              type: 'string',
+              enum: ['accounts', 'expenseTypes', 'customers', 'suppliers']
+            },
+            description: 'Optional list of reference groups to fetch.'
+          }
         },
-        required: ['description', 'amount', 'expenseType', 'account']
+        required: []
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'draftFinanceRecord',
+      description: 'Prepare and validate an expense, customer transaction, supplier transaction, or supplier invoice. This does not write anything. Always show the returned summary to the user and ask for confirmation before committing.',
+      parameters: {
+        type: 'object',
+        properties: {
+          recordType: {
+            type: 'string',
+            enum: ['expense', 'customer_payment', 'customer_refund', 'supplier_payment', 'supplier_refund', 'supplier_invoice'],
+            description: 'The type of record to prepare.'
+          },
+          amount: { type: 'number', description: 'Amount in KES. For invoices this may be omitted if items with subtotals are provided.' },
+          totalAmount: { type: 'number', description: 'Invoice total amount in KES.' },
+          description: { type: 'string', description: 'Human-readable description or memo.' },
+          date: { type: 'string', description: 'Date in ISO format. If omitted, today is used.' },
+          transactionCost: { type: 'number', description: 'Transaction fee in KES, if any.' },
+          accountId: { type: 'string', description: 'Exact account ID, preferred when known.' },
+          accountName: { type: 'string', description: 'Account name, such as Cash Drawer or M-Pesa Till.' },
+          customerId: { type: 'string', description: 'Exact customer ID, preferred when known.' },
+          customerName: { type: 'string', description: 'Customer name for customer transactions.' },
+          supplierId: { type: 'string', description: 'Exact supplier ID, preferred when known.' },
+          supplierName: { type: 'string', description: 'Supplier name for supplier transactions or invoices.' },
+          expenseTypeId: { type: 'string', description: 'Exact expense type ID, preferred when known.' },
+          expenseTypeName: { type: 'string', description: 'Expense type/category name for expenses.' },
+          reference: { type: 'string', description: 'Optional external receipt or invoice reference.' },
+          items: {
+            type: 'array',
+            description: 'Optional supplier invoice line items.',
+            items: {
+              type: 'object',
+              properties: {
+                productId: { type: 'string' },
+                productName: { type: 'string' },
+                name: { type: 'string' },
+                quantity: { type: 'number' },
+                buyPrice: { type: 'number' },
+                subtotal: { type: 'number' }
+              }
+            }
+          }
+        },
+        required: ['recordType']
+      }
+    }
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'commitFinanceRecord',
+      description: 'Commit a previously drafted finance record after the user explicitly confirms the exact summary.',
+      parameters: {
+        type: 'object',
+        properties: {
+          confirmationToken: { type: 'string', description: 'The token returned by draftFinanceRecord.' }
+        },
+        required: ['confirmationToken']
       }
     }
   },
@@ -578,19 +642,25 @@ async function executeTool(toolName, args, db, storeNo) {
 
       // Finance
       case 'incomeStatement':
-        return await financeReport.incomeStatement(db, args.fromDate, args.toDate);
+        return await financeReport.incomeStatement(db, args.fromDate, args.toDate, storeNo);
       case 'getBalanceSheet':
-        return await financeReport.getBalanceSheet(db, args.toDate);
+        return await financeReport.getBalanceSheet(db, args.toDate, storeNo);
       case 'getTrialBalance':
-        return await financeReport.getTrialBalance(db, args.fromDate, args.toDate);
+        return await financeReport.getTrialBalance(db, args.fromDate, args.toDate, storeNo);
       case 'getAccountStatement':
-        return await financeReport.getAccountStatement(db, args.fromDate, args.toDate);
+        return await financeReport.getAccountStatement(db, args.fromDate, args.toDate, storeNo);
       case 'getAllExpenses':
         return await expenseService.getAllExpenses(db, storeNo);
       case 'getAllExpenseTypes':
         return await expenseTypeService.getAllExpenseTypes(db, storeNo);
       case 'getAllAccounts':
         return await accountService.getAllAccounts(db, storeNo);
+      case 'getRecordingReferenceData':
+        return await financeRecorder.getRecordingReferenceData(db, args, storeNo);
+      case 'draftFinanceRecord':
+        return await financeRecorder.draftFinanceRecord(db, args, storeNo);
+      case 'commitFinanceRecord':
+        return await financeRecorder.commitFinanceRecord(db, args, storeNo);
       case 'createExpense': {
         // Resolve expense type name → ID
         const typesResult = await expenseTypeService.getAllExpenseTypes(db, storeNo);

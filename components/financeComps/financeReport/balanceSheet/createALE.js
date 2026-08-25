@@ -87,6 +87,7 @@ export default function CreateALESheet({
           setCategory('')
           setAmount('')
           setDescription('')
+          onSubmit?.()
         } else {
           throw new Error(result.error);
         }

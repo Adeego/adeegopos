@@ -22,7 +22,8 @@
     "dist": "next build && electron-builder",
     "dist:lin": "dotenv -e .env -- next build && dotenv -e .env -- electron-builder",
     "publish": "dotenv -e .env -- next build && electron-builder --publish always",
-    "pack:publish": "dotenv -e .env -- next build && dotenv -e .env -- electron-builder --publish always"
+    "pack:publish": "dotenv -e .env -- next build && dotenv -e .env -- electron-builder --publish always",
+    "test:finance": "node --test tests/finance-journal.test.js"
   },
   "build": {
     "appId": "com.adeegoltd.adeegopos",
@@ -30,6 +31,7 @@
     "copyright": "adeego",
     "files": [
       "electron/**/*",
+      "lib/**/*",
       "out/**/*",
       "package.json"
     ],

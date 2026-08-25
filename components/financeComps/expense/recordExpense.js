@@ -96,8 +96,8 @@ export default function RecordExpense({ fetchExpenses }) {
       const expenseData = {
         ...newExpense,
         _id: `${storeNo}:${uuidv4()}`,
-        amount: parseInt(newExpense.amount),
-        transactionCost: parseInt(newExpense.transactionCost) || 0,
+        amount: parseFloat(newExpense.amount),
+        transactionCost: parseFloat(newExpense.transactionCost) || 0,
         date: new Date(newExpense.date).toISOString(),
         storeNo: `${storeNo}`
       };
@@ -128,7 +128,7 @@ export default function RecordExpense({ fetchExpenses }) {
       console.error('Error recording expense:', error);
       toast({
         title: "Error",
-        description: "Failed to record expense. Please try again.",
+        description: error.message || "Failed to record expense. Please try again.",
         variant: "destructive",
       });
     } finally {

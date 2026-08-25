@@ -5,6 +5,7 @@ const {
   shouldIncludeSaleInMetrics,
   toNumber,
 } = require('../postingService');
+const journalService = require('./journalService');
 
 function roundMoney(value) {
   return Number(toNumber(value).toFixed(2));
@@ -886,10 +887,14 @@ function getTrialBalance(db, fromDate, toDate) {
 }
 
 module.exports = {
-  getMonthlyProfitLoss,
-  incomeStatement,
-  getAccountStatement,
-  getBalanceSheet,
-  getChartOfAccounts,
-  getTrialBalance
+  getMonthlyProfitLoss: journalService.getMonthlyProfitLoss,
+  incomeStatement: journalService.incomeStatement,
+  getAccountStatement: journalService.getAccountStatement,
+  getBalanceSheet: journalService.getBalanceSheet,
+  getChartOfAccounts: journalService.getChartOfAccounts,
+  getTrialBalance: journalService.getTrialBalance,
+  getGeneralLedger: journalService.getGeneralLedger,
+  getFinanceLedgerHealth: journalService.getFinanceLedgerHealth,
+  previewFinanceLedgerBackfill: journalService.previewFinanceLedgerBackfill,
+  runFinanceLedgerBackfill: journalService.runFinanceLedgerBackfill,
 };

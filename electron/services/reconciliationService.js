@@ -16,6 +16,10 @@ const {
   toIsoString,
   toNumber,
 } = require('./postingService');
+const {
+  ensureJournalEntryForSale,
+  ensureJournalEntryForTransaction,
+} = require('./finance/journalService');
 
 const APPROVER_ROLES = new Set(['admin', 'operator', 'manager']);
 
@@ -994,6 +998,7 @@ async function approveItemReturnCase(db, caseDoc, approver, mainWindow) {
   if (!postedReturn.success) {
     throw new Error(postedReturn.error);
   }
+  await ensureJournalEntryForSale(db, postedReturn.sale);
 
   const updatedReturnedMap = nextReturnedQuantitiesByLine(sale, caseDoc.payload.returnLines || []);
   const updatedSale = {
@@ -1025,6 +1030,7 @@ async function approveExchangeCase(db, caseDoc, approver, mainWindow) {
   if (!postedReturn.success) {
     throw new Error(postedReturn.error);
   }
+  await ensureJournalEntryForSale(db, postedReturn.sale);
 
   const postedReplacement = await postSale(db, replacementSaleData, {
     reconciliationCaseId: caseDoc._id,
@@ -1034,6 +1040,7 @@ async function approveExchangeCase(db, caseDoc, approver, mainWindow) {
   if (!postedReplacement.success) {
     throw new Error(postedReplacement.error);
   }
+  await ensureJournalEntryForSale(db, postedReplacement.sale);
 
   const updatedReturnedMap = nextReturnedQuantitiesByLine(sale, caseDoc.payload.returnLines || []);
   const updatedSale = {
@@ -1064,6 +1071,7 @@ async function approveVoidCase(db, caseDoc, approver, mainWindow) {
   if (!postedReturn.success) {
     throw new Error(postedReturn.error);
   }
+  await ensureJournalEntryForSale(db, postedReturn.sale);
 
   const updatedSale = {
     ...sale,
@@ -1148,6 +1156,7 @@ async function approveTransactionCorrectionCase(db, caseDoc) {
   if (!postedReversal.success) {
     throw new Error(postedReversal.error);
   }
+  await ensureJournalEntryForTransaction(db, postedReversal.transaction);
 
   const linkedDocIds = [postedReversal.transaction._id];
   let nextStatus = 'reversed';
@@ -1162,6 +1171,7 @@ async function approveTransactionCorrectionCase(db, caseDoc) {
     if (!postedReplacement.success) {
       throw new Error(postedReplacement.error);
     }
+    await ensureJournalEntryForTransaction(db, postedReplacement.transaction);
 
     linkedDocIds.push(postedReplacement.transaction._id);
     nextStatus = 'replaced';

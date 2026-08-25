@@ -3,6 +3,8 @@ const {
   shouldIncludeTransactionInMetrics,
   toNumber,
 } = require('../postingService');
+const { ensureJournalEntryForTransaction } = require('./journalService');
+const { findAll } = require('../pouchQueryService');
 
 function startOfDay(date = new Date()) {
   const next = new Date(date);
@@ -32,17 +34,57 @@ function decorateTransaction(transaction = {}) {
   };
 }
 
-async function getStoreTransactions(db, storeNo) {
-  const result = await db.find({
-    selector: {
-      type: 'transaction',
-      state: 'Active',
-      ...(storeNo ? { storeNo } : {}),
+const TRANSACTION_HISTORY_INDEX = 'transaction-history-index';
+const TRANSACTION_HISTORY_DDOC = 'transaction-history';
+const indexedDatabases = new WeakSet();
+
+async function ensureTransactionHistoryIndex(db) {
+  if (indexedDatabases.has(db)) {
+    return;
+  }
+
+  await db.createIndex({
+    index: {
+      fields: ['storeNo', 'type', 'state', 'createdAt'],
     },
-    limit: 9999,
+    ddoc: TRANSACTION_HISTORY_DDOC,
+    name: TRANSACTION_HISTORY_INDEX,
+  });
+  indexedDatabases.add(db);
+}
+
+async function getStoreTransactions(db, storeNo, options = {}) {
+  const fromDate = toDateValue(options.startDate);
+  const toDate = toDateValue(options.endDate);
+  const selector = {
+    type: 'transaction',
+    state: 'Active',
+    ...(storeNo ? { storeNo } : {}),
+  };
+  const canUseHistoryIndex = Boolean(storeNo);
+
+  if (canUseHistoryIndex) {
+    await ensureTransactionHistoryIndex(db);
+    selector.createdAt = {
+      $gte: fromDate ? fromDate.toISOString() : '',
+      ...(toDate ? { $lte: toDate.toISOString() } : {}),
+    };
+  }
+
+  const result = await findAll(db, {
+    selector,
+    ...(canUseHistoryIndex ? {
+      sort: [
+        { storeNo: 'asc' },
+        { type: 'asc' },
+        { state: 'asc' },
+        { createdAt: 'asc' },
+      ],
+      use_index: [TRANSACTION_HISTORY_DDOC, TRANSACTION_HISTORY_INDEX],
+    } : {}),
   });
 
-  return (result.docs || [])
+  return result.docs
     .map(decorateTransaction)
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 }
@@ -58,10 +100,16 @@ async function createTransaction(db, transactionData) {
       return result;
     }
 
+    const journalResult = await ensureJournalEntryForTransaction(db, result.transaction);
+    if (!journalResult.success) {
+      return journalResult;
+    }
+
     return {
       success: true,
       transaction: decorateTransaction(result.transaction),
       ledgerEntries: result.ledgerEntries,
+      journalEntry: journalResult.journalEntry,
     };
   } catch (error) {
     return { success: false, error: error.message };
@@ -81,7 +129,10 @@ async function getTodayTransactions(db, storeNo) {
   try {
     const fromDate = startOfDay();
     const toDate = endOfDay();
-    const transactions = (await getStoreTransactions(db, storeNo)).filter((transaction) => {
+    const transactions = (await getStoreTransactions(db, storeNo, {
+      startDate: fromDate,
+      endDate: toDate,
+    })).filter((transaction) => {
       const createdAt = toDateValue(transaction.createdAt);
       return createdAt && createdAt >= fromDate && createdAt <= toDate && transaction.destination === 'supplier';
     });

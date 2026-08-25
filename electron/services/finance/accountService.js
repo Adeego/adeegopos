@@ -20,6 +20,7 @@ function createAccount(db, accountData) {
     return Promise.resolve({ success: false, error: accountTypeError });
   }
 
+  const now = new Date().toISOString();
   const account = {
     _id: accountData._id,
     name: accountData.name,
@@ -27,8 +28,8 @@ function createAccount(db, accountData) {
     accountType: accountData.accountType,
     balance: accountData.balance,
     storeNo: accountData.storeNo,
-    createdAt: accountData.createdAt,
-    updatedAt: accountData.updatedAt,
+    createdAt: accountData.createdAt || now,
+    updatedAt: accountData.updatedAt || now,
     type: "account",
     state: "Active"
   };

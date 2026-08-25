@@ -72,6 +72,14 @@ export default function ChatPanel({ open, onClose }) {
     }
 
     const storeNo = wsinfo?.storeNo || '';
+    const storeContext = {
+      storeNo,
+      name: wsinfo?.name || '',
+      phone: wsinfo?.phone || '',
+      location: wsinfo?.location || '',
+      defaultCustId: wsinfo?.defaultCustId || '',
+      plan: wsinfo?.plan || '',
+    };
 
     // Add user message
     setMessages(prev => [...prev, { role: 'user', content: text }]);
@@ -84,6 +92,7 @@ export default function ChatPanel({ open, onClose }) {
         sessionId,
         text,
         storeNo,
+        storeContext,
         // onChunk — the full response comes in one chunk
         (chunk) => {
           setMessages(prev => [...prev, { role: 'assistant', content: chunk }]);

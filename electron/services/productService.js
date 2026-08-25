@@ -1,5 +1,6 @@
 const { v4: uuidv4 } = require('uuid');
 const { computeVariantUnitPrice, deriveMarginPercent } = require('../../lib/variantPricing');
+const { findAll } = require('./pouchQueryService');
 
 function toStoredNumber(value) {
   const parsedValue = Number(value);
@@ -418,13 +419,11 @@ function searchProducts(db, searchTerm, storeNo) {
 
 // Get all saleItems related to a specific product
 function getSaleItemsByProductId(db, productId, storeNo) {
-  return db
-    .find({
+  return findAll(db, {
       selector: {
         type: "sale",
         storeNo: storeNo,
       },
-      limit: 9999,
     })
     .then((result) => {
       // Map through sales and include sale ID with matching items

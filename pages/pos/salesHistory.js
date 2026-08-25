@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Table, TableBody, TableCaption, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,7 +7,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTr
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon } from "@radix-ui/react-icons";
-import { addDays, format } from "date-fns";
+import { addDays, endOfDay, format, startOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import Link from 'next/link';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -58,10 +58,17 @@ function DatePickerWithPresets({ date, setDate }) {
   );
 }
 
+function getSaleDisplayAmount(sale) {
+  if (sale.status === 'failed') {
+    return Number(sale.totalAmount) || 0;
+  }
+
+  return Number(sale.netTotalAmount ?? sale.totalAmount) || 0;
+}
+
 export default function SalesHistory() {
   const storeNo = useWsinfoStore((state) => state.wsinfo.storeNo);
   const [sales, setSales] = useState([]);
-  const [filteredSales, setFilteredSales] = useState([]);
   const [startDate, setStartDate] = useState(() => {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -74,27 +81,40 @@ export default function SalesHistory() {
   const [maxAmount, setMaxAmount] = useState('');
   const [fulfillment, setFulfillment] = useState(null);
   const [saleType, setSaleType] = useState(null);
+  const [receiptSearch, setReceiptSearch] = useState('');
+  const [amountSearch, setAmountSearch] = useState('');
+  const [historyView, setHistoryView] = useState('posted');
+  const [syncStatus, setSyncStatus] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [rowsPerPage, setRowsPerPage] = useState(5);
+  const [rowsPerPage, setRowsPerPage] = useState(20);
 
-  useEffect(() => {
-    fetchSales();
-  }, []);
+  const fetchSales = useCallback(async () => {
+    if (!storeNo) {
+      return;
+    }
 
-  useEffect(() => {
-    filterSales();
-  }, [sales, paymentMethod, category, minAmount, maxAmount, fulfillment, saleType]);
-
-  const fetchSales = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await window.electronAPI.realmOperation('getAllSalesBetweenDates', storeNo, startDate.toISOString(), endDate.toISOString());
-      console.log('Fetch sales result:', result);
+      if (!startDate || !endDate) {
+        throw new Error('Select both a start date and an end date.');
+      }
+
+      const operation = historyView === 'failed'
+        ? 'getFailedSalesBetweenDates'
+        : 'getAllSalesBetweenDates';
+      const result = await window.electronAPI.realmOperation(
+        operation,
+        storeNo,
+        startOfDay(startDate).toISOString(),
+        endOfDay(endDate).toISOString()
+      );
+
       if (result.success) {
         setSales(result.data);
+        setCurrentPage(1);
       } else {
         setError('Failed to fetch sales: ' + result.error);
         console.error('Failed to fetch sales', result.error);
@@ -105,10 +125,34 @@ export default function SalesHistory() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [endDate, historyView, startDate, storeNo]);
 
-  const filterSales = () => {
-    console.log('Filtering sales with criteria:', { paymentMethod, category, minAmount, maxAmount, fulfillment, saleType });
+  useEffect(() => {
+    fetchSales();
+  }, [fetchSales]);
+
+  useEffect(() => {
+    if (!window.electronAPI) {
+      return undefined;
+    }
+
+    window.electronAPI.getSyncStatus?.().then(setSyncStatus).catch(() => {});
+    const removeSyncListener = window.electronAPI.onSyncStatusChanged?.((status) => {
+      setSyncStatus(status);
+      if (status.direction === 'pull' && status.salesChanged) {
+        fetchSales();
+      }
+    });
+    const refreshOnFocus = () => fetchSales();
+    window.addEventListener('focus', refreshOnFocus);
+
+    return () => {
+      removeSyncListener?.();
+      window.removeEventListener('focus', refreshOnFocus);
+    };
+  }, [fetchSales]);
+
+  const filteredSales = useMemo(() => {
     let filtered = sales;
 
     if (paymentMethod) {
@@ -120,11 +164,11 @@ export default function SalesHistory() {
     }
 
     if (minAmount) {
-      filtered = filtered.filter(sale => Number(sale.netTotalAmount ?? sale.totalAmount) >= parseFloat(minAmount));
+      filtered = filtered.filter(sale => getSaleDisplayAmount(sale) >= parseFloat(minAmount));
     }
 
     if (maxAmount) {
-      filtered = filtered.filter(sale => Number(sale.netTotalAmount ?? sale.totalAmount) <= parseFloat(maxAmount));
+      filtered = filtered.filter(sale => getSaleDisplayAmount(sale) <= parseFloat(maxAmount));
     }
 
     if (fulfillment) {
@@ -135,19 +179,30 @@ export default function SalesHistory() {
       filtered = filtered.filter(sale => sale.saleType === saleType);
     }
 
-    console.log('Filtered sales count:', filtered.length);
-    setFilteredSales(filtered);
-  };
+    const normalizedReceipt = receiptSearch.trim().toLowerCase();
+    if (normalizedReceipt) {
+      filtered = filtered.filter((sale) => String(sale._id || '').toLowerCase().includes(normalizedReceipt));
+    }
+
+    if (amountSearch !== '') {
+      const amount = Number(amountSearch);
+      if (Number.isFinite(amount)) {
+        filtered = filtered.filter((sale) => Math.abs(getSaleDisplayAmount(sale) - amount) < 0.005);
+      }
+    }
+
+    return filtered;
+  }, [amountSearch, category, fulfillment, maxAmount, minAmount, paymentMethod, receiptSearch, saleType, sales]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [amountSearch, category, fulfillment, maxAmount, minAmount, paymentMethod, receiptSearch, rowsPerPage, saleType]);
 
   const indexOfLastSale = currentPage * rowsPerPage;
   const indexOfFirstSale = indexOfLastSale - rowsPerPage;
   const currentSales = filteredSales.slice(indexOfFirstSale, indexOfLastSale);
 
   const paginate = (pageNumber) => setCurrentPage(pageNumber);
-
-  const applyFilters = () => {
-    filterSales();
-  };
 
   const clearFilter = (setter) => {
     setter(null);
@@ -166,12 +221,35 @@ export default function SalesHistory() {
         </div>
       </CardHeader>
 
-      <div className="flex gap-4 mb-4">
+      <div className="mb-4 flex flex-wrap gap-4">
         <DatePickerWithPresets date={startDate} setDate={setStartDate} />
         <DatePickerWithPresets date={endDate} setDate={setEndDate} />
         <Button onClick={fetchSales} disabled={isLoading}>
           {isLoading ? 'Fetching...' : 'Fetch Sales'}
         </Button>
+        <Select value={historyView} onValueChange={setHistoryView}>
+          <SelectTrigger className="w-[180px]">
+            <SelectValue placeholder="History view" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="posted">Posted sales</SelectItem>
+            <SelectItem value="failed">Failed postings</SelectItem>
+          </SelectContent>
+        </Select>
+        <Input
+          className="w-[260px]"
+          placeholder="Search receipt ID"
+          value={receiptSearch}
+          onChange={(event) => setReceiptSearch(event.target.value)}
+        />
+        <Input
+          className="w-[180px]"
+          type="number"
+          step="0.01"
+          placeholder="Exact amount"
+          value={amountSearch}
+          onChange={(event) => setAmountSearch(event.target.value)}
+        />
         <Sheet>
           <SheetTrigger asChild>
             <Button variant="outline">Filters</Button>
@@ -234,7 +312,7 @@ export default function SalesHistory() {
               </div>
             </div>
             <SheetFooter>
-              <Button onClick={applyFilters}>Apply Filters</Button>
+              <span className="text-sm text-muted-foreground">Filters apply automatically.</span>
             </SheetFooter>
           </SheetContent>
         </Sheet>
@@ -255,7 +333,19 @@ export default function SalesHistory() {
           <AlertTitle>Error</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
-      )} 
+      )}
+      {syncStatus?.error && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertTitle>Sales synchronization needs attention</AlertTitle>
+          <AlertDescription>{syncStatus.error}</AlertDescription>
+        </Alert>
+      )}
+      {syncStatus && !syncStatus.error && (
+        <div className="mb-4 text-xs text-muted-foreground">
+          Sync: {syncStatus.state || 'idle'}
+          {syncStatus.lastSuccessAt ? ` · Last successful ${new Date(syncStatus.lastSuccessAt).toLocaleString()}` : ''}
+        </div>
+      )}
       
       <CardContent>
         <Table>
@@ -264,12 +354,14 @@ export default function SalesHistory() {
             <TableRow>
               <TableHead>Date</TableHead>
               <TableHead>Time</TableHead>
+              <TableHead>Receipt ID</TableHead>
               <TableHead>Total Amount</TableHead>
               <TableHead>Transaction Cost</TableHead>
               <TableHead>Items</TableHead>
               <TableHead>Payment Method</TableHead>
               <TableHead>Type</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead>Failure Reason</TableHead>
               <TableHead></TableHead>
             </TableRow>
           </TableHeader>
@@ -278,7 +370,8 @@ export default function SalesHistory() {
               <TableRow key={sale._id}>
                 <TableCell>{new Date(sale.createdAt).toLocaleDateString()}</TableCell>
                 <TableCell>{new Date(sale.createdAt).toLocaleTimeString()}</TableCell>
-                <TableCell>{Number(sale.netTotalAmount ?? sale.totalAmount ?? 0).toFixed(2)}</TableCell>
+                <TableCell className="max-w-[220px] truncate font-mono text-xs" title={sale._id}>{sale._id}</TableCell>
+                <TableCell>{getSaleDisplayAmount(sale).toFixed(2)}</TableCell>
                 <TableCell>{(sale.transactionCost || 0).toFixed(2)}</TableCell>
                 <TableCell>{sale.totalItems}</TableCell>
                 <TableCell>{sale.paymentMethod}</TableCell>
@@ -288,32 +381,47 @@ export default function SalesHistory() {
                     {sale.status || 'posted'}
                   </span>
                 </TableCell>
+                <TableCell className="max-w-[260px] text-xs text-muted-foreground">
+                  {sale.postingError || '—'}
+                </TableCell>
                 <TableCell>
                   <div className=' flex flex-row gap-2 ' >
                     <Link href={`/pos/${sale._id}`} passHref className='h-8 w-8 flex justify-center items-center rounded-md hover:bg-neutral-200' >
                       <Eye />
                     </Link>
-                    <SaleReconciliationDialog
-                      sale={sale}
-                      onSuccess={fetchSales}
-                      trigger={
-                        <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 px-2 text-xs">
-                          <ArrowRightLeft className="h-3.5 w-3.5" />
-                          Reconcile
-                        </Button>
-                      }
-                    />
+                    {sale.status !== 'failed' && (
+                      <SaleReconciliationDialog
+                        sale={sale}
+                        onSuccess={fetchSales}
+                        trigger={
+                          <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 px-2 text-xs">
+                            <ArrowRightLeft className="h-3.5 w-3.5" />
+                            Reconcile
+                          </Button>
+                        }
+                      />
+                    )}
                   </div>
                 </TableCell>
               </TableRow>
             ))}
+            {!isLoading && currentSales.length === 0 && (
+              <TableRow>
+                <TableCell colSpan={11} className="h-28 text-center text-muted-foreground">
+                  {sales.length === 0
+                    ? `No ${historyView === 'failed' ? 'failed postings' : 'posted sales'} were found in the selected date range.`
+                    : 'No sales match the current receipt, amount, or detail filters.'}
+                </TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
       </CardContent>
 
       <CardFooter className="flex justify-between items-center">
         <div className="text-sm text-muted-foreground">
-          Showing <strong>{indexOfFirstSale + 1}-{Math.min(indexOfLastSale, filteredSales.length)}</strong> of <strong>{filteredSales.length}</strong> sales
+          Showing <strong>{filteredSales.length === 0 ? 0 : indexOfFirstSale + 1}-{Math.min(indexOfLastSale, filteredSales.length)}</strong> of <strong>{filteredSales.length}</strong> records
+          {' · '}Page <strong>{filteredSales.length === 0 ? 0 : currentPage}</strong> of <strong>{Math.ceil(filteredSales.length / rowsPerPage)}</strong>
         </div>
         <div className="flex gap-2">
           <Button

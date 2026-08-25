@@ -27,6 +27,11 @@ import { ChevronDown, MapPin, MapPinHouse, PenLine, Search, User } from 'lucide-
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
+const getPositiveQuantity = (value) => {
+  const quantity = Number(value);
+  return Number.isFinite(quantity) && quantity > 0 ? quantity : 0;
+};
+
 function SaleCard() {
   const { toast } = useToast();
   const [selectedProducts, setSelectedProducts] = useState([]);
@@ -186,7 +191,7 @@ function SaleCard() {
   }, [staff.firstName, staff.lastName])
 
   const totalAmount = selectedProducts.reduce(
-    (total, variant) => total + (variant.unitPrice * variant.quantity),
+    (total, variant) => total + ((Number(variant.unitPrice) || 0) * getPositiveQuantity(variant.quantity)),
     0
   );
 
@@ -251,7 +256,7 @@ function SaleCard() {
 
     const existingProduct = selectedProducts.find(p => p._id === variant._id);
     if (existingProduct) {
-      const totalQuantity = (existingProduct.quantity) * existingProduct.conversionFactor;
+      const totalQuantity = getPositiveQuantity(existingProduct.quantity) * existingProduct.conversionFactor;
       if (totalQuantity + variant.conversionFactor > variant.stock) {
         setShowOutOfStockAlert(true);
         return;
@@ -271,7 +276,7 @@ function SaleCard() {
       const existingVariantIndex = prevProducts.findIndex(p => p._id === variant._id);
       if (existingVariantIndex !== -1) {
         return prevProducts.map((p, index) =>
-          index === existingVariantIndex ? { ...p, quantity: p.quantity + 1 } : p
+          index === existingVariantIndex ? { ...p, quantity: Number((getPositiveQuantity(p.quantity) + 1).toFixed(2)) } : p
         );
       } else {
         // Store the original price when adding a new product
@@ -293,18 +298,25 @@ function SaleCard() {
   };
 
   const handleQuantityChange = (variantId, newQuantity) => {
+    const isBlank = newQuantity === '';
+    const quantity = Number(newQuantity);
+
+    if (!isBlank && (!Number.isFinite(quantity) || quantity < 0)) {
+      return;
+    }
+
     setSelectedProducts(prevProducts =>
       prevProducts.map(variant => {
         if (variant._id === variantId) {
-          if (newQuantity * variant.conversionFactor > variant.stock) {
+          if (!isBlank && quantity * variant.conversionFactor > variant.stock) {
             setShowOutOfStockAlert(true);
             return variant;
           }
           // Recalculate discount based on new quantity
-          const oldDiscount = (variant.originalPrice - variant.unitPrice) * variant.quantity;
-          const newDiscount = (variant.originalPrice - variant.unitPrice) * newQuantity;
+          const oldDiscount = (variant.originalPrice - variant.unitPrice) * getPositiveQuantity(variant.quantity);
+          const newDiscount = (variant.originalPrice - variant.unitPrice) * (isBlank ? 0 : quantity);
           setDiscount(prevDiscount => prevDiscount - oldDiscount + newDiscount);
-          return { ...variant, quantity: Math.max(1, newQuantity) };
+          return { ...variant, quantity: newQuantity };
         }
         return variant;
       })
@@ -390,6 +402,15 @@ function SaleCard() {
       toast({
         title: "Error",
         description: "Please add at least one product",
+        variant: "destructive"
+      });
+      return false;
+    }
+
+    if (selectedProducts.some((product) => getPositiveQuantity(product.quantity) <= 0)) {
+      toast({
+        title: "Error",
+        description: "Please enter a quantity greater than 0 for every product",
         variant: "destructive"
       });
       return false;
@@ -581,10 +602,10 @@ function SaleCard() {
         productId: product.productId,
         name: `${product.productName} ${product.name}`,
         buyPrice: product.buyPrice * product.conversionFactor,
-        quantity: product.quantity,
+        quantity: getPositiveQuantity(product.quantity),
         unitPrice: product.unitPrice,
-        subtotal: product.unitPrice * product.quantity,
-        discount: parseInt((product.originalPrice - product.unitPrice) * product.quantity),
+        subtotal: (Number(product.unitPrice) || 0) * getPositiveQuantity(product.quantity),
+        discount: Number(((product.originalPrice - product.unitPrice) * getPositiveQuantity(product.quantity)).toFixed(2)),
         conversionFactor: product.conversionFactor
       })),
       totalAmount: totalAmount,
@@ -620,7 +641,7 @@ function SaleCard() {
         console.error("Sale creation failed:", result.error);
         toast({
           title: "Error",
-          description: "Failed to create sale. Please try again.",
+          description: result.error || "Failed to create sale. Please try again.",
           variant: "destructive"
         });
       }
@@ -628,7 +649,7 @@ function SaleCard() {
       console.error("Error creating sale:", error);
       toast({
         title: "Error",
-        description: "An error occurred while creating the sale.",
+        description: error.message || "An error occurred while creating the sale.",
         variant: "destructive"
       });
     }
