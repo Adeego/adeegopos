@@ -4,12 +4,14 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from '@/components/ui/use-toast';
 import useWsinfoStore from '@/stores/wsinfo';
 import useStaffStore from '@/stores/staffStore';
 import { Edit3, Save, X, Trash2, User, Phone, Briefcase, DollarSign } from 'lucide-react'
-import { can, getPrimaryRole, getRoleLabel, getRoleLabels, normalizeRoles, ROLE_OPTIONS } from '@/lib/rbac';
+import { ACCESS_PRESETS, can, getRoleLabels } from '@/lib/rbac';
+import ModuleAccessEditor from '@/components/staff/moduleAccessEditor';
+
+const presetRoles = { seller: ['seller'], cashier: ['cashier'], stock_manager: ['stock_manager'], bookkeeper: ['bookkeeper'], manager: ['operator'] };
 
 export default function StaffDetail() {
   const router = useRouter();
@@ -21,6 +23,7 @@ export default function StaffDetail() {
   const currentStaff = useStaffStore((state) => state.staff);
   const [storeNo, setStoreNo] = useState('');
   const canManageStaff = can(currentStaff, 'staff:manageRoles');
+  const canEditTarget = canManageStaff && (!staff?.isOwner || currentStaff.isOwner);
 
   useEffect(() => {
     if (store && store.storeNo) {
@@ -60,27 +63,21 @@ export default function StaffDetail() {
     setStaff({ ...staff, [name]: value });
   };
 
-  const handleRoleToggle = (role, checked) => {
-    const currentRoles = normalizeRoles(staff.roles || staff.role);
-    const roles = checked
-      ? normalizeRoles([...currentRoles, role])
-      : normalizeRoles(currentRoles.filter((item) => item !== role));
-    setStaff({ ...staff, roles, role: getRoleLabel(getPrimaryRole(roles)) });
-  };
-
   const handleSave = async () => {
     if (!storeNo) return;
+    if (!staff.isOwner && Object.keys(staff.moduleAccess || {}).length === 0) {
+      toast({ description: 'Assign at least one module before saving.' });
+      return;
+    }
     try {
-      const roles = normalizeRoles(staff.roles || staff.role);
       const result = await window.electronAPI.realmOperation('updateStaff', {
         ...staff,
-        roles,
-        role: getRoleLabel(getPrimaryRole(roles)),
         salary: parseFloat(staff.salary),
         updatedAt: new Date().toISOString(),
         storeNo
       });
       if (result.success) {
+        setStaff(result.staff);
         setIsEditing(false);
         toast({
           description: 'Staff details updated successfully'
@@ -88,7 +85,7 @@ export default function StaffDetail() {
       } else {
         console.error('Failed to update staff:', result.error);
         toast({
-          description: 'Failed to update staff details'
+          description: result.error || 'Failed to update staff details'
         });
       }
     } catch (error) {
@@ -112,7 +109,7 @@ export default function StaffDetail() {
         } else {
           console.error('Failed to delete staff:', result.error);
           toast({
-            description: 'Failed to delete staff member'
+            description: result.error || 'Failed to delete staff member'
           });
         }
       } catch (error) {
@@ -129,7 +126,7 @@ export default function StaffDetail() {
   }
 
   return (
-    <div className="max-w-2xl mx-auto p-4">
+    <div className="max-w-5xl mx-auto p-4">
       <Card className="w-full bg-card">
         <CardHeader>
           <CardTitle className="text-2xl font-bold">Staff Details</CardTitle>
@@ -154,20 +151,23 @@ export default function StaffDetail() {
                 <Label htmlFor="phone">Phone</Label>
                 <Input id="phone" name="phone" value={staff.phone || staff.phoneNumber || ''} onChange={handleInputChange} />
               </div>
-              <div className="space-y-2">
-                <Label>Roles</Label>
-                <div className="grid grid-cols-2 gap-3 rounded-md border p-3">
-                  {ROLE_OPTIONS.map((option) => (
-                    <label key={option.value} className="flex items-center gap-2 text-sm">
-                      <Checkbox
-                        checked={normalizeRoles(staff.roles || staff.role).includes(option.value)}
-                        onCheckedChange={(checked) => handleRoleToggle(option.value, checked === true)}
-                      />
-                      {option.label}
-                    </label>
-                  ))}
-                </div>
-              </div>
+              <ModuleAccessEditor
+                moduleAccess={staff.moduleAccess}
+                accessPreset={staff.accessPreset}
+                actorIsOwner={currentStaff.isOwner}
+                targetIsOwner={staff.isOwner}
+                onChange={(moduleAccess, accessPreset) => setStaff((prev) => ({ ...prev, moduleAccess, accessPreset }))}
+                onPresetChange={(accessPreset, moduleAccess) => {
+                  const roles = presetRoles[accessPreset] || staff.roles;
+                  setStaff((prev) => ({
+                    ...prev,
+                    accessPreset,
+                    moduleAccess,
+                    roles,
+                    role: ACCESS_PRESETS[accessPreset]?.label || prev.role,
+                  }));
+                }}
+              />
               <div className="space-y-2">
                 <Label htmlFor="salary">Salary</Label>
                 <Input id="salary" name="salary" type="number" value={staff.salary} onChange={handleInputChange} />
@@ -192,7 +192,7 @@ export default function StaffDetail() {
               <div className="flex items-center space-x-4 p-4 bg-muted rounded-lg">
                 <Briefcase className="w-6 h-6 text-primary" />
                 <div>
-                  <p className="text-sm font-medium">Role</p>
+                  <p className="text-sm font-medium">Access preset</p>
                   <p className="text-lg font-semibold">{getRoleLabels(staff).join(', ') || staff.role}</p>
                 </div>
               </div>
@@ -200,9 +200,16 @@ export default function StaffDetail() {
                 <DollarSign className="w-6 h-6 text-primary" />
                 <div>
                   <p className="text-sm font-medium">Salary</p>
-                  <p className="text-lg font-semibold">KES {staff.salary.toLocaleString()}</p>
+                  <p className="text-lg font-semibold">KES {Number(staff.salary || 0).toLocaleString()}</p>
                 </div>
               </div>
+              <ModuleAccessEditor
+                moduleAccess={staff.moduleAccess}
+                accessPreset={staff.accessPreset}
+                actorIsOwner={currentStaff.isOwner}
+                targetIsOwner={staff.isOwner}
+                disabled
+              />
             </div>
           )}
         </CardContent>
@@ -218,14 +225,14 @@ export default function StaffDetail() {
             </>
           ) : (
             <>
-              {canManageStaff && (
+              {canEditTarget && (
                 <>
                   <Button variant="outline" onClick={() => setIsEditing(true)}>
                     <Edit3 className="w-4 h-4 mr-2" /> Edit
                   </Button>
-                  <Button variant="destructive" onClick={handleDelete}>
+                  {!staff.isOwner && <Button variant="destructive" onClick={handleDelete}>
                     <Trash2 className="w-4 h-4 mr-2" /> Delete
-                  </Button>
+                  </Button>}
                 </>
               )}
             </>

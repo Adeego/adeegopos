@@ -12,6 +12,10 @@ const useStaffStore = create(
         phone: '',
         role: '',
         roles: [],
+        accessVersion: null,
+        accessPreset: '',
+        moduleAccess: {},
+        isOwner: false,
         salary: null,
         storeNo: '',
         createdAt: null,
@@ -27,7 +31,12 @@ const useStaffStore = create(
           phone: '',
           role: '',
           roles: [],
+          accessVersion: null,
+          accessPreset: '',
+          moduleAccess: {},
+          isOwner: false,
           salary: null,
+          storeNo: '',
           createdAt: null,
           updatedAt: null
         }

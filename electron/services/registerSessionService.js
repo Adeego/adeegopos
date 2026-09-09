@@ -1,16 +1,39 @@
 const { v4: uuidv4 } = require('uuid');
 const {
   buildActorReference,
+  applyEntityBalanceDelta,
   getSaleMetricSign,
   getSalePaymentBreakdown,
   getTransactionImpactRows,
-  postTransaction,
+  recordLedgerEntry,
   shouldIncludeSaleInMetrics,
   shouldIncludeTransactionInMetrics,
   toNumber,
 } = require('./postingService');
-const { ensureJournalEntryForTransaction } = require('./finance/journalService');
+const { putJournalEntry } = require('./finance/journalService');
 const { findAll } = require('./pouchQueryService');
+const { can } = require('../../lib/rbac');
+
+const REGISTER_ACCOUNTS_INDEX = ['register-accounts', 'register-accounts-index'];
+const REGISTER_SESSIONS_INDEX = ['register-sessions', 'register-sessions-index'];
+const REGISTER_SALES_INDEX = ['register-sales', 'register-sales-index'];
+const REGISTER_PAID_SALES_INDEX = ['register-paid-sales', 'register-paid-sales-index'];
+const registerIndexPromises = new WeakMap();
+
+function ensureRegisterIndexes(db) {
+  if (!registerIndexPromises.has(db)) {
+    registerIndexPromises.set(db, Promise.all([
+      db.createIndex({ index: { fields: ['storeNo', 'type', 'state', 'accountType'] }, ddoc: REGISTER_ACCOUNTS_INDEX[0], name: REGISTER_ACCOUNTS_INDEX[1] }),
+      db.createIndex({ index: { fields: ['storeNo', 'type', 'state', 'status'] }, ddoc: REGISTER_SESSIONS_INDEX[0], name: REGISTER_SESSIONS_INDEX[1] }),
+      db.createIndex({ index: { fields: ['storeNo', 'type', 'state', 'registerSessionId'] }, ddoc: REGISTER_SALES_INDEX[0], name: REGISTER_SALES_INDEX[1] }),
+      db.createIndex({ index: { fields: ['storeNo', 'type', 'state', 'paidRegisterSessionId'] }, ddoc: REGISTER_PAID_SALES_INDEX[0], name: REGISTER_PAID_SALES_INDEX[1] }),
+    ]).catch((error) => {
+      registerIndexPromises.delete(db);
+      throw error;
+    }));
+  }
+  return registerIndexPromises.get(db);
+}
 
 function roundCurrency(value) {
   return Number(toNumber(value).toFixed(2));
@@ -143,13 +166,7 @@ function getLinkedAccounts(accounts = [], storeNo) {
   const cashAccount = findBySuffix('001', looksLikeCash);
   const mpesaAccount = findBySuffix('002', looksLikeMpesa);
 
-  return {
-    cashAccount,
-    mpesaAccount,
-    availableTransferAccounts: accounts
-      .filter((account) => account.accountType === 'Admin')
-      .map(toAccountSummary),
-  };
+  return { cashAccount, mpesaAccount };
 }
 
 function normalizePaymentMethodLabel(value) {
@@ -199,12 +216,10 @@ function isPostedExpense(expense = {}) {
   return expense.state === 'Active' && (expense.status || 'posted') === 'posted' && !expense.reversalOfId;
 }
 
-function getSetupError(storeNo, cashAccount) {
-  if (cashAccount) {
-    return null;
-  }
-
-  return `Cash account ${storeNo}001 is required before you can open, save, or close the register.`;
+function getSetupError(storeNo, cashAccount, mpesaAccount) {
+  if (!cashAccount) return `Cash account ${storeNo}001 is required before you can open or close a shift.`;
+  if (!mpesaAccount) return `M-Pesa account ${storeNo}002 is required before you can open or close a shift.`;
+  return null;
 }
 
 async function getIfExists(db, docId) {
@@ -225,6 +240,7 @@ async function getActiveAccounts(db, storeNo) {
       state: 'Active',
       storeNo,
     },
+    use_index: REGISTER_ACCOUNTS_INDEX,
     limit: 9999,
   });
 
@@ -249,6 +265,7 @@ async function getOpenSession(db, storeNo) {
       storeNo,
       status: 'open',
     },
+    use_index: REGISTER_SESSIONS_INDEX,
     limit: 9999,
   });
 
@@ -268,6 +285,7 @@ async function getPreviousClosedSession(db, storeNo) {
       storeNo,
       status: 'closed',
     },
+    use_index: REGISTER_SESSIONS_INDEX,
     limit: 9999,
   });
 
@@ -316,7 +334,7 @@ function buildOpeningDefaults(previousClosedSession, linkedAccounts) {
 }
 
 function getMovementTimestamp(doc = {}) {
-  return toDateValue(doc.createdAt || doc.date || doc.updatedAt);
+  return toDateValue(doc.paidAt || doc.createdAt || doc.date || doc.updatedAt);
 }
 
 function isSessionMovement(doc = {}, session = {}) {
@@ -325,7 +343,7 @@ function isSessionMovement(doc = {}, session = {}) {
     return false;
   }
 
-  const docSessionId = doc.registerSessionId || doc.metadata?.registerSessionId || null;
+  const docSessionId = doc.paidRegisterSessionId || doc.registerSessionId || doc.metadata?.registerSessionId || null;
   if (docSessionId) {
     return docSessionId === sessionId;
   }
@@ -349,46 +367,47 @@ function isSessionMovement(doc = {}, session = {}) {
 }
 
 async function getSessionAccountMovements(db, storeNo, session, linkedAccounts) {
-  const [salesResult, transactionsResult, expensesResult] = await Promise.all([
+  const sessionSelector = { storeNo, state: 'Active', registerSessionId: session._id };
+  const [sessionSalesResult, receivedSalesResult, transactionsResult, expensesResult] = await Promise.all([
     findAll(db, {
-      selector: {
-        type: 'sale',
-        state: 'Active',
-        storeNo,
-      },
+      selector: { ...sessionSelector, type: 'sale' },
+      use_index: REGISTER_SALES_INDEX,
     }),
     findAll(db, {
-      selector: {
-        type: 'transaction',
-        state: 'Active',
-        storeNo,
-      },
+      selector: { type: 'sale', state: 'Active', storeNo, paidRegisterSessionId: session._id },
+      use_index: REGISTER_PAID_SALES_INDEX,
     }),
-    db.find({
-      selector: {
-        type: 'expense',
-        state: 'Active',
-        storeNo,
-      },
-      limit: 9999,
+    findAll(db, {
+      selector: { ...sessionSelector, type: 'transaction' },
+      use_index: REGISTER_SALES_INDEX,
+    }),
+    findAll(db, {
+      selector: { ...sessionSelector, type: 'expense' },
+      use_index: REGISTER_SALES_INDEX,
     }),
   ]);
+  const sales = [...new Map([
+    ...(sessionSalesResult.docs || []),
+    ...(receivedSalesResult.docs || []),
+  ].map((sale) => [sale._id, sale])).values()];
 
   let cash = 0;
   let mpesa = 0;
 
-  for (const sale of salesResult.docs || []) {
+  for (const sale of sales) {
     if (!isSessionMovement(sale, session)) {
       continue;
     }
 
-    if (!shouldIncludeSaleInMetrics(sale)) {
+    if (!shouldIncludeSaleInMetrics(sale) || sale.paid !== true) {
       continue;
     }
 
     const sign = getSaleMetricSign(sale);
     for (const payment of getSalePaymentBreakdown(sale)) {
-      const amount = roundCurrency(Math.abs(toNumber(payment.amount)) * sign);
+      const gross = Math.abs(toNumber(payment.amount));
+      const fee = Math.abs(toNumber(payment.transactionCost));
+      const amount = roundCurrency(sign < 0 ? -(gross + fee) : (gross - fee));
 
       if (paymentMatchesAccount(payment, linkedAccounts.cashAccount)) {
         cash = roundCurrency(cash + amount);
@@ -451,15 +470,39 @@ async function getSessionAccountMovements(db, storeNo, session, linkedAccounts) 
   };
 }
 
+async function getUnpaidDeclarations(db, storeNo, session) {
+  const result = await findAll(db, {
+    selector: { type: 'sale', state: 'Active', storeNo, registerSessionId: session._id },
+    use_index: REGISTER_SALES_INDEX,
+  });
+  return (result.docs || [])
+    .filter((sale) => {
+      if (sale.paid === true || !isSessionMovement(sale, session) || !shouldIncludeSaleInMetrics(sale)) return false;
+      return getSalePaymentBreakdown(sale).some((payment) => normalizePaymentMethodLabel(payment.method) !== 'CREDIT');
+    })
+    .map((sale) => ({
+      saleId: sale._id,
+      createdAt: sale.createdAt,
+      customerId: sale.currentCustomerId || sale.customerId || null,
+      servedBy: sale.servedBy || '',
+      totalAmount: roundCurrency(Math.abs(toNumber(sale.totalAmount))),
+      paymentMethod: sale.paymentMethod,
+      paymentBreakdown: getSalePaymentBreakdown(sale),
+    }))
+    .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+}
+
 async function loadRegisterContext(db, storeNoInput) {
   const storeNo = normalizeStoreNo(storeNoInput);
   if (!storeNo) {
     throw new Error('storeNo is required');
   }
 
-  const accounts = await getActiveAccounts(db, storeNo);
+  const [accounts, previousClosedSession] = await Promise.all([
+    getActiveAccounts(db, storeNo),
+    getPreviousClosedSession(db, storeNo),
+  ]);
   const linkedAccounts = getLinkedAccounts(accounts, storeNo);
-  const previousClosedSession = await getPreviousClosedSession(db, storeNo);
 
   return {
     storeNo,
@@ -467,17 +510,20 @@ async function loadRegisterContext(db, storeNoInput) {
     linkedAccounts,
     previousClosedSession,
     openingDefaults: buildOpeningDefaults(previousClosedSession, linkedAccounts),
-    setupError: getSetupError(storeNo, linkedAccounts.cashAccount),
+    setupError: getSetupError(storeNo, linkedAccounts.cashAccount, linkedAccounts.mpesaAccount),
   };
 }
 
-async function toSessionResponse(db, context, sessionDoc) {
+async function toSessionResponse(db, context, sessionDoc, options = {}) {
   if (!sessionDoc) {
     return null;
   }
 
+  const blindActive = Boolean(options.blindActive && sessionDoc.status === 'open');
   const openingBalances = normalizeCountedBalances(sessionDoc.openingBalances, sessionDoc.openingBalances);
-  const movements = sessionDoc.status === 'closed'
+  const movements = blindActive
+    ? null
+    : sessionDoc.status === 'closed'
     ? {
         cash: roundCurrency((sessionDoc.expectedBalances?.cash || 0) - openingBalances.cash),
         mpesa: roundCurrency((sessionDoc.expectedBalances?.mpesa || 0) - openingBalances.mpesa),
@@ -485,13 +531,20 @@ async function toSessionResponse(db, context, sessionDoc) {
       }
     : await getSessionAccountMovements(db, context.storeNo, sessionDoc, context.linkedAccounts);
 
-  const expectedBalances = sessionDoc.status === 'closed'
+  const expectedBalances = blindActive
+    ? null
+    : sessionDoc.status === 'closed'
     ? normalizeCountedBalances(sessionDoc.expectedBalances, sessionDoc.expectedBalances)
     : buildExpectedBalances(openingBalances, movements);
   const countedBalances = normalizeCountedBalances(sessionDoc.countedBalances, sessionDoc.countedBalances);
-  const variances = sessionDoc.status === 'closed' && sessionDoc.variances
+  const variances = blindActive
+    ? null
+    : sessionDoc.status === 'closed' && sessionDoc.variances
     ? normalizeCountedBalances(sessionDoc.variances, sessionDoc.variances)
     : buildVariances(countedBalances, expectedBalances);
+  const unpaidDeclarations = sessionDoc.status === 'closed'
+    ? (sessionDoc.unpaidDeclarations || [])
+    : await getUnpaidDeclarations(db, context.storeNo, sessionDoc);
 
   return {
     ...sessionDoc,
@@ -504,20 +557,35 @@ async function toSessionResponse(db, context, sessionDoc) {
       cash: toAccountSummary(context.linkedAccounts.cashAccount),
       mpesa: toAccountSummary(context.linkedAccounts.mpesaAccount),
     },
-    availableTransferAccounts: context.linkedAccounts.availableTransferAccounts,
     setupError: context.setupError,
     openingBalances,
     movements,
     expectedBalances,
     countedBalances,
     variances,
+    unpaidDeclarations,
   };
 }
 
-async function buildRegisterStatus(db, context, activeSession, requestedSession = null) {
-  const activeSessionResponse = await toSessionResponse(db, context, activeSession);
+function redactLiveBalances(session, actor) {
+  if (!session || !actor) return session;
+  return {
+    ...session,
+    movements: null,
+    expectedBalances: null,
+    variances: null,
+    linkedAccounts: {
+      cash: session.linkedAccounts?.cash ? { ...session.linkedAccounts.cash, balance: null } : null,
+      mpesa: session.linkedAccounts?.mpesa ? { ...session.linkedAccounts.mpesa, balance: null } : null,
+    },
+  };
+}
+
+async function buildRegisterStatus(db, context, activeSession, requestedSession = null, actor = null) {
+  const responseOptions = { blindActive: Boolean(actor) };
+  const activeSessionResponse = redactLiveBalances(await toSessionResponse(db, context, activeSession, responseOptions), actor);
   const previousClosedSessionResponse = await toSessionResponse(db, context, context.previousClosedSession);
-  const requestedSessionResponse = await toSessionResponse(db, context, requestedSession);
+  const requestedSessionResponse = redactLiveBalances(await toSessionResponse(db, context, requestedSession, responseOptions), actor);
 
   return {
     success: true,
@@ -530,22 +598,56 @@ async function buildRegisterStatus(db, context, activeSession, requestedSession 
   };
 }
 
-async function getRegisterSession(db, storeNoInput, requestedRef = null) {
+async function getRegisterSession(db, storeNoInput, requestedRef = null, actor = null) {
   try {
-    const context = await loadRegisterContext(db, storeNoInput);
-    const [activeSession, requestedSession] = await Promise.all([
-      getOpenSession(db, context.storeNo),
-      getRequestedSession(db, context.storeNo, requestedRef),
+    await ensureRegisterIndexes(db);
+    const storeNo = normalizeStoreNo(storeNoInput);
+    if (!storeNo) throw new Error('storeNo is required');
+    const [context, activeSession, requestedSession] = await Promise.all([
+      loadRegisterContext(db, storeNo),
+      getOpenSession(db, storeNo),
+      getRequestedSession(db, storeNo, requestedRef),
     ]);
 
-    return buildRegisterStatus(db, context, activeSession, requestedSession);
+    return buildRegisterStatus(db, context, activeSession, requestedSession, actor);
   } catch (error) {
     return { success: false, error: error.message };
   }
 }
 
+async function setInitialRegisterBalance(db, { account, balance, sessionId, sourceKey, storeNo, actor, now }) {
+  const delta = roundCurrency(balance - toNumber(account.balance));
+  if (!delta) return null;
+  const doc = {
+    _id: `${sessionId}:initial-balance:${sourceKey}`,
+    type: 'register-adjustment', state: 'Active', status: 'posted', storeNo,
+    registerSessionId: sessionId, accountId: account._id, source: sourceKey,
+    previousBalance: roundCurrency(account.balance), actualBalance: balance, delta,
+    reason: 'Initial register balance established by manager', createdBy: buildActorReference(actor),
+    createdAt: now, updatedAt: now,
+  };
+  await db.put(doc);
+  await applyEntityBalanceDelta(db, 'account', account._id, delta);
+  await recordLedgerEntry(db, {
+    _id: `${doc._id}:ledger`, storeNo, entityType: 'account', entityId: account._id,
+    bucket: 'account_balance', delta, description: doc.reason,
+    sourceDocType: 'register-adjustment', sourceDocId: doc._id, date: now,
+    metadata: { registerSessionId: sessionId, createdBy: doc.createdBy },
+  });
+  const amount = Math.abs(delta);
+  await putJournalEntry(db, {
+    storeNo, sourceDocType: 'register-adjustment', sourceDocId: doc._id, description: doc.reason, date: now,
+    lines: [
+      { accountCode: sourceKey === 'cash' ? '1110' : '1120', accountName: sourceKey === 'cash' ? 'Cash' : 'M-Pesa', debit: delta > 0 ? amount : 0, credit: delta < 0 ? amount : 0, entityType: 'account', entityId: account._id },
+      { accountCode: '3999', accountName: 'Opening Balance Equity', debit: delta < 0 ? amount : 0, credit: delta > 0 ? amount : 0 },
+    ],
+  });
+  return doc;
+}
+
 async function openRegisterSession(db, payload = {}, actor = null) {
   try {
+    await ensureRegisterIndexes(db);
     const context = await loadRegisterContext(db, payload.storeNo);
     if (context.setupError) {
       return { success: false, error: context.setupError };
@@ -556,14 +658,28 @@ async function openRegisterSession(db, payload = {}, actor = null) {
       return { success: false, error: 'A register session is already open for this store.' };
     }
 
-    const openingBalances = normalizeCountedBalances(payload.openingBalances, context.openingDefaults);
+    if (!actor?._id) {
+      return { success: false, error: 'An authenticated cashier is required to open a shift.' };
+    }
+
+    if (!context.previousClosedSession && !can(actor, 'cashier:manage')) {
+      return { success: false, error: 'A POS manager must establish the first shift opening balances.' };
+    }
+    const openingBalances = context.previousClosedSession
+      ? normalizeCountedBalances(context.openingDefaults)
+      : normalizeCountedBalances(payload.openingBalances);
     if (openingBalances.cash < 0 || openingBalances.mpesa < 0) {
       return { success: false, error: 'Opening balances cannot be negative.' };
     }
 
     const now = new Date().toISOString();
+    const sessionId = payload.sessionId || `${context.storeNo}:register-session:${uuidv4()}`;
+    if (!context.previousClosedSession) {
+      await setInitialRegisterBalance(db, { account: context.linkedAccounts.cashAccount, balance: openingBalances.cash, sessionId, sourceKey: 'cash', storeNo: context.storeNo, actor, now });
+      await setInitialRegisterBalance(db, { account: context.linkedAccounts.mpesaAccount, balance: openingBalances.mpesa, sessionId, sourceKey: 'mpesa', storeNo: context.storeNo, actor, now });
+    }
     const sessionDoc = {
-      _id: `${context.storeNo}:register-session:${uuidv4()}`,
+      _id: sessionId,
       type: 'register-session',
       state: 'Active',
       storeNo: context.storeNo,
@@ -591,7 +707,7 @@ async function openRegisterSession(db, payload = {}, actor = null) {
     await db.put(sessionDoc);
 
     const refreshedContext = await loadRegisterContext(db, context.storeNo);
-    return buildRegisterStatus(db, refreshedContext, sessionDoc);
+    return buildRegisterStatus(db, refreshedContext, sessionDoc, null, actor);
   } catch (error) {
     return { success: false, error: error.message };
   }
@@ -622,301 +738,121 @@ function assertActiveSession(activeSession, requestedSessionId) {
   return null;
 }
 
-function normalizeCloseTransferInput(sourceInput = {}, defaultDescription) {
-  return {
-    destinationAccountId: sourceInput.destinationAccountId || null,
-    amount: roundCurrency(sourceInput.amount ?? 0),
-    transactionCost: roundCurrency(sourceInput.transactionCost ?? 0),
-    description: sourceInput.description || defaultDescription,
+function getActorId(actor = {}) {
+  return actor?._id || actor?.id || null;
+}
+
+async function reconcileRegisterAccount(db, { account, actualBalance, session, actor, approvedBy, sourceKey, now }) {
+  const delta = roundCurrency(actualBalance - toNumber(account.balance));
+  if (!delta) return null;
+  const adjustment = {
+    _id: `${session._id}:balance-adjustment:${sourceKey}`,
+    type: 'register-adjustment', state: 'Active', status: 'posted', storeNo: session.storeNo,
+    registerSessionId: session._id, accountId: account._id, source: sourceKey,
+    previousBalance: roundCurrency(account.balance), actualBalance, delta,
+    reason: 'Approved shift closing variance reconciliation',
+    createdBy: buildActorReference(actor), approvedBy: buildActorReference(approvedBy),
+    createdAt: now, updatedAt: now,
   };
-}
-
-function normalizeCloseTransfers(transfer = {}, businessDate) {
-  const defaultDescription = `Register close transfer for ${businessDate}`;
-  const hasLegacyTransfer = transfer.amount !== undefined
-    || transfer.transactionCost !== undefined
-    || transfer.destinationAccountId;
-
-  return {
-    cash: normalizeCloseTransferInput(
-      hasLegacyTransfer ? transfer : transfer.cash,
-      transfer.cash?.description || transfer.description || defaultDescription,
-    ),
-    mpesa: normalizeCloseTransferInput(
-      transfer.mpesa,
-      transfer.mpesa?.description || defaultDescription,
-    ),
-  };
-}
-
-function validateCloseTransfer({ sourceLabel, transfer, countedBalance, sourceAccount, adminAccounts }) {
-  if (transfer.amount < 0) {
-    return `${sourceLabel} transfer amount cannot be negative.`;
-  }
-
-  if (transfer.transactionCost < 0) {
-    return `${sourceLabel} transfer cost cannot be negative.`;
-  }
-
-  if (transfer.amount === 0 && transfer.transactionCost > 0) {
-    return `${sourceLabel} transfer cost requires a transfer amount.`;
-  }
-
-  if (roundCurrency(transfer.amount + transfer.transactionCost) > countedBalance) {
-    return `${sourceLabel} transfer amount plus transfer cost cannot exceed the counted ${sourceLabel.toLowerCase()} closing balance.`;
-  }
-
-  if (transfer.amount === 0) {
-    return null;
-  }
-
-  if (!sourceAccount) {
-    return `${sourceLabel} cashier account is required before closing with a ${sourceLabel} transfer.`;
-  }
-
-  const destinationAccount = adminAccounts.find((account) => account._id === transfer.destinationAccountId) || null;
-  if (!destinationAccount) {
-    return `Select an active Admin account for the ${sourceLabel} close transfer.`;
-  }
-
-  return null;
-}
-
-function buildCloseTransferRecord({ transfer, destinationAccount, sourceLabel, transactionId }) {
-  return {
-    source: sourceLabel.toLowerCase(),
-    destinationAccountId: destinationAccount._id,
-    destinationAccountName: destinationAccount.name || '',
-    amount: transfer.amount,
-    transactionCost: transfer.transactionCost,
-    description: transfer.description,
-    transactionId,
-  };
-}
-
-async function postCloseTransfer(db, {
-  activeSession,
-  actor,
-  context,
-  destinationAccount,
-  sourceAccount,
-  sourceKey,
-  sourceLabel,
-  transfer,
-  timestamp,
-}) {
-  if (transfer.amount <= 0) {
-    return null;
-  }
-
-  const transferTransactionId = `${activeSession._id}:close-transfer:${sourceKey}`;
-  const existingTransfer = await getIfExists(db, transferTransactionId);
-
-  if (existingTransfer) {
-    return buildCloseTransferRecord({
-      transfer: {
-        ...transfer,
-        transactionCost: roundCurrency(existingTransfer.transactionCost),
-      },
-      destinationAccount,
-      sourceLabel,
-      transactionId: existingTransfer._id,
-    });
-  }
-
-  const transactionResult = await postTransaction(db, {
-    _id: transferTransactionId,
-    description: transfer.description,
-    transType: 'withdraw',
-    source: 'account',
-    destination: 'account',
-    from: sourceAccount._id,
-    to: destinationAccount._id,
-    amount: transfer.amount,
-    transactionCost: transfer.transactionCost,
-    storeNo: context.storeNo,
-    date: timestamp,
-    metadata: {
-      registerSessionId: activeSession._id,
-      businessDate: activeSession.businessDate,
-      registerClose: true,
-      registerCloseSource: sourceKey,
-      actor: buildActorReference(actor),
-    },
-  }, { direction: 1, skipRegisterSessionRequirement: true });
-
-  if (!transactionResult.success) {
-    return transactionResult;
-  }
-
-  const journalResult = await ensureJournalEntryForTransaction(db, transactionResult.transaction);
-  if (!journalResult.success) {
-    return journalResult;
-  }
-
-  return buildCloseTransferRecord({
-    transfer,
-    destinationAccount,
-    sourceLabel,
-    transactionId: transactionResult.transaction?._id || null,
+  await db.put(adjustment);
+  await applyEntityBalanceDelta(db, 'account', account._id, delta);
+  await recordLedgerEntry(db, {
+    _id: `${adjustment._id}:ledger`, storeNo: session.storeNo,
+    entityType: 'account', entityId: account._id, bucket: 'account_balance', delta,
+    description: adjustment.reason, sourceDocType: 'register-adjustment', sourceDocId: adjustment._id,
+    date: now, metadata: { registerSessionId: session._id, approvedBy: adjustment.approvedBy },
   });
+  const accountCode = sourceKey === 'cash' ? '1110' : '1120';
+  const accountName = sourceKey === 'cash' ? 'Cash' : 'M-Pesa';
+  const offset = { accountCode: '5295', accountName: 'Cash Over/Short' };
+  const accountLine = { accountCode, accountName, debit: delta > 0 ? Math.abs(delta) : 0, credit: delta < 0 ? Math.abs(delta) : 0, entityType: 'account', entityId: account._id };
+  const offsetLine = { ...offset, debit: delta < 0 ? Math.abs(delta) : 0, credit: delta > 0 ? Math.abs(delta) : 0 };
+  await putJournalEntry(db, {
+    storeNo: session.storeNo, sourceDocType: 'register-adjustment', sourceDocId: adjustment._id,
+    description: adjustment.reason, date: now, lines: [accountLine, offsetLine],
+    metadata: { registerSessionId: session._id, approvedBy: adjustment.approvedBy },
+  });
+  return adjustment;
 }
 
-async function saveRegisterSession(db, draft = {}) {
+async function closeRegisterSession(db, payload = {}, actor = null, approvalActor = null) {
   try {
-    const context = await loadRegisterContext(db, draft.storeNo);
-    if (context.setupError) {
-      return { success: false, error: context.setupError };
-    }
-
+    await ensureRegisterIndexes(db);
+    const context = await loadRegisterContext(db, payload.storeNo);
+    if (context.setupError) return { success: false, error: context.setupError };
     const activeSession = await getOpenSession(db, context.storeNo);
-    const activeSessionError = assertActiveSession(activeSession, draft.sessionId);
-    if (activeSessionError) {
-      return { success: false, error: activeSessionError };
+    const activeSessionError = assertActiveSession(activeSession, payload.sessionId);
+    if (activeSessionError) return { success: false, error: activeSessionError };
+    if (!actor || getActorId(actor) !== getActorId(activeSession.openedBy)) {
+      return { success: false, error: 'Only the assigned cashier can close this shift.' };
     }
 
-    const countedBalances = normalizeCountedBalances(draft.countedBalances, activeSession.countedBalances);
-    if (countedBalances.cash < 0 || countedBalances.mpesa < 0) {
-      return { success: false, error: 'Counted balances cannot be negative.' };
-    }
-
+    const countedBalances = normalizeCountedBalances(payload.countedBalances, activeSession.countedBalances);
+    if (countedBalances.cash < 0 || countedBalances.mpesa < 0) return { success: false, error: 'Closing balances cannot be negative.' };
     const movements = await getSessionAccountMovements(db, context.storeNo, activeSession, context.linkedAccounts);
     const expectedBalances = buildExpectedBalances(activeSession.openingBalances, movements);
-    const updatedSession = {
-      ...activeSession,
-      linkedAccountIds: {
-        cash: context.linkedAccounts.cashAccount?._id || null,
-        mpesa: context.linkedAccounts.mpesaAccount?._id || null,
-      },
-      expectedBalances,
-      countedBalances,
-      variances: buildVariances(countedBalances, expectedBalances),
-      notes: draft.notes ?? activeSession.notes ?? '',
-      updatedAt: new Date().toISOString(),
-    };
+    const variances = buildVariances(countedBalances, expectedBalances);
+    const unresolved = await getUnpaidDeclarations(db, context.storeNo, activeSession);
+    const declarationsById = new Map((payload.unpaidDeclarations || []).map((entry) => [entry.saleId, String(entry.reason || '').trim()]));
+    const unpaidDeclarations = unresolved.map((sale) => ({ ...sale, reason: declarationsById.get(sale.saleId) || '' }));
+    if (unpaidDeclarations.some((entry) => !entry.reason)) {
+      return { success: false, error: 'Every unpaid non-credit sale requires a closing declaration reason.' };
+    }
 
-    const savedSession = await putSession(db, updatedSession);
+    const hasVariance = Math.abs(variances.cash) > 0.009 || Math.abs(variances.mpesa) > 0.009;
+    const needsApproval = hasVariance || unpaidDeclarations.length > 0;
+    if (needsApproval) {
+      if (!approvalActor || !can(approvalActor, 'cashier:manage') || getActorId(approvalActor) === getActorId(actor) || String(approvalActor.storeNo) !== String(context.storeNo)) {
+        return { success: false, approvalRequired: true, error: 'A different POS manager must approve shortages, overages, or unpaid declarations.' };
+      }
+    }
+
+    const now = new Date().toISOString();
+    const adjustments = [];
+    if (hasVariance) {
+      adjustments.push(await reconcileRegisterAccount(db, { account: context.linkedAccounts.cashAccount, actualBalance: countedBalances.cash, session: activeSession, actor, approvedBy: approvalActor, sourceKey: 'cash', now }));
+      adjustments.push(await reconcileRegisterAccount(db, { account: context.linkedAccounts.mpesaAccount, actualBalance: countedBalances.mpesa, session: activeSession, actor, approvedBy: approvalActor, sourceKey: 'mpesa', now }));
+    }
+    const updatedSession = {
+      ...activeSession, status: 'closed', expectedBalances, countedBalances, variances,
+      unpaidDeclarations, exceptionApprovedBy: needsApproval ? buildActorReference(approvalActor) : null,
+      transfer: null, adjustments: adjustments.filter(Boolean),
+      closeSummary: { remainingDrawerCash: countedBalances.cash, remainingMpesa: countedBalances.mpesa },
+      notes: payload.notes ?? activeSession.notes ?? '', closedAt: now,
+      closedBy: buildActorReference(actor), updatedAt: now,
+    };
+    const closedSession = await putSession(db, updatedSession);
     const refreshedContext = await loadRegisterContext(db, context.storeNo);
-    return buildRegisterStatus(db, refreshedContext, savedSession);
+    const status = await buildRegisterStatus(db, refreshedContext, null, closedSession);
+    return { ...status, activeSession: null, closedSession: status.session };
   } catch (error) {
     return { success: false, error: error.message };
   }
 }
 
-async function closeRegisterSession(db, payload = {}, actor = null) {
+async function takeOverRegisterSession(db, payload = {}, actor = null) {
   try {
-    const context = await loadRegisterContext(db, payload.storeNo);
-    if (context.setupError) {
-      return { success: false, error: context.setupError };
+    await ensureRegisterIndexes(db);
+    const reason = String(payload.reason || '').trim();
+    if (!reason) return { success: false, error: 'An emergency takeover reason is required.' };
+    if (!actor || !can(actor, 'cashier:manage') || String(actor.storeNo) !== String(payload.storeNo)) {
+      return { success: false, error: 'POS Manage access is required for an emergency takeover.' };
     }
-
-    const activeSession = await getOpenSession(db, context.storeNo);
+    const activeSession = await getOpenSession(db, payload.storeNo);
     const activeSessionError = assertActiveSession(activeSession, payload.sessionId);
-    if (activeSessionError) {
-      return { success: false, error: activeSessionError };
-    }
-
-    const countedBalances = normalizeCountedBalances(payload.countedBalances, activeSession.countedBalances);
-    if (countedBalances.cash < 0 || countedBalances.mpesa < 0) {
-      return { success: false, error: 'Counted balances cannot be negative.' };
-    }
-
-    const adminAccounts = context.accounts.filter((account) => account.accountType === 'Admin');
-    const closeTransfers = normalizeCloseTransfers(payload.transfer || {}, activeSession.businessDate);
-    const transferValidationError = validateCloseTransfer({
-      sourceLabel: 'Cash',
-      transfer: closeTransfers.cash,
-      countedBalance: countedBalances.cash,
-      sourceAccount: context.linkedAccounts.cashAccount,
-      adminAccounts,
-    }) || validateCloseTransfer({
-      sourceLabel: 'M-Pesa',
-      transfer: closeTransfers.mpesa,
-      countedBalance: countedBalances.mpesa,
-      sourceAccount: context.linkedAccounts.mpesaAccount,
-      adminAccounts,
-    });
-
-    if (transferValidationError) {
-      return { success: false, error: transferValidationError };
-    }
-
-    const movements = await getSessionAccountMovements(db, context.storeNo, activeSession, context.linkedAccounts);
-    const expectedBalances = buildExpectedBalances(activeSession.openingBalances, movements);
-    const variances = buildVariances(countedBalances, expectedBalances);
-    const remainingDrawerCash = roundCurrency(
-      countedBalances.cash - closeTransfers.cash.amount - closeTransfers.cash.transactionCost,
-    );
-    const remainingMpesa = roundCurrency(
-      countedBalances.mpesa - closeTransfers.mpesa.amount - closeTransfers.mpesa.transactionCost,
-    );
+    if (activeSessionError) return { success: false, error: activeSessionError };
+    if (getActorId(actor) === getActorId(activeSession.openedBy)) return { success: false, error: 'You already own this shift.' };
     const now = new Date().toISOString();
-
-    const cashDestinationAccount = adminAccounts.find((account) => account._id === closeTransfers.cash.destinationAccountId) || null;
-    const mpesaDestinationAccount = adminAccounts.find((account) => account._id === closeTransfers.mpesa.destinationAccountId) || null;
-    const cashTransferRecord = await postCloseTransfer(db, {
-      activeSession,
-      actor,
-      context,
-      destinationAccount: cashDestinationAccount,
-      sourceAccount: context.linkedAccounts.cashAccount,
-      sourceKey: 'cash',
-      sourceLabel: 'Cash',
-      transfer: closeTransfers.cash,
-      timestamp: now,
-    });
-    if (cashTransferRecord?.success === false) {
-      return cashTransferRecord;
-    }
-
-    const mpesaTransferRecord = await postCloseTransfer(db, {
-      activeSession,
-      actor,
-      context,
-      destinationAccount: mpesaDestinationAccount,
-      sourceAccount: context.linkedAccounts.mpesaAccount,
-      sourceKey: 'mpesa',
-      sourceLabel: 'M-Pesa',
-      transfer: closeTransfers.mpesa,
-      timestamp: now,
-    });
-    if (mpesaTransferRecord?.success === false) {
-      return mpesaTransferRecord;
-    }
-
-    const updatedSession = {
+    const takeover = { from: activeSession.openedBy, to: buildActorReference(actor), reason, at: now };
+    const updated = await putSession(db, {
       ...activeSession,
-      status: 'closed',
-      linkedAccountIds: {
-        cash: context.linkedAccounts.cashAccount?._id || null,
-        mpesa: context.linkedAccounts.mpesaAccount?._id || null,
-      },
-      expectedBalances,
-      countedBalances,
-      variances,
-      transfer: {
-        cash: cashTransferRecord,
-        mpesa: mpesaTransferRecord,
-      },
-      closeSummary: {
-        remainingDrawerCash,
-        remainingMpesa,
-      },
-      notes: payload.notes ?? activeSession.notes ?? '',
-      closedAt: now,
-      closedBy: buildActorReference(actor),
+      originalOpenedBy: activeSession.originalOpenedBy || activeSession.openedBy,
+      openedBy: takeover.to,
+      takeoverHistory: [...(activeSession.takeoverHistory || []), takeover],
       updatedAt: now,
-    };
-
-    const closedSession = await putSession(db, updatedSession);
-    const refreshedContext = await loadRegisterContext(db, context.storeNo);
-    const status = await buildRegisterStatus(db, refreshedContext, null, closedSession);
-
-    return {
-      ...status,
-      activeSession: null,
-      closedSession: status.session,
-    };
+    });
+    const context = await loadRegisterContext(db, payload.storeNo);
+    return buildRegisterStatus(db, context, updated, null, actor);
   } catch (error) {
     return { success: false, error: error.message };
   }
@@ -926,5 +862,5 @@ module.exports = {
   closeRegisterSession,
   getRegisterSession,
   openRegisterSession,
-  saveRegisterSession,
+  takeOverRegisterSession,
 };

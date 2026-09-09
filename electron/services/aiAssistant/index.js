@@ -228,40 +228,6 @@ function trimToolResult(toolName, result) {
     }));
   }
 
-  if ((toolName === 'getStockIntelligenceReport' || toolName === 'getLatestStockAiPlan') && result?.plan) {
-    const plan = result.plan;
-    return {
-      success: result.success,
-      reportType: result.reportType || 'full',
-      plan: {
-        date: plan.date,
-        generatedAt: plan.generatedAt,
-        summary: plan.summary,
-        buyingList: {
-          buyToday: (plan.buyingList?.buyToday || []).slice(0, 15),
-          buyThisWeek: (plan.buyingList?.buyThisWeek || []).slice(0, 15),
-          doNotRestock: (plan.buyingList?.doNotRestock || []).slice(0, 15),
-          checkShelfCount: (plan.buyingList?.checkShelfCount || []).slice(0, 15),
-        },
-        morningReport: {
-          ...plan.morningReport,
-          stockoutRisks: (plan.morningReport?.stockoutRisks || []).slice(0, 15),
-          reorderToday: (plan.morningReport?.reorderToday || []).slice(0, 15),
-          doNotRestock: (plan.morningReport?.doNotRestock || []).slice(0, 15),
-        },
-        eveningReport: {
-          ...plan.eveningReport,
-          fastestMoversToday: (plan.eveningReport?.fastestMoversToday || []).slice(0, 15),
-          stockCountMismatches: (plan.eveningReport?.stockCountMismatches || []).slice(0, 15),
-          runningLowerThanExpected: (plan.eveningReport?.runningLowerThanExpected || []).slice(0, 15),
-          tomorrowBuyingPriorities: (plan.eveningReport?.tomorrowBuyingPriorities || []).slice(0, 15),
-        },
-        cashProtection: (plan.cashProtection || []).slice(0, 20),
-        stockErrors: (plan.stockErrors || []).slice(0, 20),
-      },
-    };
-  }
-
   return result;
 }
 

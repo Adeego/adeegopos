@@ -19,8 +19,11 @@ export default function Logout() {
   const router = useRouter();
   const deleteStaff = useStaffStore((state) => state.deleteStaff);
 
-  const handleLogout = () => {
+  const handleLogout = async () => {
     setIsLoggingOut(true)
+    if (window.electronAPI?.setAuthenticatedStaff) {
+      await window.electronAPI.setAuthenticatedStaff(null);
+    }
     deleteStaff();
     router.push('/auth/login');
 

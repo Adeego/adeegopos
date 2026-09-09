@@ -6,7 +6,6 @@ const {
   buildTransactionDocument,
   getCurrentCustomerId,
   getSalePaymentBreakdown,
-  normalizeRole,
   postSale,
   postTransaction,
   previewSaleEffects,
@@ -20,8 +19,7 @@ const {
   ensureJournalEntryForSale,
   ensureJournalEntryForTransaction,
 } = require('./finance/journalService');
-
-const APPROVER_ROLES = new Set(['admin', 'operator', 'manager']);
+const { can } = require('../../lib/rbac');
 
 function summarizeImpact(stockDeltas = [], customerDeltas = [], accountDeltas = [], supplierDeltas = []) {
   return {
@@ -1420,10 +1418,10 @@ async function approveReconciliationCase(db, caseId, approver, mainWindow) {
     return { success: false, error: 'Rejected reconciliation cases cannot be approved' };
   }
 
-  const actor = buildActorReference(approver);
-  if (!APPROVER_ROLES.has(normalizeRole(actor?.role))) {
-    return { success: false, error: 'Only admin or operator staff can approve reconciliation cases' };
+  if (!can(approver, 'reconciliation:approve')) {
+    return { success: false, error: 'Bookkeeping Manage access is required to approve reconciliation cases' };
   }
+  const actor = buildActorReference(approver);
 
   const preview = await previewReconciliation(db, {
     _id: caseDoc._id,
@@ -1493,10 +1491,10 @@ async function rejectReconciliationCase(db, caseId, rejectedBy, rejectionReason 
     return { success: false, error: 'Posted reconciliation cases cannot be rejected' };
   }
 
-  const actor = buildActorReference(rejectedBy);
-  if (!APPROVER_ROLES.has(normalizeRole(actor?.role))) {
-    return { success: false, error: 'Only admin or operator staff can reject reconciliation cases' };
+  if (!can(rejectedBy, 'reconciliation:approve')) {
+    return { success: false, error: 'Bookkeeping Manage access is required to reject reconciliation cases' };
   }
+  const actor = buildActorReference(rejectedBy);
 
   const updatedCase = {
     ...caseDoc,

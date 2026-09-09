@@ -5,6 +5,7 @@ const {
 } = require('./journalService');
 const {
   attachOpenRegisterSessionForAccount,
+  buildActorReference,
   recordLedgerEntry,
   toNumber,
 } = require('../postingService');
@@ -56,7 +57,7 @@ async function applyExpenseAccountDelta(db, expense, direction) {
     balance: roundMoney(toNumber(accountResult.account.balance) + amount),
     updatedAt: new Date().toISOString(),
   };
-  const updateResult = await updateAccount(db, updatedAccount);
+  const updateResult = await updateAccount(db, updatedAccount, { allowRegisterBalanceChange: true });
   if (!updateResult.success) {
     throw new Error(updateResult.error || 'Failed to update expense account');
   }
@@ -83,11 +84,11 @@ async function applyExpenseAccountDelta(db, expense, direction) {
 }
 
 // Create a new expense
-async function createExpense(db, expenseData) {
+async function createExpense(db, expenseData, actor = null) {
   try {
     const expense = await attachOpenRegisterSessionForAccount(
       db,
-      normalizeExpense(expenseData),
+      normalizeExpense(expenseData, { createdBy: buildActorReference(actor) }),
       expenseData.accountId
     );
     await db.put(expense);

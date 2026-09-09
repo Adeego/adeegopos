@@ -14,7 +14,8 @@ function CustomerSelectionDialog({
   onNameChange, 
   customerResult, 
   onCustomerSelect,
-  selectedCustomer 
+  isLoading,
+  loadError,
 }) {
   return (
     <Dialog modal={false} open={open} onOpenChange={onOpenChange}>
@@ -31,15 +32,25 @@ function CustomerSelectionDialog({
             placeholder="Search customers..."
             value={name}
             onChange={onNameChange}
+            autoFocus
             className="flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
           />
         </div>
-        {customerResult && customerResult.length > 0 ? (
+        {isLoading ? (
+          <div className="p-4 text-center text-sm text-muted-foreground">
+            Loading customers...
+          </div>
+        ) : loadError ? (
+          <div className="p-4 text-center text-sm text-destructive">
+            {loadError}
+          </div>
+        ) : customerResult && customerResult.length > 0 ? (
           <ScrollArea className="h-[200px]">
             {customerResult.map((chosenCustomer) => (
               <div
                 key={chosenCustomer._id}
                 role="option"
+                aria-selected="false"
                 className="cursor-pointer px-3 py-2 hover:bg-accent"
                 onClick={() => onCustomerSelect(chosenCustomer)}
               >
@@ -52,7 +63,7 @@ function CustomerSelectionDialog({
           </ScrollArea>
         ) : (
           <div className="p-4 text-center text-sm text-muted-foreground">
-            No results found
+            {name ? 'No customers found.' : 'No active customers found.'}
           </div>
         )}
         <DialogFooter>

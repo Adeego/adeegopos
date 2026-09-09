@@ -16,13 +16,12 @@ contextBridge.exposeInMainWorld("electronAPI", {
         ipcRenderer.send(channel, args);
     },
 
-    setAuthenticatedStaff: (staff) => ipcRenderer.invoke('set-authenticated-staff', staff),
+    setAuthenticatedStaff: (staffId, storeNo) => ipcRenderer.invoke('set-authenticated-staff', staffId, storeNo),
     signInStaff: (phoneNumber, passcode, storeNo) => ipcRenderer.invoke('sign-in-staff', phoneNumber, passcode, storeNo),
     searchCustomers: (name, storeNo) => ipcRenderer.invoke('search-customers', name, storeNo),
     searchVariants: (searchTerm, storeNo) => ipcRenderer.invoke('search-variants', searchTerm, storeNo),
     searchProducts: (searchTerm, storeNo) => ipcRenderer.invoke('search-products', searchTerm, storeNo),
     searchCSS: (searchTerm, type, storeNo) => ipcRenderer.invoke('search-css', searchTerm, type, storeNo),
-    restock: (task, ...args) => ipcRenderer.invoke('restock', task, ...args),
     openAIAuthStatus: () => ipcRenderer.invoke('openai-auth-status'),
     openAIAuthLogin: () => ipcRenderer.invoke('openai-auth-login'),
     openAIAuthLogout: () => ipcRenderer.invoke('openai-auth-logout'),

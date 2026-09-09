@@ -9,7 +9,7 @@ import AddStaff from '@/components/staff/addStaff';
 import { useRouter } from 'next/router';
 import useWsinfoStore from '@/stores/wsinfo';
 import useStaffStore from '@/stores/staffStore';
-import { can, getRoleLabels } from '@/lib/rbac';
+import { can, getRoleLabels, MODULE_OPTIONS } from '@/lib/rbac';
 
 export default function Staff() {
   const [staff, setStaff] = useState([]);
@@ -80,6 +80,11 @@ export default function Staff() {
         </div>
       </CardHeader>
       <CardContent>
+        {staff.some((member) => member.accessReviewRequired) && (
+          <div className="mb-4 rounded-md border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            Existing roles were converted to module access. Review the highlighted staff assignments and save each one to confirm them.
+          </div>
+        )}
         <div className="flex justify-between items-center mb-4">
           <div className="relative">
             <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 text-gray-400" size={20} />
@@ -108,16 +113,23 @@ export default function Staff() {
               <TableRow className="text-base">
                 <TableHead className="text-left">Full Name</TableHead>
                 <TableHead className="text-left">Phone</TableHead>
-                <TableHead className="hidden md:table-cell text-left">Role</TableHead>
+                <TableHead className="hidden md:table-cell text-left">Access preset</TableHead>
+                <TableHead className="hidden lg:table-cell text-left">Modules</TableHead>
                 <TableHead className="hidden md:table-cell text-left">Salary</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {currentStaff.map((s) => (
                 <TableRow key={s._id} className="text-base">
-                  <TableCell className="text-left font-medium">{s.firstName} {s.lastName}</TableCell>
+                  <TableCell className="text-left font-medium">
+                    {s.firstName} {s.lastName}
+                    {s.accessReviewRequired && <span className="ml-2 text-xs text-amber-700">Review</span>}
+                  </TableCell>
                   <TableCell className="text-left">{s.phone}</TableCell>
                   <TableCell className="hidden md:table-cell text-left">{getRoleLabels(s).join(', ') || s.role}</TableCell>
+                  <TableCell className="hidden lg:table-cell text-left">
+                    {s.isOwner ? 'All 8' : MODULE_OPTIONS.filter((module) => s.moduleAccess?.[module.id]).length}
+                  </TableCell>
                   <TableCell className="hidden md:table-cell text-left">KES {s.salary}</TableCell>
                   <TableCell className="text-right">
                     <Button onClick={() => router.push(`/staff/${s._id}`)}>View</Button>

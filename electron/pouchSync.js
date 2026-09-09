@@ -4,9 +4,13 @@ const PouchDB = require("pouchdb");
 const { ipcMain, app, BrowserWindow } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 PouchDB.plugin(require("pouchdb-find"));
 
 let localDB;
+let remoteDB;
+let remoteDBUrl = '';
+let remoteDBReadyPromise = null;
 let currentStoreNo = null;
 let syncHandler;
 let syncStatus = {
@@ -22,6 +26,114 @@ let syncStatus = {
 function getCouchDbUrl() {
   const configuredUrl = process.env.ADEEGO_COUCHDB_URL || process.env.COUCHDB_URL || '';
   return configuredUrl.trim().replace(/\/+$/, '');
+}
+
+function registerControlId(storeNo) {
+  return `${storeNo}:register-control`;
+}
+
+async function getRemoteDb() {
+  const url = getCouchDbUrl();
+  if (!url) throw new Error('Central sync is required to open or close a shift.');
+  if (!remoteDB || remoteDBUrl !== url) {
+    remoteDB = new PouchDB(url, { skip_setup: true, ajax: { timeout: 15000 } });
+    remoteDBUrl = url;
+    remoteDBReadyPromise = remoteDB.info().catch((error) => {
+      remoteDB = null;
+      remoteDBUrl = '';
+      remoteDBReadyPromise = null;
+      throw error;
+    });
+  }
+  await remoteDBReadyPromise;
+  return remoteDB;
+}
+
+async function acquireRegisterShift(storeNo, actor, requestedSessionId = null) {
+  const remote = await getRemoteDb();
+  const id = registerControlId(storeNo);
+  const now = new Date().toISOString();
+  const sessionId = requestedSessionId || `${storeNo}:register-session:${crypto.randomUUID()}`;
+  let current = await remote.get(id).catch((error) => error?.status === 404 ? null : Promise.reject(error));
+  if (current?.status === 'open') {
+    return { success: false, error: `A shift is already open for ${current.cashier?.name || 'another cashier'}.`, control: current };
+  }
+  const next = {
+    ...(current || {}), _id: id, type: 'register-control', state: 'Active', storeNo,
+    status: 'open', sessionId, cashier: actor || null, openedAt: now, closedAt: null, updatedAt: now,
+  };
+  try {
+    const response = await remote.put(next);
+    return { success: true, sessionId, control: { ...next, _rev: response.rev } };
+  } catch (error) {
+    if (error?.status === 409) return { success: false, error: 'Another cashier opened this shift first. Refresh and wait for it to close.' };
+    throw error;
+  }
+}
+
+async function releaseRegisterShift(storeNo, sessionId, closingBalances) {
+  const remote = await getRemoteDb();
+  const id = registerControlId(storeNo);
+  const current = await remote.get(id);
+  if (current.status !== 'open' || current.sessionId !== sessionId) {
+    throw new Error('The central shift lock changed. Refresh before continuing.');
+  }
+  const now = new Date().toISOString();
+  await remote.put({ ...current, status: 'closed', closingBalances, closedAt: now, updatedAt: now });
+  return { success: true };
+}
+
+async function assertRegisterShiftLock(storeNo, sessionId, actorId) {
+  const remote = await getRemoteDb();
+  const current = await remote.get(registerControlId(storeNo));
+  if (current.status !== 'open' || current.sessionId !== sessionId) throw new Error('This is not the centrally active shift. Refresh before continuing.');
+  if (actorId && current.cashier?.id && current.cashier.id !== actorId) throw new Error('This shift belongs to another cashier.');
+  return { success: true, control: current };
+}
+
+async function takeOverRegisterShift(storeNo, sessionId, actor, reason) {
+  const remote = await getRemoteDb();
+  const current = await remote.get(registerControlId(storeNo));
+  if (current.status !== 'open' || current.sessionId !== sessionId) throw new Error('This shift is no longer active.');
+  const now = new Date().toISOString();
+  const takeover = { from: current.cashier || null, to: actor, reason, at: now };
+  await remote.put({ ...current, cashier: actor, takeoverHistory: [...(current.takeoverHistory || []), takeover], updatedAt: now });
+  return { success: true, takeover };
+}
+
+function normalizeCredentialPhone(value) {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (digits.startsWith('254') && digits.length === 12) return `0${digits.slice(3)}`;
+  return digits;
+}
+
+async function verifyRetainedStaffCredential(storeNo, phoneNumber, passcode) {
+  const remote = await getRemoteDb();
+  const requestedStoreNo = String(storeNo || '').trim();
+  const requestedPhone = normalizeCredentialPhone(phoneNumber);
+  const requestedPasscode = String(passcode || '');
+  if (!requestedStoreNo || !requestedPhone || !requestedPasscode) return { success: false };
+
+  const result = await remote.find({ selector: { type: 'staff', state: 'Active', storeNo: requestedStoreNo }, limit: 10000 });
+  const candidates = result.docs.filter((staff) => (
+    normalizeCredentialPhone(staff.phone ?? staff.phoneNumber) === requestedPhone
+    && (staff.passcode === undefined || staff.passcode === null)
+  ));
+  for (const staff of candidates) {
+    const metadata = await remote.get(staff._id, { revs_info: true, conflicts: true });
+    const revisions = [
+      ...(metadata._revs_info || []).filter((entry) => entry.status === 'available').map((entry) => entry.rev),
+      ...(metadata._conflicts || []),
+    ];
+    for (const revision of [...new Set(revisions)]) {
+      const historical = await remote.get(staff._id, { rev: revision }).catch(() => null);
+      if (historical?.passcode !== undefined && historical?.passcode !== null
+        && String(historical.passcode) === requestedPasscode) {
+        return { success: true, staffId: staff._id };
+      }
+    }
+  }
+  return { success: false };
 }
 
 function getSyncStatus() {
@@ -359,6 +471,11 @@ function setupStoreNoListener() {
 }
 
 module.exports = {
+  acquireRegisterShift,
+  assertRegisterShiftLock,
+  releaseRegisterShift,
+  takeOverRegisterShift,
+  verifyRetainedStaffCredential,
   openPouchDB,
   getCurrentStoreNo: () => currentStoreNo,
   getSyncStatus,

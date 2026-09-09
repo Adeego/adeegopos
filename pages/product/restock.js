@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useState } from 'react'
-import { v4 as uuidv4 } from "uuid"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -21,6 +20,7 @@ import {
 } from "@/components/ui/select"
 import { toast } from "@/components/ui/use-toast"
 import useWsinfoStore from '@/stores/wsinfo'
+import { v4 as uuidv4 } from 'uuid'
 
 const getBaseUnitName = (product) => product.uom || product.baseUnit || 'PCS'
 
@@ -278,33 +278,14 @@ export default function Restock() {
       expiryDate: product.expiryDate || null
     }))
 
-    const totalAmount = items.reduce((sum, item) => sum + item.subtotal, 0)
-    const totalItems = items.reduce((sum, item) => sum + item.quantity, 0)
-
     return {
       _id: `${storeNo}:${uuidv4()}`,
       supplierId: invoiceSupplierId,
       items,
-      totalAmount,
-      totalItems,
+      totalAmount: items.reduce((sum, item) => sum + item.subtotal, 0),
+      totalItems: items.reduce((sum, item) => sum + item.quantity, 0),
       storeNo: `${storeNo}`,
       store: `${storeNo}`
-    }
-  }
-
-  const handleCreateInvoice = async (invoiceData) => {
-    try {
-      const result = await window.electronAPI.realmOperation('createInvoice', invoiceData)
-      if (!result.success) {
-        throw new Error(result.error)
-      }
-    } catch (error) {
-      toast({
-        variant: "destructive",
-        title: "Error creating invoice",
-        description: error.message
-      })
-      throw error
     }
   }
 
@@ -338,8 +319,8 @@ export default function Restock() {
         return
       }
 
-      const invoiceData = buildInvoice(sanitizedProducts)
-      await handleCreateInvoice(invoiceData)
+      const invoiceResult = await window.electronAPI.realmOperation('createInvoice', buildInvoice(sanitizedProducts))
+      if (!invoiceResult.success) throw new Error(invoiceResult.error)
 
       const result = await window.electronAPI.realmOperation('restockProducts', { products: sanitizedProducts, storeNo })
 

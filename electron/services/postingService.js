@@ -160,6 +160,10 @@ function buildSaleDocument(saleData = {}, overrides = {}) {
     saleType: saleData.saleType || 'NEW SALE',
     fullfilmentType: saleData.fullfilmentType || 'WALK-IN-CLIENT',
     paid: saleData.paid !== undefined ? saleData.paid : false,
+    paidAt: saleData.paidAt || null,
+    paidBy: saleData.paidBy || null,
+    paidRegisterSessionId: saleData.paidRegisterSessionId || null,
+    paymentPostingVersion: saleData.paymentPostingVersion || 2,
     confirmed: saleData.confirmed !== undefined ? saleData.confirmed : true,
     storeNo: saleData.storeNo,
     state: saleData.state || 'Active',
@@ -281,7 +285,12 @@ function isCashierAccount(account = {}) {
   }
 
   const accountNumber = String(account.accountNumber || '');
-  return account.accountType === 'Cashier' || accountNumber.endsWith('001') || accountNumber.endsWith('002');
+  const text = `${account.name || ''} ${account.accountNumber || ''}`.toLowerCase();
+  const tender = String(account.registerTenderType || '').toUpperCase();
+  return account.accountType === 'Cashier' && (
+    tender === 'CASH' || tender === 'MPESA' || accountNumber.endsWith('001') || accountNumber.endsWith('002') ||
+    text.includes('cash') || text.includes('drawer') || text.includes('mpesa') || text.includes('m-pesa') || text.includes('till')
+  );
 }
 
 function accountLooksLikePaymentMethod(account = {}, paymentMethod = '') {
@@ -345,6 +354,18 @@ async function getOpenRegisterSession(db, storeNo) {
   return openSessions[0] || null;
 }
 
+function actorId(actor = {}) {
+  return actor?._id || actor?.id || null;
+}
+
+function assertShiftOwner(openSession, actor) {
+  const ownerId = openSession?.openedBy?.id || openSession?.openedBy?._id || null;
+  const currentActorId = actorId(actor);
+  if (!currentActorId || !ownerId || currentActorId !== ownerId) {
+    throw new Error('This shift belongs to another cashier. Wait until it is closed.');
+  }
+}
+
 async function attachOpenRegisterSession(db, doc, options = {}) {
   if (options.skipRegisterSessionRequirement) {
     return doc;
@@ -353,6 +374,10 @@ async function attachOpenRegisterSession(db, doc, options = {}) {
   const openSession = await getOpenRegisterSession(db, doc.storeNo);
   if (!openSession?._id) {
     throw new Error(REGISTER_SESSION_REQUIRED_ERROR);
+  }
+
+  if (options.requireShiftOwner === true && options.actor) {
+    assertShiftOwner(openSession, options.actor);
   }
 
   if (doc.registerSessionId && doc.registerSessionId !== openSession._id) {
@@ -398,11 +423,9 @@ async function attachOpenRegisterSessionToSale(db, sale, options = {}) {
     return sale;
   }
 
-  if (!await saleRequiresRegisterSession(db, sale)) {
-    return sale;
-  }
-
-  return attachOpenRegisterSession(db, sale, options);
+  // Every sale belongs to a shift, including credit and unconfirmed sales. This
+  // keeps stock, revenue and unpaid declarations attributable to one cashier.
+  return attachOpenRegisterSession(db, sale, { ...options, requireShiftOwner: true });
 }
 
 async function attachOpenRegisterSessionForAccount(db, doc, accountId, options = {}) {
@@ -410,14 +433,16 @@ async function attachOpenRegisterSessionForAccount(db, doc, accountId, options =
     return doc;
   }
 
+  let account;
   try {
-    const account = await db.get(accountId);
-    if (!isCashierAccount(account) || (doc.storeNo && account.storeNo !== doc.storeNo)) {
-      return doc;
-    }
+    account = await db.get(accountId);
   } catch (error) {
     return doc;
   }
+  if (doc.storeNo && account.storeNo && String(account.storeNo) !== String(doc.storeNo)) {
+    throw new Error('The selected account does not belong to your store.');
+  }
+  if (!isCashierAccount(account)) return doc;
 
   return attachOpenRegisterSession(db, doc, options);
 }
@@ -433,13 +458,18 @@ async function transactionRequiresRegisterSession(db, transaction, options = {})
     .map((row) => row.entityId));
 
   for (const accountId of accountIds) {
+    let account;
     try {
-      const account = await db.get(accountId);
-      if (isCashierAccount(account) && (!transaction.storeNo || account.storeNo === transaction.storeNo)) {
-        return true;
-      }
+      account = await db.get(accountId);
     } catch (error) {
       // Validation elsewhere reports missing accounts when they matter.
+      continue;
+    }
+    if (transaction.storeNo && account.storeNo && String(account.storeNo) !== String(transaction.storeNo)) {
+      throw new Error('A transaction account does not belong to your store.');
+    }
+    if (isCashierAccount(account)) {
+      return true;
     }
   }
 
@@ -562,11 +592,17 @@ async function findPaymentAccount(db, { storeNo, paymentMethod, accountId }) {
   if (accountId) {
     try {
       const explicitAccount = await db.get(accountId);
+      const accountNumber = String(explicitAccount?.accountNumber || '');
+      const accountText = `${explicitAccount?.name || ''} ${explicitAccount?.registerTenderType || ''}`.toLowerCase();
+      const isRegisterTender = accountNumber === `${storeNo}001`
+        || accountNumber === `${storeNo}002`
+        || /(^|\s)cash($|\s)|drawer|mpesa|m-pesa|m pesa|till/.test(accountText);
       if (
         explicitAccount &&
         explicitAccount.type === 'account' &&
         explicitAccount.state === 'Active' &&
-        explicitAccount.accountType === 'Cashier' &&
+        isCashierAccount(explicitAccount) &&
+        isRegisterTender &&
         (!storeNo || explicitAccount.storeNo === storeNo)
       ) {
         return explicitAccount;
@@ -614,6 +650,12 @@ async function validateSalePaymentAccounts(db, sale) {
 
     if (!account?._id) {
       errors.push(`Cashier account is required for ${paymentMethod || 'this payment'}`);
+    } else {
+      const number = String(account.accountNumber || '');
+      const text = `${account.name || ''} ${account.registerTenderType || ''}`.toLowerCase();
+      const isCash = number === `${sale.storeNo}001` || /(^|\s)cash($|\s)|drawer/.test(text);
+      const isMpesa = number === `${sale.storeNo}002` || /mpesa|m-pesa|m pesa|till/.test(text);
+      if (!isCash && !isMpesa) errors.push('Only the store Cash and M-Pesa accounts can receive sale payments');
     }
   }
 
@@ -785,11 +827,15 @@ async function getSaleBalanceRows(db, sale, options = {}) {
       accountId: payment.accountId || options.accountId,
     });
 
-    if (!isCreditPaymentMethod(paymentMethod) && account?._id) {
+    // A selected tender is not proof that money was received. Cash/M-Pesa only
+    // become account movements after the sale is explicitly confirmed paid.
+    if (!isCreditPaymentMethod(paymentMethod) && sale.paid === true && account?._id) {
+      const fee = Math.abs(toNumber(payment.transactionCost));
+      const settledDelta = isReturn ? -(amount + fee) : (amount - fee);
       accountDeltas.push({
         entityType: 'account',
         entityId: account._id,
-        delta: Number((isReturn ? -amount : amount).toFixed(2)),
+        delta: Number(settledDelta.toFixed(2)),
         bucket: 'account_balance',
         description: isReturn ? `Refund issued via ${paymentMethod}` : `Sale settled via ${paymentMethod}`,
         paymentMethod,
@@ -923,6 +969,9 @@ async function previewSaleEffects(db, saleData, options = {}) {
 
   if (Math.abs(paymentTotal - Math.abs(toNumber(sale.totalAmount))) > 0.01) {
     errors.push('Payment breakdown must equal the sale total');
+  }
+  if (getSalePaymentBreakdown(sale).some((payment) => toNumber(payment.transactionCost) > toNumber(payment.amount))) {
+    errors.push('A payment fee cannot exceed its payment amount');
   }
 
   errors.push(...await validateSalePaymentAccounts(db, sale));
@@ -1157,6 +1206,7 @@ async function postSale(db, saleData, options = {}) {
       ...(saleData.reconciliationCaseIds || []),
       options.reconciliationCaseId,
     ]),
+    createdBy: buildActorReference(options.actor),
   }), options);
 
   const preview = await previewSaleEffects(db, sale, options);
@@ -1274,12 +1324,14 @@ async function postTransaction(db, transactionData, options = {}) {
 }
 
 module.exports = {
+  applyStockDeltaToProduct,
   applyEntityBalanceDelta,
   attachOpenRegisterSessionForAccount,
   buildActorReference,
   buildSaleDocument,
   buildTransactionDocument,
   getOpenRegisterSession,
+  assertShiftOwner,
   getCurrentCustomerId,
   getSaleMetricSign,
   getSaleNetAmount,

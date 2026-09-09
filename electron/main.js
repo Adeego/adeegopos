@@ -10,9 +10,7 @@ if (app.isPackaged) {
 }
 const { openPouchDB } = require("./pouchSync");
 const setupIpcHandlers = require("./ipcHandlers");
-const restockScheduler = require("./services/restockScheduler");
-const { startTelegramBot, stopTelegramBot, sendAlert } = require("./services/aiAssistant/telegramBot");
-const { startStockManager, stopStockManager } = require("./services/aiAssistant/stockManager");
+const { startTelegramBot, stopTelegramBot } = require("./services/aiAssistant/telegramBot");
 const { autoUpdater } = require("electron-updater");
 const fs = require('fs');
 const { execSync } = require('child_process');
@@ -263,12 +261,6 @@ app.on("ready", async () => {
     // Start Telegram bot (if configured)
     startTelegramBot(pouch, process.env.DEFAULT_STORE_NO || '');
 
-    // Start stock manager (sends alerts via Telegram)
-    await startStockManager(pouch, process.env.DEFAULT_STORE_NO || '', sendAlert);
-
-    // Note: Restock scheduler will be started from frontend after login
-    // when storeNo is available via: window.electronAPI.restock('startScheduler', storeNo)
-
     // Check for updates on app start
     if (app.isPackaged) {
       autoUpdater.checkForUpdates();
@@ -288,12 +280,6 @@ app.on("window-all-closed", () => {
 app.on("before-quit", async (event) => {
   if (!app.isQuitting) {
     event.preventDefault();
-
-    // Stop restock scheduler
-    restockScheduler.stopRestockScheduler();
-
-    // Stop stock manager
-    stopStockManager();
 
     // Stop Telegram bot
     stopTelegramBot();

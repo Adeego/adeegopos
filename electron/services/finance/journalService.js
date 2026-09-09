@@ -10,6 +10,7 @@ const CHART = {
   AR: { code: '1130', name: 'Accounts Receivable' },
   INVENTORY: { code: '1140', name: 'Inventory' },
   PREPAID: { code: '1150', name: 'Prepaid Expenses' },
+  UNCONFIRMED_TENDER: { code: '1160', name: 'Unconfirmed Tender' },
   OTHER_CURRENT_ASSET: { code: '1190', name: 'Other Current Assets' },
   PPE: { code: '1200', name: 'Property & Equipment' },
   ACCUM_DEPRECIATION: { code: '1240', name: 'Accumulated Depreciation' },
@@ -349,9 +350,11 @@ async function buildSaleJournalSpec(db, sale = {}, options = {}) {
     }
 
     const paymentAccountDoc = await findPaymentAccount(db, storeNo, payment);
-    const paymentAccount = paymentAccountDoc?._id
-      ? (accountMap.get(paymentAccountDoc._id) || accountCodeFromDoc(paymentAccountDoc))
-      : (method === 'MPESA' ? CHART.MPESA : CHART.CASH);
+    const paymentAccount = sale.paid === true
+      ? (paymentAccountDoc?._id
+          ? (accountMap.get(paymentAccountDoc._id) || accountCodeFromDoc(paymentAccountDoc))
+          : (method === 'MPESA' ? CHART.MPESA : CHART.CASH))
+      : CHART.UNCONFIRMED_TENDER;
     const extra = {
       entityType: 'account',
       entityId: paymentAccountDoc?._id || null,
@@ -393,6 +396,50 @@ async function buildSaleJournalSpec(db, sale = {}, options = {}) {
       reconciliationCaseType: sale.reconciliationCaseType || null,
     },
   };
+}
+
+async function ensureJournalEntryForSalePayment(db, confirmation = {}) {
+  const storeNo = getStoreNo(confirmation);
+  const lines = [];
+  const accountMap = await getAccountCodeMap(db, storeNo, { persist: true });
+  for (const payment of confirmation.paymentBreakdown || []) {
+    const amount = absMoney(payment.amount);
+    const fee = absMoney(payment.transactionCost);
+    if (!amount) continue;
+    const accountDoc = await findPaymentAccount(db, storeNo, payment);
+    const account = accountDoc?._id
+      ? (accountMap.get(accountDoc._id) || accountCodeFromDoc(accountDoc))
+      : (normalizePaymentMethod(payment.method) === 'MPESA' ? CHART.MPESA : CHART.CASH);
+    const extra = {
+      entityType: 'account',
+      entityId: accountDoc?._id || payment.accountId || null,
+      metadata: { role: 'confirmed_tender', paymentMethod: normalizePaymentMethod(payment.method) },
+    };
+    const clearingExtra = { metadata: { role: 'clear_unconfirmed_tender', saleId: confirmation.saleId } };
+    if (confirmation.saleType === 'RETURN SALE') {
+      debit(lines, CHART.UNCONFIRMED_TENDER, amount, clearingExtra);
+      if (fee) debit(lines, CHART.TRANSACTION_FEES, fee, { metadata: { role: 'fee' } });
+      credit(lines, account, amount + fee, extra);
+    } else {
+      debit(lines, account, Math.max(0, amount - fee), extra);
+      if (fee) debit(lines, CHART.TRANSACTION_FEES, fee, { metadata: { role: 'fee' } });
+      credit(lines, CHART.UNCONFIRMED_TENDER, amount, clearingExtra);
+    }
+  }
+  if (lines.length === 0) return { success: true, created: false, skipped: true };
+  return putJournalEntry(db, {
+    storeNo,
+    sourceDocType: 'sale-payment',
+    sourceDocId: confirmation._id,
+    description: `Payment confirmed for sale ${confirmation.saleId}`,
+    date: confirmation.confirmedAt || confirmation.createdAt,
+    lines,
+    metadata: {
+      saleId: confirmation.saleId,
+      registerSessionId: confirmation.registerSessionId,
+      confirmedBy: confirmation.confirmedBy,
+    },
+  });
 }
 
 function addEntityDeltaLine(lines, row, account) {
@@ -1180,6 +1227,7 @@ module.exports = {
   ensureJournalEntryForInvoice,
   ensureJournalEntryForManualAdjustment,
   ensureJournalEntryForSale,
+  ensureJournalEntryForSalePayment,
   ensureJournalEntryForTransaction,
   getAccountStatement,
   getBalanceSheet,

@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import Fuse from 'fuse.js';
 import useWsinfoStore from '@/stores/wsinfo';
 import useStaffStore from '@/stores/staffStore';
 import useDraftSalesStore from '@/stores/draftSales';
@@ -32,6 +33,65 @@ const getPositiveQuantity = (value) => {
   return Number.isFinite(quantity) && quantity > 0 ? quantity : 0;
 };
 
+const CUSTOMER_RESULT_LIMIT = 50;
+const CUSTOMER_CACHE_TTL_MS = 30 * 1000;
+const customerCacheByStore = new Map();
+
+const normalizeCustomerText = (value) => String(value || '').trim().toLowerCase();
+const getCustomerCacheKey = (storeNo) => String(storeNo || '');
+const hasFreshCustomers = (cachedCustomers) => (
+  cachedCustomers && Date.now() - cachedCustomers.loadedAt < CUSTOMER_CACHE_TTL_MS
+);
+
+const normalizeCustomer = (customer) => ({
+  ...customer,
+  searchableText: normalizeCustomerText([
+    customer.name,
+    customer.phoneNumber,
+    customer.address,
+  ].filter(Boolean).join(' ')),
+});
+
+const fetchStoreCustomers = (storeNo) => {
+  const cacheKey = getCustomerCacheKey(storeNo);
+  const cachedCustomers = customerCacheByStore.get(cacheKey);
+
+  if (cachedCustomers?.pending) return cachedCustomers.pending;
+
+  const pending = window.electronAPI.realmOperation('getAllCustomers', storeNo)
+    .then((result) => {
+      if (!result.success) {
+        throw new Error(result.error || 'Failed to load customers');
+      }
+
+      const customers = (result.customers || []).map(normalizeCustomer);
+      customerCacheByStore.set(cacheKey, { customers, loadedAt: Date.now() });
+      return customers;
+    })
+    .catch((error) => {
+      const latestCustomers = customerCacheByStore.get(cacheKey);
+      if (latestCustomers?.pending === pending) {
+        if (latestCustomers.customers) {
+          customerCacheByStore.set(cacheKey, {
+            customers: latestCustomers.customers,
+            loadedAt: latestCustomers.loadedAt || 0,
+          });
+        } else {
+          customerCacheByStore.delete(cacheKey);
+        }
+      }
+      throw error;
+    });
+
+  customerCacheByStore.set(cacheKey, {
+    customers: cachedCustomers?.customers,
+    loadedAt: cachedCustomers?.loadedAt || 0,
+    pending,
+  });
+
+  return pending;
+};
+
 function SaleCard() {
   const { toast } = useToast();
   const [selectedProducts, setSelectedProducts] = useState([]);
@@ -41,8 +101,9 @@ function SaleCard() {
   const [name, setName] = useState('');
   const [customer, setCustomer] = useState(null);
   const [fulfillmentType, setFulfillmentType] = useState('WALK-IN-CLIENT');
-  const [customerResult, setCustomerResult] = useState([]);
-  const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [customers, setCustomers] = useState([]);
+  const [isLoadingCustomers, setIsLoadingCustomers] = useState(false);
+  const [customerLoadError, setCustomerLoadError] = useState('');
   const [showOutOfStockAlert, setShowOutOfStockAlert] = useState(false);
   const [showLowStockAlert, setShowLowStockAlert] = useState(false);
   const [showNewCustomerDialog, setShowNewCustomerDialog] = useState(false);
@@ -127,7 +188,12 @@ function SaleCard() {
     try {
       const result = await window.electronAPI.realmOperation('getAllAccounts', { storeNo: storeNumber });
       if (result.success) {
-        setCashierAccounts((result.accounts || []).filter((account) => account.accountType === 'Cashier'));
+        setCashierAccounts((result.accounts || []).filter((account) => {
+          if (account.accountType !== 'Cashier') return false;
+          const text = `${account.name || ''} ${account.accountNumber || ''}`.toLowerCase();
+          const tender = String(account.registerTenderType || '').toUpperCase();
+          return tender === 'CASH' || tender === 'MPESA' || /001$|002$/.test(String(account.accountNumber || '')) || /cash|drawer|mpesa|m-pesa|till/.test(text);
+        }));
       } else {
         console.error('Failed to fetch cashier accounts:', result.error);
         setCashierAccounts([]);
@@ -139,21 +205,6 @@ function SaleCard() {
       setCashierAccountsLoaded(true);
     }
   }, []);
-
-  const performCustomerSearch = useCallback(async () => {
-    try {
-      const result = await window.electronAPI.searchCustomers(name, storeNo);
-      if (result.success) {
-        setCustomerResult(result.customers);
-      } else {
-        console.error('Search failed:', result.error);
-        setCustomerResult([]);
-      }
-    } catch (error) {
-      console.error('Error during search:', error);
-      setCustomerResult([]);
-    }
-  }, [name, storeNo]);
 
   useEffect(() => {
     const handleKeyPress = (event) => {
@@ -171,16 +222,89 @@ function SaleCard() {
   }, []);
 
   useEffect(() => {
-    const delayDebounceFn = setTimeout(() => {
-      if (name) {
-        performCustomerSearch();
-      } else {
-        setCustomerResult([]);
-      }
-    }, 300);
+    if (!storeNo) return;
 
-    return () => clearTimeout(delayDebounceFn);
-  }, [name, performCustomerSearch]);
+    const cachedCustomers = customerCacheByStore.get(getCustomerCacheKey(storeNo));
+    if (hasFreshCustomers(cachedCustomers)) return;
+
+    const preloadCustomers = () => {
+      fetchStoreCustomers(storeNo).catch(() => {});
+    };
+    let timeoutId = null;
+    let idleId = null;
+
+    if (typeof window !== 'undefined' && 'requestIdleCallback' in window) {
+      idleId = window.requestIdleCallback(preloadCustomers, { timeout: 2000 });
+    } else {
+      timeoutId = setTimeout(preloadCustomers, 750);
+    }
+
+    return () => {
+      if (idleId && 'cancelIdleCallback' in window) window.cancelIdleCallback(idleId);
+      if (timeoutId) clearTimeout(timeoutId);
+    };
+  }, [storeNo]);
+
+  useEffect(() => {
+    if (!custSearchDialog || !storeNo) return;
+
+    let isCancelled = false;
+    const cachedCustomers = customerCacheByStore.get(getCustomerCacheKey(storeNo));
+    const hasCachedCustomers = Array.isArray(cachedCustomers?.customers);
+
+    if (hasCachedCustomers) setCustomers(cachedCustomers.customers);
+    if (hasFreshCustomers(cachedCustomers)) return () => { isCancelled = true; };
+
+    const loadCustomers = async () => {
+      setCustomerLoadError('');
+      setIsLoadingCustomers(!hasCachedCustomers);
+      try {
+        const nextCustomers = await fetchStoreCustomers(storeNo);
+        if (!isCancelled) setCustomers(nextCustomers);
+      } catch (error) {
+        if (!isCancelled && !hasCachedCustomers) {
+          setCustomers([]);
+          setCustomerLoadError(error.message || 'Failed to load customers');
+        }
+      } finally {
+        if (!isCancelled) setIsLoadingCustomers(false);
+      }
+    };
+
+    loadCustomers();
+    return () => { isCancelled = true; };
+  }, [custSearchDialog, storeNo]);
+
+  const customerFuse = useMemo(() => new Fuse(customers, {
+    keys: ['name', 'phoneNumber', 'address'],
+    threshold: 0.35,
+    ignoreLocation: true,
+    minMatchCharLength: 2,
+  }), [customers]);
+
+  const customerResult = useMemo(() => {
+    if (!custSearchDialog) return [];
+    const searchTerm = normalizeCustomerText(name);
+    if (!searchTerm) return customers.slice(0, CUSTOMER_RESULT_LIMIT);
+
+    const exactMatches = customers.filter((candidate) => (
+      candidate.searchableText.includes(searchTerm)
+    ));
+    if (exactMatches.length >= CUSTOMER_RESULT_LIMIT || searchTerm.length < 2) {
+      return exactMatches.slice(0, CUSTOMER_RESULT_LIMIT);
+    }
+
+    const seenIds = new Set(exactMatches.map((candidate) => candidate._id));
+    const fuzzyMatches = customerFuse.search(name)
+      .map((result) => result.item)
+      .filter((candidate) => {
+        if (seenIds.has(candidate._id)) return false;
+        seenIds.add(candidate._id);
+        return true;
+      });
+
+    return [...exactMatches, ...fuzzyMatches].slice(0, CUSTOMER_RESULT_LIMIT);
+  }, [custSearchDialog, customerFuse, customers, name]);
 
 
 
@@ -342,9 +466,7 @@ function SaleCard() {
   };
 
   const handleCustomerSelect = (chosenCustomer) => {
-    setSelectedCustomer(chosenCustomer);
     setCustomer(chosenCustomer);
-    setCustomerResult([]);
     setName('');
     setCustSearchDialog(false);
   };
@@ -368,6 +490,18 @@ function SaleCard() {
     try {
       const result = await window.electronAPI.realmOperation('createCustomer', customerData);
       if (result.success) {
+        const normalizedCustomer = normalizeCustomer(result.customer);
+        setCustomers((currentCustomers) => {
+          const nextCustomers = [
+            normalizedCustomer,
+            ...currentCustomers.filter((item) => item._id !== normalizedCustomer._id),
+          ];
+          customerCacheByStore.set(getCustomerCacheKey(storeNo), {
+            customers: nextCustomers,
+            loadedAt: Date.now(),
+          });
+          return nextCustomers;
+        });
         handleCustomerSelect(result.customer);
         setShowNewCustomerDialog(false);
         setNewCustomerData({ name: '', phoneNumber: '', address: '' });
@@ -752,8 +886,9 @@ function SaleCard() {
         name={name}
         onNameChange={handleNameChange}
         customerResult={customerResult}
+        isLoading={isLoadingCustomers}
+        loadError={customerLoadError}
         onCustomerSelect={handleCustomerSelect}
-        selectedCustomer={customer}
       />
 
       <SaleDetailsDialog

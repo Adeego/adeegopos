@@ -2,15 +2,30 @@ import React, { useEffect, useState } from 'react';
 import useWsinfoStore from '@/stores/wsinfo';
 import useStaffStore from '@/stores/staffStore';
 import { v4 as uuidv4 } from 'uuid';
-import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger, SheetFooter, SheetClose } from "@/components/ui/sheet";
+import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger, SheetFooter } from "@/components/ui/sheet";
 import { Label } from "@/components/ui/label";
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Checkbox } from "@/components/ui/checkbox";
 import { toast } from "@/components/ui/use-toast";
 import { UserPlus } from 'lucide-react';
-import { can, getPrimaryRole, getRoleLabel, normalizeRoles, ROLE_OPTIONS } from '@/lib/rbac';
+import { ACCESS_PRESETS, ACCESS_VERSION, can } from '@/lib/rbac';
+import ModuleAccessEditor from '@/components/staff/moduleAccessEditor';
+
+const presetRoles = {
+  seller: ['seller'],
+  cashier: ['cashier'],
+  stock_manager: ['stock_manager'],
+  bookkeeper: ['bookkeeper'],
+  manager: ['operator'],
+};
+
+const emptyStaff = () => ({
+  _id: '', firstName: '', lastName: '', phoneNumber: '', balance: 0,
+  role: 'Seller', roles: ['seller'], accessVersion: ACCESS_VERSION,
+  accessPreset: 'seller', moduleAccess: { ...ACCESS_PRESETS.seller.moduleAccess },
+  isOwner: false, salary: '', passcode: '', storeNo: '',
+  createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+});
 
 export default function AddStaff({ fetchStaff }) {
   const [isAddingStaff, setIsAddingStaff] = useState(false);
@@ -18,20 +33,7 @@ export default function AddStaff({ fetchStaff }) {
   const currentStaff = useStaffStore((state) => state.staff);
   const [storeNo, setStoreNo] = useState("");
 
-  const [newStaff, setNewStaff] = useState({
-    _id: '',
-    firstName: '',
-    lastName: '',
-    phoneNumber: '',
-    balance: 0,
-    role: '',
-    roles: [],
-    salary: '',
-    passcode: '',
-    storeNo: '',
-    createdAt: new Date().toISOString(),
-    updatedAt: new Date().toISOString(),
-  });
+  const [newStaff, setNewStaff] = useState(emptyStaff);
 
   useEffect(() => {
     const storeNo = wsinfo.storeNo;
@@ -48,26 +50,12 @@ export default function AddStaff({ fetchStaff }) {
     }));
   };
 
-  const handleRoleToggle = (role, checked) => {
-    setNewStaff((prev) => {
-      const nextRoles = checked
-        ? [...prev.roles, role]
-        : prev.roles.filter((item) => item !== role);
-      const normalizedRoles = normalizeRoles(nextRoles);
-      return {
-        ...prev,
-        roles: normalizedRoles,
-        role: getRoleLabel(getPrimaryRole(normalizedRoles)),
-      };
-    });
-  };
-
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (normalizeRoles(newStaff.roles).length === 0) {
+    if (Object.keys(newStaff.moduleAccess).length === 0) {
       toast({
-        title: "Role required",
-        description: "Assign at least one role before adding staff.",
+        title: "Module access required",
+        description: "Assign at least one module before adding staff.",
         variant: "destructive",
       });
       return;
@@ -77,8 +65,6 @@ export default function AddStaff({ fetchStaff }) {
     try {
       const staffData = {
         ...newStaff,
-        roles: normalizeRoles(newStaff.roles),
-        role: getRoleLabel(getPrimaryRole(newStaff.roles)),
         _id: `${storeNo}:${uuidv4()}`,
         salary: parseFloat(newStaff.salary),
         storeNo: storeNo,
@@ -91,20 +77,7 @@ export default function AddStaff({ fetchStaff }) {
           description: "Staff member added successfully!",
         });
         fetchStaff();
-        setNewStaff({
-          _id: '',
-          firstName: '',
-          lastName: '',
-          phoneNumber: '',
-          balance: 0,
-          role: '',
-          roles: [],
-          salary: '',
-          passcode: '',
-          storeNo: '',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        });
+        setNewStaff(emptyStaff());
       } else {
         throw new Error(result.error);
       }
@@ -112,7 +85,7 @@ export default function AddStaff({ fetchStaff }) {
       console.error('Error adding staff:', error);
       toast({
         title: "Error",
-        description: "Failed to add staff member. Please try again.",
+        description: error.message || "Failed to add staff member. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -132,7 +105,7 @@ export default function AddStaff({ fetchStaff }) {
           Add Staff
         </Button>
       </SheetTrigger>
-      <SheetContent className="sm:max-w-[425px]">
+      <SheetContent className="overflow-y-auto sm:max-w-3xl">
         <SheetHeader>
           <SheetTitle>Add New Staff Member</SheetTitle>
           <SheetDescription>
@@ -173,20 +146,22 @@ export default function AddStaff({ fetchStaff }) {
                 required
               />
             </div>
-            <div className="space-y-2">
-              <Label>Roles</Label>
-              <div className="grid grid-cols-2 gap-3 rounded-md border p-3">
-                {ROLE_OPTIONS.map((option) => (
-                  <label key={option.value} className="flex items-center gap-2 text-sm">
-                    <Checkbox
-                      checked={newStaff.roles.includes(option.value)}
-                      onCheckedChange={(checked) => handleRoleToggle(option.value, checked === true)}
-                    />
-                    {option.label}
-                  </label>
-                ))}
-              </div>
-            </div>
+            <ModuleAccessEditor
+              moduleAccess={newStaff.moduleAccess}
+              accessPreset={newStaff.accessPreset}
+              actorIsOwner={currentStaff.isOwner}
+              onChange={(moduleAccess, accessPreset) => setNewStaff((prev) => ({ ...prev, moduleAccess, accessPreset }))}
+              onPresetChange={(accessPreset, moduleAccess) => {
+                const roles = presetRoles[accessPreset] || ['seller'];
+                setNewStaff((prev) => ({
+                  ...prev,
+                  accessPreset,
+                  moduleAccess,
+                  roles,
+                  role: ACCESS_PRESETS[accessPreset]?.label || 'Custom Access',
+                }));
+              }}
+            />
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="salary">Salary</Label>
@@ -224,11 +199,9 @@ export default function AddStaff({ fetchStaff }) {
             </div>
           </div>
           <SheetFooter>
-            <SheetClose asChild>
-              <Button type="submit" disabled={isAddingStaff}>
-                {isAddingStaff ? "Adding..." : "Add Staff Member"}
-              </Button>
-            </SheetClose>
+            <Button type="submit" disabled={isAddingStaff}>
+              {isAddingStaff ? "Adding..." : "Add Staff Member"}
+            </Button>
           </SheetFooter>
         </form>
       </SheetContent>

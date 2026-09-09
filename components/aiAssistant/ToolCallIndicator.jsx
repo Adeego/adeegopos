@@ -22,8 +22,6 @@ const toolLabels = {
   getProductsToRestock: 'Checking restock needs',
   getExpiringProducts: 'Checking expiring products',
   getRestockList: 'Loading restock list',
-  getLatestStockAiPlan: 'Loading Stock AI action plan',
-  getStockIntelligenceReport: 'Building Stock AI intelligence report',
   getAllSuppliers: 'Loading suppliers',
   getTodayInvoices: 'Checking invoices',
   getTodaySupplierTransactions: 'Checking supplier payments',

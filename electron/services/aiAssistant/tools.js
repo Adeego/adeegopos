@@ -5,8 +5,6 @@ const supplierService = require('../supplierService');
 const dashboardService = require('../dashboardService');
 const reportService = require('../reportService');
 const growthService = require('../growthService');
-const stockManagement = require('../stockManagement');
-const restockScheduler = require('../restockScheduler');
 const expenseService = require('../finance/expenseService');
 const expenseTypeService = require('../finance/expenseTypeService');
 const accountService = require('../finance/accountService');
@@ -14,8 +12,6 @@ const financeReport = require('../finance/financeReportService');
 const transactionService = require('../finance/transactionService');
 const financeRecorder = require('./financeRecorder');
 const { v4: uuidv4 } = require('uuid');
-const { getStockHealthReport } = require('./stockManager');
-const stockAiAgent = require('../stockAiAgentService');
 
 // OpenAI function/tool definitions for the AI assistant
 const toolDefinitions = [
@@ -542,40 +538,6 @@ const toolDefinitions = [
       }
     }
   },
-  {
-    type: 'function',
-    function: {
-      name: 'getStockHealthReport',
-      description: 'Get a full stock health report: top 50 SKUs (Primary/Secondary/Drinks) with demand forecasting, 10-day shelf rule status, plus perishable analysis with expiry alerts. Use this when the user asks about stock health, low stock, overstock, or restock needs.',
-      parameters: { type: 'object', properties: {}, required: [] }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'getLatestStockAiPlan',
-      description: 'Get the latest Stock AI action plan with Critical, High, and Watch stockout-prevention recommendations for the next 7 days.',
-      parameters: { type: 'object', properties: {}, required: [] }
-    }
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'getStockIntelligenceReport',
-      description: 'Get the v2 Stock AI intelligence report. It includes buying lists, stockout risk, supplier recommendations, cash-protection flags, stock errors, and morning/evening report sections.',
-      parameters: {
-        type: 'object',
-        properties: {
-          reportType: {
-            type: 'string',
-            enum: ['full', 'morning', 'evening', 'buying-list'],
-            description: 'Which stock report section to return. Defaults to full.'
-          }
-        },
-        required: []
-      }
-    }
-  },
 ];
 
 // Execute a tool call and return the result
@@ -625,12 +587,30 @@ async function executeTool(toolName, args, db, storeNo) {
       // Products & Stock
       case 'getAllProducts':
         return await productService.getAllProducts(db, storeNo);
-      case 'getProductsToRestock':
-        return await stockManagement.getProductsToRestock(db, storeNo);
+      case 'getProductsToRestock': {
+        const result = await productService.getAllProducts(db, storeNo);
+        if (!result.success) return result;
+        return {
+          success: true,
+          products: result.products.filter((product) => product.restock
+            || Number(product.stock || 0) <= Number(product.restockThreshold || 0)),
+        };
+      }
       case 'getExpiringProducts':
         return await productService.getExpiringProducts(db, storeNo, args.daysUntilExpiry);
-      case 'getRestockList':
-        return await restockScheduler.getRestockList(db, storeNo, args.category ? [args.category] : null);
+      case 'getRestockList': {
+        const result = await productService.getAllProducts(db, storeNo);
+        if (!result.success) return result;
+        const items = {};
+        result.products
+          .filter((product) => product.restock || Number(product.stock || 0) <= Number(product.restockThreshold || 0))
+          .forEach((product) => {
+            const category = product.category || 'Uncategorized';
+            if (!items[category]) items[category] = [];
+            items[category].push(product);
+          });
+        return { success: true, items };
+      }
 
       // Suppliers
       case 'getAllSuppliers':
@@ -707,14 +687,6 @@ async function executeTool(toolName, args, db, storeNo) {
         return await growthService.getWeeklySalesGrowth(db, storeNo, args.startDate, args.endDate);
       case 'getTopPerformingProducts':
         return await growthService.getTopPerformingProducts(db, storeNo, args.startDate, args.endDate, args.limit || 10);
-
-      // Stock Health
-      case 'getStockHealthReport':
-        return await getStockHealthReport(db, storeNo);
-      case 'getLatestStockAiPlan':
-        return await stockAiAgent.getLatestStockAiPlan(db, storeNo);
-      case 'getStockIntelligenceReport':
-        return await stockAiAgent.getStockIntelligenceReport(db, storeNo, args.reportType || 'full');
 
       default:
         return { success: false, error: `Unknown tool: ${toolName}` };

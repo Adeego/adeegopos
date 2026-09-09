@@ -1,5 +1,6 @@
 const {
   postTransaction,
+  buildActorReference,
   shouldIncludeTransactionInMetrics,
   toNumber,
 } = require('../postingService');
@@ -89,13 +90,16 @@ async function getStoreTransactions(db, storeNo, options = {}) {
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 }
 
-async function createTransaction(db, transactionData) {
+async function createTransaction(db, transactionData, actor = null) {
   try {
     if (!transactionData.from || !transactionData.to || !transactionData.amount) {
       throw new Error('Missing required fields');
     }
 
-    const result = await postTransaction(db, transactionData, { direction: 1 });
+    const result = await postTransaction(db, {
+      ...transactionData,
+      metadata: { ...(transactionData.metadata || {}), actor: buildActorReference(actor) },
+    }, { direction: 1 });
     if (!result.success) {
       return result;
     }

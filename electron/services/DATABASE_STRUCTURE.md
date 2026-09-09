@@ -208,7 +208,13 @@ Supplier purchase invoices created during restocking.
 | `balance`   | number | Staff balance                                        |
 | `passcode`  | string | Login passcode                                       |
 | `salary`    | number | Salary amount                                        |
-| `role`      | string | `admin` / `operator` / `cashier` / `worker` / `stock_manager` |
+| `role`      | string | Legacy display/compatibility role                              |
+| `roles`     | array  | Legacy role values retained during the v2 rollout              |
+| `accessVersion` | number | Access schema version; modular access uses `2`              |
+| `accessPreset` | string | Editable starting preset (`seller`, `cashier`, etc.)         |
+| `moduleAccess` | object | Module IDs mapped to `view`, `operate`, or `manage`           |
+| `isOwner`   | boolean | Protected store owner; receives full effective module access  |
+| `accessReviewRequired` | boolean | Whether migrated access still needs owner review       |
 
 **Analysis use:** Staff sales performance (via `sale.servedBy`), labor cost analysis.
 

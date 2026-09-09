@@ -7,6 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import useWsinfoStore from '@/stores/wsinfo';
+import useStaffStore from '@/stores/staffStore';
+import { ACCESS_PRESETS, ACCESS_VERSION } from '@/lib/rbac';
 import { SubsPlan } from '@/components/subs-plan';
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/components/ui/sheet';
 import { BadgeDollarSign, Check, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -28,10 +30,15 @@ export default function Register() {
     phone: '',
     role: 'Admin',
     roles: ['admin'],
+    accessVersion: ACCESS_VERSION,
+    accessPreset: 'owner',
+    moduleAccess: ACCESS_PRESETS.owner.moduleAccess,
+    isOwner: true,
     passcode: ''
   });
   const [storeNo, setStoreNo] = useState('');
   const addWsinfo = useWsinfoStore((state) => state.addWsinfo);
+  const addStaff = useStaffStore((state) => state.addStaff);
 
   const handleWholesalerChange = (e) => {
     setWholesalerData({ ...wholesalerData, [e.target.name]: e.target.value });
@@ -99,6 +106,7 @@ export default function Register() {
 
         if (staffResult.success) {
           addWsinfo(wholesalerResult.wholeSaler);
+          addStaff(staffResult.staff);
           router.push('/home');
         } else {
           console.error('Failed to create staff:', staffResult.error);

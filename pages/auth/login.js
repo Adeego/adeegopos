@@ -1,7 +1,6 @@
 'use client'
 
 import { useState } from 'react'
-import axios from 'axios';
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -20,19 +19,18 @@ export default function Login() {
   const wsinfo = useWsinfoStore((state) => state.wsinfo)
   const router = useRouter()
 
-  const tryLocalSignIn = async () => {
+  const trySignIn = async () => {
     if (!window.electronAPI?.signInStaff || !wsinfo.storeNo) {
-      return false;
+      throw new Error('Staff login is only available in the ADEEGO desktop application.');
     }
 
-    const localResult = await window.electronAPI.signInStaff(phoneNumber, passcode, wsinfo.storeNo);
-    if (localResult.success && localResult.staff) {
-      addStaff(localResult.staff);
-      router.push('/home');
-      return true;
+    const result = await window.electronAPI.signInStaff(phoneNumber, passcode, wsinfo.storeNo);
+    if (result.success && result.staff) {
+      addStaff(result.staff);
+      await router.push('/home');
+      return;
     }
-
-    return false;
+    throw new Error(result.error || 'Invalid credentials');
   };
 
   const handleSubmit = async (e) => {
@@ -45,34 +43,12 @@ export default function Login() {
     }
   
     try {
-      const response = await axios.post('https://adeego.store/signin/staff', {
-        phone: phoneNumber,
-        passcode: passcode
-      }, {
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      const result = response.data;
-      if (result.staff) {
-        addStaff(result.staff)
-        router.push('/home')
-      } else {
-        setError('Invalid credentials')
-      }
+      // Authentication happens inside Electron so successful login and the
+      // protected main-process authorization context are established together.
+      await trySignIn();
     } catch (error) {
       console.error('Error during submission:', error);
-      if (await tryLocalSignIn()) {
-        return;
-      }
-      if (error.response) {
-        setError(error.response.data.message || 'Invalid credentials')
-      } else if (error.request) {
-        setError('No response from server. Check your connection.')
-      } else {
-        setError('An error occurred during sign-in')
-      }
+      setError(error.message || 'Unable to sign in')
       console.error('Sign-in error:', error)
     }
   }  

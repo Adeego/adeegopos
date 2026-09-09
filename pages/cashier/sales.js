@@ -209,11 +209,15 @@ export default function CashierSales() {
     }
   }
 
-  const handleMarkAsPaid = async (saleId, isBefore = false) => {
+  const handleMarkAsPaid = async (sale, isBefore = false) => {
     try {
+      const hasMpesa = getSalePaymentBreakdown(sale).some((payment) => /mpesa|m-pesa|m pesa|phone|till/.test(payment.method))
+      const mpesaReference = hasMpesa ? window.prompt('Enter the unique M-Pesa receipt/reference') : ''
+      if (hasMpesa && !mpesaReference?.trim()) return
       const result = await window.electronAPI.realmOperation('updateSalePaidStatus', {
-        saleId,
-        paidStatus: true
+        saleId: sale._id,
+        paidStatus: true,
+        mpesaReference: mpesaReference?.trim() || null
       })
       
       if (result.success) {
@@ -229,7 +233,7 @@ export default function CashierSales() {
       } else {
         toast({
           title: "Error",
-          description: "Failed to update sale status",
+            description: result.error || "Failed to update sale status",
           variant: "destructive"
         })
       }
@@ -248,6 +252,7 @@ export default function CashierSales() {
   }
 
   const beforeTodayTotal = beforeTodaySales.reduce((sum, sale) => sum + Number(sale.netTotalAmount ?? sale.totalAmount ?? 0), 0)
+  const hasMoneyTender = (sale) => getSalePaymentBreakdown(sale).some((payment) => payment.method !== 'credit')
 
   const SalesTable = ({ sales, showDate = false, isBefore = false }) => (
     <Table>
@@ -299,10 +304,10 @@ export default function CashierSales() {
               )}
             </TableCell>
             <TableCell>
-              {!sale.paid && (
+              {!sale.paid && hasMoneyTender(sale) && (
                 <Button
                   size="sm"
-                  onClick={() => handleMarkAsPaid(sale._id, isBefore)}
+                  onClick={() => handleMarkAsPaid(sale, isBefore)}
                   className="h-8"
                 >
                   <Check className="mr-1 h-4 w-4" />

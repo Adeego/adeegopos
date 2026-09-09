@@ -141,6 +141,7 @@ export default function Home() {
                   </CardTitle>
                   <CardDescription className="mt-2">{section.description}</CardDescription>
                 </div>
+                <Badge variant="outline" className="capitalize">{staff.isOwner ? 'manage' : staff.moduleAccess?.[section.id]}</Badge>
               </div>
             </CardHeader>
             <CardContent>

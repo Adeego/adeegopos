@@ -54,6 +54,11 @@ async function createDb(name) {
       createdAt: '2026-01-01T00:00:00.000Z',
     },
     {
+      _id: 'S2:mpesa', type: 'account', state: 'Active', storeNo: 'S2',
+      name: 'M-Pesa Till', accountNumber: 'S2002', accountType: 'Cashier', balance: 0,
+      createdAt: '2026-01-01T00:00:00.000Z',
+    },
+    {
       _id: 'S1:customer:1',
       type: 'customer',
       state: 'Active',
@@ -142,10 +147,10 @@ test('journal-backed reports handle sales, expenses, invoices, transfers, and st
     const register = await registerSessionService.openRegisterSession(db, {
       storeNo: 'S1',
       openingBalances: { cash: 1000, mpesa: 1000 },
-    }, { firstName: 'Test', lastName: 'Cashier', role: 'cashier' });
+    }, { _id: 'staff:test-s1', firstName: 'Test', lastName: 'Cashier', role: 'cashier' });
     assert.equal(register.success, true, register.error);
 
-    const cashSale = await saleService.createSale(db, salePayload(), null);
+    const cashSale = await saleService.createSale(db, salePayload({ paid: true }), null);
     assert.equal(cashSale.success, true, cashSale.error);
     assert.ok(cashSale.journalEntry);
 
@@ -200,12 +205,13 @@ test('journal-backed reports handle sales, expenses, invoices, transfers, and st
     const s2Register = await registerSessionService.openRegisterSession(db, {
       storeNo: 'S2',
       openingBalances: { cash: 0, mpesa: 0 },
-    }, { firstName: 'Test', lastName: 'Cashier', role: 'cashier' });
+    }, { _id: 'staff:test-s2', firstName: 'Test', lastName: 'Cashier', role: 'cashier' });
     assert.equal(s2Register.success, true, s2Register.error);
 
     const s2Sale = await saleService.createSale(db, salePayload({
       _id: 'S2:sale:cash',
       storeNo: 'S2',
+      paid: true,
       createdAt: '2026-02-01T10:00:00.000Z',
     }), null);
     assert.equal(s2Sale.success, true, s2Sale.error);
@@ -245,7 +251,7 @@ test('ai finance recorder drafts, commits, and flags duplicate records', async (
     const register = await registerSessionService.openRegisterSession(db, {
       storeNo: 'S1',
       openingBalances: { cash: 1000, mpesa: 1000 },
-    }, { firstName: 'AI', lastName: 'Recorder', role: 'cashier' });
+    }, { _id: 'staff:ai', firstName: 'AI', lastName: 'Recorder', role: 'cashier' });
     assert.equal(register.success, true, register.error);
 
     const customerDraft = await financeRecorder.draftFinanceRecord(db, {
@@ -318,6 +324,10 @@ test('ai finance recorder drafts, commits, and flags duplicate records', async (
 test('sale creation succeeds when post-write journal creation fails', async () => {
   const db = await createDb('sale-journal-warning');
   try {
+    const register = await registerSessionService.openRegisterSession(db, {
+      storeNo: 'S1', openingBalances: { cash: 1000, mpesa: 1000 },
+    }, { _id: 'staff:test-s1', firstName: 'Test', lastName: 'Cashier', role: 'cashier' });
+    assert.equal(register.success, true, register.error);
     const result = await saleService.createSale(db, {
       _id: 'S1:sale:journal-warning',
       storeNo: 'S1',
@@ -362,7 +372,7 @@ test('sale creation deducts stock for legacy products without batches', async ()
     const register = await registerSessionService.openRegisterSession(db, {
       storeNo: 'S1',
       openingBalances: { cash: 1000, mpesa: 1000 },
-    }, { firstName: 'Test', lastName: 'Cashier', role: 'cashier' });
+    }, { _id: 'staff:test-s1', firstName: 'Test', lastName: 'Cashier', role: 'cashier' });
     assert.equal(register.success, true, register.error);
 
     const product = await db.get('S1:product:tea');
@@ -407,7 +417,7 @@ test('sale creation rolls back stock and deactivates sale when stock movement re
     const register = await registerSessionService.openRegisterSession(db, {
       storeNo: 'S1',
       openingBalances: { cash: 1000, mpesa: 1000 },
-    }, { firstName: 'Test', lastName: 'Cashier', role: 'cashier' });
+    }, { _id: 'staff:test-s1', firstName: 'Test', lastName: 'Cashier', role: 'cashier' });
     assert.equal(register.success, true, register.error);
 
     db.put = async (doc, ...args) => {
@@ -464,7 +474,7 @@ test('expense update and archive create accounting-safe reversal entries', async
     const register = await registerSessionService.openRegisterSession(db, {
       storeNo: 'S1',
       openingBalances: { cash: 1000, mpesa: 1000 },
-    }, { firstName: 'Test', lastName: 'Cashier', role: 'cashier' });
+    }, { _id: 'staff:test-s1', firstName: 'Test', lastName: 'Cashier', role: 'cashier' });
     assert.equal(register.success, true, register.error);
 
     const created = await expenseService.createExpense(db, {

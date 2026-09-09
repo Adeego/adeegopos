@@ -12,14 +12,15 @@ import { Button } from "@/components/ui/button"
 import ProfileDialog from "@/components/staff/profileDialog";
 import { MessageDialog } from "@/components/wholesalerComps/messages";
 import { ReminderDialog } from "@/components/reminders/ReminderDialog";
-import { manageRestock } from "@/components/stockManagement/stockManager";
 import Image from 'next/image';
 import posLogo from '@/assets/pos.png';
 import ChatPanel from '@/components/aiAssistant/ChatPanel';
-import { can, canAccessRoute, getDefaultRoute, getRoleLabels, normalizeStaff } from "@/lib/rbac";
+import { can, canAccessRoute, getDefaultRoute, getUiSections, normalizeStaff } from "@/lib/rbac";
 
 export default function App({ Component, pageProps }) {
   const staff = useStaffStore((state) => state.staff);
+  const updateAuthenticatedStaff = useStaffStore((state) => state.updateStaff);
+  const clearAuthenticatedStaff = useStaffStore((state) => state.deleteStaff);
   const wsinfo = useWsinfoStore((state) => state.wsinfo);
   const router = useRouter();
   const [isLoading, setIsLoading] = useState(true);
@@ -45,60 +46,22 @@ export default function App({ Component, pageProps }) {
   const [accessDeniedPath, setAccessDeniedPath] = useState('');
 
   useEffect(() => {
-    let removeRestockListener;
-    let removeReportListener;
-
-    if (can(normalizedStaff, 'stock:manage') && isStaffLoaded) {
-      if (wsinfo && wsinfo.storeNo) {
-        manageRestock(wsinfo.storeNo);
-        
-        // Start the restock scheduler for morning/evening calculations
-        if (typeof window !== "undefined" && window.electronAPI) {
-          window.electronAPI.restock('startScheduler', wsinfo.storeNo)
-            .then(result => {
-              console.log('[RestockScheduler] Started:', result);
-            })
-            .catch(err => {
-              console.error('[RestockScheduler] Failed to start:', err);
-            });
-        }
-      }
-    }
-    
-    if (typeof window !== "undefined" && window.electronAPI) {
-      removeRestockListener = window.electronAPI.onRestockTriggered((productData) => {
-        if (can(normalizedStaff, 'stock:manage')) {
-          console.log('Restock triggered for product:', productData);
-          if (wsinfo && wsinfo.storeNo) {
-            manageRestock(wsinfo.storeNo);
-          }
-        }
-      });
-
-      removeReportListener = window.electronAPI.onRestockReportGenerated((data) => {
-        if (can(normalizedStaff, 'stock:manage')) {
-          console.log(`[RestockScheduler] ${data.scheduleType} report generated for ${data.productCount} products`);
-        }
-      });
-    }
-
-    return () => {
-      if (removeRestockListener) {
-        removeRestockListener();
-      }
-      if (removeReportListener) {
-        removeReportListener();
-      }
-    };
-  }, [staff, normalizedStaff, isStaffLoaded, wsinfo])
-
-  useEffect(() => {
     if (typeof window !== "undefined" && window.electronAPI?.setAuthenticatedStaff && isStaffLoaded) {
-      window.electronAPI.setAuthenticatedStaff(staff._id ? normalizedStaff : null).catch((error) => {
-        console.error('Failed to sync staff auth context:', error);
-      });
+      window.electronAPI.setAuthenticatedStaff(staff._id || null, staff.storeNo || wsinfo.storeNo)
+        .then((result) => {
+          if (!result?.success) throw new Error(result?.error || 'Unable to establish staff session');
+          if (result.staff && (
+            result.staff._rev !== staff._rev
+            || result.staff.accessVersion !== staff.accessVersion
+            || Boolean(result.staff.isOwner) !== Boolean(staff.isOwner)
+          )) updateAuthenticatedStaff(result.staff);
+        })
+        .catch((error) => {
+          console.error('Failed to sync staff auth context:', error);
+          clearAuthenticatedStaff();
+        });
     }
-  }, [staff, normalizedStaff, isStaffLoaded]);
+  }, [staff, isStaffLoaded, updateAuthenticatedStaff, clearAuthenticatedStaff, wsinfo.storeNo]);
 
   // useEffect(() => {
   //   createDefaultCustomer();
@@ -256,7 +219,7 @@ export default function App({ Component, pageProps }) {
       <div className="max-w-md rounded-md border bg-white p-6 text-center shadow-sm">
         <h1 className="text-xl font-semibold">Access restricted</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Your current roles ({getRoleLabels(normalizedStaff).join(', ') || 'none'}) do not allow this page.
+          Your assigned modules ({getUiSections(normalizedStaff).map((section) => section.label).join(', ') || 'none'}) do not allow this page.
         </p>
         <Button className="mt-4" onClick={() => router.replace(getDefaultRoute(normalizedStaff))}>
           Go to my workspace

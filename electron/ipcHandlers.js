@@ -12,14 +12,11 @@ const dashboardService = require('./services/dashboardService')
 const financeReport = require('./services/finance/financeReportService')
 const balanceSheet = require('./services/finance/balanceSheetServices')
 const reportService = require('./services/reportService')
-const stock = require('./services/stockManagement')
-const restockScheduler = require('./services/restockScheduler')
-const stockAiAgent = require('./services/stockAiAgentService')
 const message = require('./services/messageService')
 const expenseType = require('./services/finance/expenseTypeService')
 const aiAnalysis = require('./services/aiAnalysisService')
 const aiAssistant = require('./services/aiAssistant')
-const { updateTelegramBotStoreNo, sendAlert } = require('./services/aiAssistant/telegramBot')
+const { updateTelegramBotStoreNo } = require('./services/aiAssistant/telegramBot')
 const printerService = require('./services/printerService')
 const subscriptionService = require('./services/subscriptionService')
 const growthService = require('./services/growthService')
@@ -28,13 +25,11 @@ const reconciliationService = require('./services/reconciliationService')
 const registerSessionService = require('./services/registerSessionService')
 const openaiAuth = require('./services/openaiAuth')
 const reminderService = require('./services/reminderService')
-const { getCurrentStoreNo, getSyncStatus } = require('./pouchSync')
+const { acquireRegisterShift, assertRegisterShiftLock, getSyncStatus, releaseRegisterShift, takeOverRegisterShift, verifyRetainedStaffCredential } = require('./pouchSync')
 const {
   can,
-  normalizeStaff,
   getStaffRoles,
   isOperationAllowed,
-  isRestockTaskAllowed,
   isMessageTaskAllowed,
 } = require('../lib/rbac')
 
@@ -51,15 +46,50 @@ function checkNetworkConnection() {
   });
 }
 
+async function signInStaffOnline(phoneNumber, passcode, storeNo) {
+  try {
+    const response = await net.fetch('https://adeego.store/signin/staff', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        phone: String(phoneNumber || '').trim(),
+        passcode: String(passcode || ''),
+        storeNo: String(storeNo || '').trim(),
+      }),
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.staff) {
+      const detail = String(data.detail || data.message || 'Invalid credentials')
+        .replace(/^An error occurred:\s*(?:401:\s*)?/i, '');
+      return { success: false, error: detail || 'Invalid credentials' };
+    }
+    return { success: true, staff: data.staff };
+  } catch (error) {
+    return { success: false, error: 'Unable to contact the staff authentication service.' };
+  }
+}
+
 function setupIpcHandlers(ipcMain, db, mainWindow) {
-  let authenticatedStaff = null;
+  let authContext = null;
 
   const unauthorized = (scope) => ({
     success: false,
-    error: `Unauthorized: your role does not allow ${scope}.`
+    error: `Unauthorized: your module access does not allow ${scope}.`
   });
 
-  const canUpdateOwnProfile = async (nextStaff) => {
+  const getAuthenticatedStaff = async () => {
+    if (!authContext?.staffId || !authContext?.storeNo) return null;
+    const result = await staffService.getActiveStaffById(db, authContext.staffId, authContext.storeNo);
+    if (!result.success) {
+      authContext = null;
+      return null;
+    }
+    return result.staff;
+  };
+
+  const canUseStore = (staff, storeNo) => Boolean(staff && String(staff.storeNo) === String(storeNo));
+
+  const canUpdateOwnProfile = async (authenticatedStaff, nextStaff) => {
     if (!authenticatedStaff || !nextStaff || nextStaff._id !== authenticatedStaff._id) {
       return false;
     }
@@ -68,8 +98,13 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
       const current = await db.get(nextStaff._id);
       const currentRoles = getStaffRoles(current).join(',');
       const nextRoles = getStaffRoles(nextStaff).join(',');
+      const currentAccess = JSON.stringify(current.moduleAccess || {});
+      const nextAccess = JSON.stringify(nextStaff.moduleAccess || {});
 
       return currentRoles === nextRoles
+        && currentAccess === nextAccess
+        && current.accessPreset === nextStaff.accessPreset
+        && Boolean(current.isOwner) === Boolean(nextStaff.isOwner)
         && Number(current.salary || 0) === Number(nextStaff.salary || 0);
     } catch (error) {
       return false;
@@ -97,89 +132,99 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
     return openaiAuth.getOpenAIAuthStatus();
   });
 
-  ipcMain.handle('set-authenticated-staff', async (event, staff) => {
-    authenticatedStaff = staff && staff._id ? normalizeStaff(staff) : null;
-    return { success: true };
+  ipcMain.handle('set-authenticated-staff', async (event, staffOrId, requestedStoreNo) => {
+    if (!staffOrId) {
+      authContext = null;
+      return { success: true };
+    }
+    const staffId = typeof staffOrId === 'string' ? staffOrId : staffOrId._id;
+    const storeNo = requestedStoreNo || (typeof staffOrId === 'object' ? staffOrId.storeNo : '');
+    if (!authContext || authContext.staffId !== staffId || String(authContext.storeNo) !== String(storeNo)) {
+      return { success: false, error: 'Sign in is required to establish a staff session' };
+    }
+    const migration = await staffService.migrateStoreStaffAccess(db, storeNo);
+    if (!migration.success) return migration;
+    const result = await staffService.getActiveStaffById(db, staffId, storeNo);
+    if (!result.success) {
+      authContext = null;
+      return result;
+    }
+    authContext = { staffId: result.staff._id, storeNo: result.staff.storeNo };
+    return { success: true, staff: result.staff };
   });
 
   ipcMain.handle('sign-in-staff', async (event, phoneNumber, passcode, storeNo) => {
-    return staffService.signInStaff(db, phoneNumber, passcode, storeNo);
+    let result = await staffService.signInStaff(db, phoneNumber, passcode, storeNo);
+    if (!result.success) {
+      const online = await signInStaffOnline(phoneNumber, passcode, storeNo);
+      if (online.success) {
+        const remoteStoreNo = online.staff.storeNo || String(online.staff._id || '').split(':')[0];
+        if (String(remoteStoreNo) !== String(storeNo)) {
+          return { success: false, error: 'This staff account belongs to another store.' };
+        }
+        const migration = await staffService.migrateStoreStaffAccess(db, storeNo);
+        if (!migration.success) return migration;
+        const local = await staffService.getActiveStaffById(db, online.staff._id, storeNo);
+        if (!local.success) {
+          return { success: false, error: 'Login succeeded, but this staff account has not synced to this device yet.' };
+        }
+        result = { success: true, staff: local.staff, migration };
+      } else {
+        const retained = await verifyRetainedStaffCredential(storeNo, phoneNumber, passcode).catch(() => ({ success: false }));
+        if (retained.success) {
+          const restored = await staffService.restoreMissingStaffPasscode(db, retained.staffId, storeNo, passcode);
+          result = restored.success
+            ? await staffService.signInStaff(db, phoneNumber, passcode, storeNo)
+            : restored;
+        } else {
+          result = online;
+        }
+      }
+    }
+    if (result.success && result.staff) {
+      authContext = { staffId: result.staff._id, storeNo: result.staff.storeNo };
+    }
+    return result;
   });
 
   ipcMain.handle('search-customers', async (event, name, storeNo) => {
-    if (!can(authenticatedStaff, 'customer:read')) {
+    const authenticatedStaff = await getAuthenticatedStaff();
+    if (!canUseStore(authenticatedStaff, storeNo) || !can(authenticatedStaff, 'customer:read')) {
       return unauthorized('customer search');
     }
     return customerService.searchCustomers(db, name, storeNo);
   });
 
   ipcMain.handle('search-products', async (event, searchTerm, storeNo) => {
-    if (!can(authenticatedStaff, 'product:read')) {
+    const authenticatedStaff = await getAuthenticatedStaff();
+    if (!canUseStore(authenticatedStaff, storeNo) || !can(authenticatedStaff, 'product:read')) {
       return unauthorized('product search');
     }
     return productService.searchProducts(db, searchTerm, storeNo);
   });
 
   ipcMain.handle('search-variants', async (event, searchTerm, storeNo) => {
-    if (!can(authenticatedStaff, 'product:read')) {
+    const authenticatedStaff = await getAuthenticatedStaff();
+    if (!canUseStore(authenticatedStaff, storeNo) || !can(authenticatedStaff, 'product:read')) {
       return unauthorized('variant search');
     }
     return productService.searchVariants(db, searchTerm, storeNo);
   });
 
   ipcMain.handle('search-css', async (event, searchTerm, type, storeNo) => {
-    if (!can(authenticatedStaff, 'finance:read') && !can(authenticatedStaff, 'customer:read')) {
+    const authenticatedStaff = await getAuthenticatedStaff();
+    if (!canUseStore(authenticatedStaff, storeNo) || (!can(authenticatedStaff, 'finance:read') && !can(authenticatedStaff, 'customer:read'))) {
       return unauthorized('finance/customer search');
     }
     return transactionService.searchCSS(db, searchTerm, type, storeNo);
   });
 
-  ipcMain.handle('restock', async (event, task, ...args) => {
-    if (!isRestockTaskAllowed(authenticatedStaff, task)) {
-      return unauthorized(`restock task "${task}"`);
+  ipcMain.on('aiAnalysis-start', async (event, metrics) => {
+    const authenticatedStaff = await getAuthenticatedStaff();
+    if (!can(authenticatedStaff, 'report:read')) {
+      event.reply('aiAnalysis-error', { error: 'Reports access is required for AI analysis' });
+      return;
     }
-    switch (task) {
-      case 'restockCheckup':
-        return stock.getProductsToRestock(db, args[0]);
-      case 'calculateRestock':
-        return stock.calculateRestock(db, args[0], mainWindow);
-      // Restock list management
-      case 'getRestockList':
-        return restockScheduler.getRestockList(db, args[0], args[1]);
-      case 'addToRestockList':
-        return restockScheduler.addToRestockList(db, args[0], args[1]);
-      case 'removeFromRestockList':
-        // args: storeNo, category, productId -> function expects: db, productId, category, storeNo
-        return restockScheduler.removeFromRestockList(db, args[2], args[1], args[0]);
-      case 'clearRestockList':
-        return restockScheduler.clearRestockList(db, args[0], args[1]);
-      case 'checkLowStock':
-        return restockScheduler.checkAndAddLowStockProducts(db, args[0]);
-      // Stock AI command center
-      case 'generateStockAiPlan':
-        return stockAiAgent.generateStockAiPlan(db, args[0], mainWindow, sendAlert);
-      case 'getLatestStockAiPlan':
-        return stockAiAgent.getLatestStockAiPlan(db, args[0]);
-      case 'approveStockAiRecommendation':
-        return stockAiAgent.approveStockAiRecommendation(db, args[0], args[1], args[2]);
-      case 'dismissStockAiRecommendation':
-        return stockAiAgent.dismissStockAiRecommendation(db, args[0], args[1], args[2], args[3]);
-      // Manual trigger for scheduled calculations
-      case 'runMorningRestock':
-        return restockScheduler.runScheduledRestockCalculation(db, args[0], mainWindow, 'morning');
-      case 'runEveningRestock':
-        return restockScheduler.runScheduledRestockCalculation(db, args[0], mainWindow, 'evening');
-      // Scheduler control
-      case 'startScheduler':
-        return restockScheduler.startRestockScheduler(db, args[0], mainWindow);
-      case 'stopScheduler':
-        return restockScheduler.stopRestockScheduler();
-      default:
-        throw new Error(`Unknown restock task: ${task}`);
-    }  
-  });
-
-  ipcMain.on('aiAnalysis-start', (event, metrics) => {
     aiAnalysis.aiAnalysis(event, metrics, db)
       .then(() => {
         event.reply('aiAnalysis-data', { done: true });
@@ -190,8 +235,13 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
   });
 
   // AI Assistant chat
-  ipcMain.on('ai-assistant-chat', (event, { sessionId, message, storeNo, storeContext }) => {
-    const effectiveStoreNo = storeNo || storeContext?.storeNo || getCurrentStoreNo() || '';
+  ipcMain.on('ai-assistant-chat', async (event, { sessionId, message, storeContext }) => {
+    const authenticatedStaff = await getAuthenticatedStaff();
+    if (!can(authenticatedStaff, 'assistant:use')) {
+      event.reply('ai-assistant-error', { error: 'Your module access does not include the AI assistant' });
+      return;
+    }
+    const effectiveStoreNo = authenticatedStaff.storeNo;
     aiAssistant.chat(sessionId, message, db, effectiveStoreNo, 'in-app', {
       onChunk: (chunk) => event.reply('ai-assistant-chunk', { chunk }),
       onToolCall: (toolName) => event.reply('ai-assistant-tool', { toolName }),
@@ -202,7 +252,9 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
     });
   });
 
-  ipcMain.handle('ai-assistant-clear', (event, sessionId) => {
+  ipcMain.handle('ai-assistant-clear', async (event, sessionId) => {
+    const authenticatedStaff = await getAuthenticatedStaff();
+    if (!can(authenticatedStaff, 'assistant:use')) return unauthorized('AI assistant');
     return aiAssistant.clearConversation(sessionId);
   });
 
@@ -212,7 +264,9 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
   });
 
   ipcMain.handle('message', async(event, sms, ...args) => {
-    if (!isMessageTaskAllowed(authenticatedStaff, sms)) {
+    const authenticatedStaff = await getAuthenticatedStaff();
+    const requestedStoreNo = sms === 'getAllMessages' ? args[0] : args[0]?.storeNo;
+    if ((requestedStoreNo && !canUseStore(authenticatedStaff, requestedStoreNo)) || !isMessageTaskAllowed(authenticatedStaff, sms)) {
       return unauthorized(`message task "${sms}"`);
     }
     switch (sms) {
@@ -227,13 +281,14 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
 
   ipcMain.handle('realm-operation', async (event, operation, ...args) => {
     console.log(`[IPC] realm-operation called: ${operation}`);
+    const authenticatedStaff = await getAuthenticatedStaff();
     const isBootstrapOperation = !authenticatedStaff && (
       operation === 'createWholeSaler'
       || (operation === 'createStaff' && getStaffRoles(args[0]).includes('admin'))
     );
 
     if (!isBootstrapOperation && !isOperationAllowed(authenticatedStaff, operation)) {
-      if (!(operation === 'updateStaff' && await canUpdateOwnProfile(args[0]))) {
+      if (!(operation === 'updateStaff' && await canUpdateOwnProfile(authenticatedStaff, args[0]))) {
         return unauthorized(`operation "${operation}"`);
       }
     }
@@ -283,21 +338,24 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
       case 'removeBatch':
         return productService.removeBatch(db, args[0], args[1]);
       case 'restockProducts':
-        // Accept either an array of products or an object { products, storeNo }
-        return productService.restockProducts(
-          db,
-          Array.isArray(args[0]) ? args[0] : (args[0] && args[0].products ? args[0].products : args[0])
-        );
+        {
+          const payload = Array.isArray(args[0]) ? { products: args[0], storeNo: authenticatedStaff.storeNo } : args[0];
+          if (!payload || String(payload.storeNo || authenticatedStaff.storeNo) !== String(authenticatedStaff.storeNo)) {
+            return unauthorized('restocking products for another store');
+          }
+          return productService.restockProducts(db, payload.products || []);
+        }
       case 'createSale':
-        return saleService.createSale(db, args[0], mainWindow);
+        if (!canUseStore(authenticatedStaff, args[0]?.storeNo)) return unauthorized('creating a sale for another store');
+        return saleService.createSale(db, args[0], mainWindow, authenticatedStaff);
       case 'previewReconciliation':
         return reconciliationService.previewReconciliation(db, args[0]);
       case 'createReconciliationCase':
-        return reconciliationService.createReconciliationCase(db, args[0]);
+        return reconciliationService.createReconciliationCase(db, { ...args[0], initiatedBy: authenticatedStaff });
       case 'approveReconciliationCase':
-        return reconciliationService.approveReconciliationCase(db, args[0], args[1], mainWindow);
+        return reconciliationService.approveReconciliationCase(db, args[0], authenticatedStaff, mainWindow);
       case 'rejectReconciliationCase':
-        return reconciliationService.rejectReconciliationCase(db, args[0], args[1], args[2]);
+        return reconciliationService.rejectReconciliationCase(db, args[0], authenticatedStaff, args[2] || args[1]);
       case 'getReconciliationCases':
         return reconciliationService.getReconciliationCases(db, args[0], args[1]);
       case 'getReconciliationBySource':
@@ -311,7 +369,7 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
       case 'getUnpaidSalesBeforeToday':
         return saleService.getUnpaidSalesBeforeToday(db, args[0]);
       case 'updateSalePaidStatus':
-        return saleService.updateSalePaidStatus(db, args[0].saleId, args[0].paidStatus);
+        return saleService.updateSalePaidStatus(db, args[0], authenticatedStaff);
       case 'createSupplier':
         return supplierService.createSupplier(db, args[0]);
       case 'createInvoice':
@@ -345,7 +403,7 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
       case 'archiveAccount':
         return accountService.archiveAccount(db, args[0]);
       case 'createExpense':
-        return expenseService.createExpense(db, args[0]);
+        return expenseService.createExpense(db, { ...(args[0] || {}), storeNo: authenticatedStaff.storeNo }, authenticatedStaff);
       case 'getAllExpenses':
         return expenseService.getAllExpenses(db, args[0]);
       case 'getExpenseById':
@@ -355,7 +413,7 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
       case 'archiveExpense':
         return expenseService.archiveExpense(db, args[0]);
       case 'createTransaction':
-        return transactionService.createTransaction(db, args[0]);
+        return transactionService.createTransaction(db, { ...(args[0] || {}), storeNo: authenticatedStaff.storeNo }, authenticatedStaff);
       case 'getAllTransactions':
         return transactionService.getAllTransactions(db, args[0]);
       case 'getTodayTransactions':
@@ -393,15 +451,23 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
       case 'getAllWholeSalers':
         return wholeSalerService.getAllWholeSalers(db);
       case 'createStaff':
-        return staffService.createStaff(db, args[0]);
+        {
+          const result = await staffService.createStaff(
+            db,
+            isBootstrapOperation ? { ...args[0], isOwner: true, accessPreset: 'owner' } : args[0],
+            authenticatedStaff
+          );
+          if (isBootstrapOperation && result.success) authContext = { staffId: result.staff._id, storeNo: result.staff.storeNo };
+          return result;
+        }
       case 'updateStaff':
-        return staffService.updateStaff(db, args[0]);
+        return staffService.updateStaff(db, args[0], authenticatedStaff);
       case 'archiveStaff':
-        return staffService.archiveStaff(db, args[0]);
+        return staffService.archiveStaff(db, args[0], authenticatedStaff);
       case 'getStaffById':
-        return staffService.getStaffById(db, args[0]);
+        return staffService.getStaffById(db, args[0], authenticatedStaff.storeNo);
       case 'getAllStaff':
-        return staffService.getAllStaff(db, args[0]);
+        return staffService.getAllStaff(db, authenticatedStaff.storeNo);
       case 'getTotalSalesRevenueAndProfit':
         return saleService.getTotalSalesRevenueAndProfit(db, args[0], args[1], args[2]);
       case 'getTopCustomers':
@@ -429,13 +495,83 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
       case 'transactionMetrics':
         return dashboardService.transactionMetrics(db, args[0]);
       case 'getRegisterSession':
-        return registerSessionService.getRegisterSession(db, args[0], args[1]);
+        return registerSessionService.getRegisterSession(db, args[0], args[1], authenticatedStaff);
       case 'openRegisterSession':
-        return registerSessionService.openRegisterSession(db, args[0], args[1] || authenticatedStaff);
-      case 'saveRegisterSession':
-        return registerSessionService.saveRegisterSession(db, args[0]);
+        {
+          const payload = args[0] || {};
+          if (!canUseStore(authenticatedStaff, payload.storeNo)) return unauthorized('opening a shift for another store');
+          let lock;
+          try {
+            lock = await acquireRegisterShift(payload.storeNo, {
+              id: authenticatedStaff._id,
+              name: `${authenticatedStaff.firstName || ''} ${authenticatedStaff.lastName || ''}`.trim(),
+            });
+          } catch (error) {
+            return { success: false, error: error.message };
+          }
+          if (!lock.success && lock.control?.sessionId) {
+            const localSession = await db.get(lock.control.sessionId).catch(() => null);
+            if (localSession?.status === 'closed') {
+              await releaseRegisterShift(payload.storeNo, lock.control.sessionId, localSession.countedBalances).catch(() => null);
+              lock = await acquireRegisterShift(payload.storeNo, { id: authenticatedStaff._id, name: `${authenticatedStaff.firstName || ''} ${authenticatedStaff.lastName || ''}`.trim() }).catch((error) => ({ success: false, error: error.message }));
+            }
+          }
+          if (!lock.success) return lock;
+          const opened = await registerSessionService.openRegisterSession(db, { ...payload, sessionId: lock.sessionId }, authenticatedStaff);
+          if (!opened.success) {
+            await releaseRegisterShift(payload.storeNo, lock.sessionId, null).catch(() => null);
+          }
+          return opened;
+        }
+      case 'takeOverRegisterSession':
+        {
+          const payload = args[0] || {};
+          if (!canUseStore(authenticatedStaff, payload.storeNo)) return unauthorized('taking over a shift for another store');
+          const reason = String(payload.reason || '').trim();
+          if (!reason) return { success: false, error: 'An emergency takeover reason is required.' };
+          try {
+            await takeOverRegisterShift(payload.storeNo, payload.sessionId, {
+              id: authenticatedStaff._id,
+              name: `${authenticatedStaff.firstName || ''} ${authenticatedStaff.lastName || ''}`.trim(),
+            }, reason);
+          } catch (error) {
+            return { success: false, error: error.message };
+          }
+          return registerSessionService.takeOverRegisterSession(db, payload, authenticatedStaff);
+        }
       case 'closeRegisterSession':
-        return registerSessionService.closeRegisterSession(db, args[0], args[1] || authenticatedStaff);
+        {
+          const payload = args[0] || {};
+          if (!canUseStore(authenticatedStaff, payload.storeNo)) return unauthorized('closing a shift for another store');
+          try {
+            await assertRegisterShiftLock(payload.storeNo, payload.sessionId, authenticatedStaff._id);
+          } catch (error) {
+            const localSession = await db.get(payload.sessionId).catch(() => null);
+            if (localSession?.status !== 'open' || (localSession.openedBy?.id && localSession.openedBy.id !== authenticatedStaff._id)) {
+              return { success: false, error: error.message };
+            }
+            const claimed = await acquireRegisterShift(payload.storeNo, {
+              id: authenticatedStaff._id,
+              name: `${authenticatedStaff.firstName || ''} ${authenticatedStaff.lastName || ''}`.trim(),
+            }, payload.sessionId).catch((claimError) => ({ success: false, error: claimError.message }));
+            if (!claimed.success) return claimed;
+          }
+          let approvalActor = null;
+          if (payload.managerPhone || payload.managerPasscode) {
+            const approval = await staffService.signInStaff(db, payload.managerPhone, payload.managerPasscode, payload.storeNo);
+            if (!approval.success) return { success: false, error: 'Invalid manager approval credentials.' };
+            approvalActor = approval.staff;
+          }
+          const closed = await registerSessionService.closeRegisterSession(db, payload, authenticatedStaff, approvalActor);
+          if (closed.success) {
+            try {
+              await releaseRegisterShift(payload.storeNo, payload.sessionId, closed.closedSession?.countedBalances);
+            } catch (error) {
+              closed.warning = `Shift closed locally, but the central lock still needs recovery: ${error.message}`;
+            }
+          }
+          return closed;
+        }
       case 'incomeStatement':
         return financeReport.incomeStatement(db, args[0], args[1], args[2]);
       case 'getMonthlyProfitLoss':
@@ -528,15 +664,45 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
 
       // Stock Audit Operations
       case 'createAudit':
-        return stockAuditService.createAudit(db, args[0]);
+        return stockAuditService.createAudit(db, args[0], authenticatedStaff);
+      case 'getDailyAudit':
+        if (!canUseStore(authenticatedStaff, args[0])) return unauthorized('viewing an audit for another store');
+        return stockAuditService.getDailyAudit(db, args[0]);
+      case 'printAuditSheets':
+        {
+          const auditResult = await stockAuditService.getAudit(db, args[0]);
+          if (!auditResult.success) return auditResult;
+          if (String(auditResult.audit.storeNo) !== String(authenticatedStaff.storeNo)) {
+            return unauthorized('printing an audit for another store');
+          }
+          const printResult = await printerService.printAuditSheets(auditResult.audit);
+          if (!printResult.success) return printResult;
+          const marked = await stockAuditService.markAuditPrinted(db, args[0]);
+          return marked.success
+            ? { ...printResult, audit: marked.audit }
+            : { ...printResult, audit: auditResult.audit, warning: `Sheets printed, but print history was not updated: ${marked.error}` };
+        }
       case 'submitAudit':
-        return stockAuditService.submitAudit(db, args[0], args[1]);
+        return stockAuditService.submitAudit(db, args[0], args[1], authenticatedStaff);
+      case 'approveAudit':
+        return stockAuditService.approveAudit(db, args[0], authenticatedStaff);
+      case 'rejectAudit':
+        return stockAuditService.rejectAudit(db, args[0], args[1], authenticatedStaff);
       case 'getAudit':
-        return stockAuditService.getAudit(db, args[0]);
+        {
+          const result = await stockAuditService.getAudit(db, args[0]);
+          if (result.success && !canUseStore(authenticatedStaff, result.audit.storeNo)) return unauthorized('viewing an audit for another store');
+          return result;
+        }
       case 'getAuditHistory':
+        if (!canUseStore(authenticatedStaff, args[0])) return unauthorized('viewing audit history for another store');
         return stockAuditService.getAuditHistory(db, args[0], args[1]);
       case 'getAuditSummary':
+        if (!canUseStore(authenticatedStaff, args[0])) return unauthorized('viewing audit summaries for another store');
         return stockAuditService.getAuditSummary(db, args[0]);
+      case 'getOpenAudits':
+        if (!canUseStore(authenticatedStaff, args[0])) return unauthorized('viewing audits for another store');
+        return stockAuditService.getOpenAudits(db, args[0]);
 
       // Personal Reminder Operations
       case 'createReminder':

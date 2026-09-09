@@ -1,0 +1,240 @@
+{
+  "surface": "report",
+  "manifest": {
+    "version": 1,
+    "surface": "report",
+    "title": "September 2026 Revenue Forecast",
+    "description": "A month-end revenue estimate based on September month-to-date sales and recent monthly patterns.",
+    "generatedAt": "2026-09-08T11:20:31+03:00",
+    "cards": [
+      {
+        "id": "forecast_card",
+        "description": "Base-case September net revenue estimate, with the expected change from August.",
+        "dataset": "forecast_summary",
+        "sourceId": "adeegopos_revenue_forecast",
+        "metrics": [
+          { "label": "September forecast", "field": "forecast", "format": "currency" },
+          { "label": "vs August", "field": "forecast_vs_august", "format": "percent", "signed": true }
+        ]
+      },
+      {
+        "id": "mtd_card",
+        "description": "Net revenue recorded during the seven completed days from September 1–7.",
+        "dataset": "forecast_summary",
+        "sourceId": "adeegopos_revenue_forecast",
+        "metrics": [
+          { "label": "Revenue through Sep 7", "field": "month_to_date", "format": "currency" }
+        ]
+      },
+      {
+        "id": "error_card",
+        "description": "Average absolute error when the same ensemble was tested on May–August 2026.",
+        "dataset": "forecast_summary",
+        "sourceId": "adeegopos_revenue_forecast",
+        "metrics": [
+          { "label": "Backtest error", "field": "backtest_error", "format": "percent" }
+        ]
+      }
+    ],
+    "charts": [
+      {
+        "id": "monthly_revenue_chart",
+        "title": "Monthly net revenue and September forecast",
+        "subtitle": "January–August actuals and the September base case, KES.",
+        "showDescription": true,
+        "intent": "trend",
+        "question": "How does the September estimate compare with recent monthly revenue?",
+        "rationale": "Nine monthly points show the recent revenue trajectory and distinguish the September forecast from actual history.",
+        "comparisonContext": {
+          "baseline": "Completed calendar months from January through August 2026",
+          "grain": "Calendar month",
+          "unit": "KES"
+        },
+        "type": "line",
+        "dataset": "monthly_revenue",
+        "sourceId": "adeegopos_revenue_forecast",
+        "encodings": {
+          "x": { "field": "month", "type": "ordinal", "label": "Month" },
+          "y": { "field": "revenue", "type": "quantitative", "label": "Net revenue", "format": "currency", "unit": "KES" },
+          "color": { "field": "series", "type": "nominal", "label": "Series" },
+          "lineStyle": { "field": "series", "type": "nominal", "label": "Series" },
+          "tooltip": [
+            { "field": "status", "type": "text", "label": "Status" }
+          ]
+        },
+        "xAxisTitle": "Month",
+        "yAxisTitle": "Net revenue (KES)",
+        "valueFormat": "currency",
+        "layout": "full",
+        "surface": { "surface": "card", "viewMode": "both", "interactiveLegend": true }
+      }
+    ],
+    "tables": [
+      {
+        "id": "model_table",
+        "title": "Forecast model outputs",
+        "subtitle": "Four comparable estimates based on completed sales through September 7.",
+        "showDescription": true,
+        "dataset": "model_outputs",
+        "sourceId": "adeegopos_revenue_forecast",
+        "defaultSort": { "field": "forecast", "direction": "desc" },
+        "density": "spacious",
+        "layout": "full",
+        "columns": [
+          { "field": "model", "label": "Method", "type": "text" },
+          { "field": "forecast", "label": "September estimate", "format": "currency" },
+          { "field": "basis", "label": "Basis", "type": "text" }
+        ]
+      }
+    ],
+    "sources": [
+      {
+        "id": "adeegopos_revenue_forecast",
+        "label": "AdeegoPOS sales forecast analysis",
+        "path": "analysis/revenue_forecast_sep_2026.sql",
+        "query": {
+          "engine": "SQLite",
+          "description": "Reproduces the four-model forecast from monthly inputs extracted by the companion Node.js analysis.",
+          "executed_at": "2026-09-08T11:20:31+03:00",
+          "language": "sql",
+          "filters": [
+            "Observed September window: September 1–7, 2026",
+            "Historical pattern window: March–August 2026",
+            "Timezone: Africa/Nairobi",
+            "Active sales only; voided, failed, posting, and inactive sales excluded",
+            "Return sales included as negative revenue"
+          ],
+          "metric_definitions": [
+            "Net revenue: sum of application-defined net sale amounts after returns and exclusions.",
+            "Forecast: arithmetic mean of first-seven-day pacing, six-month linear trend, prior-month calendar adjustment, and recency-weighted three-month estimates.",
+            "Backtest error: mean absolute percentage error for May–August 2026 using the same ensemble structure."
+          ],
+          "tables_used": ["AdeegoPOS PouchDB sale documents"]
+        }
+      }
+    ],
+    "blocks": [
+      {
+        "id": "title",
+        "type": "markdown",
+        "body": "# September 2026 Revenue Forecast"
+      },
+      {
+        "id": "executive_summary",
+        "type": "markdown",
+        "sourceId": "adeegopos_revenue_forecast",
+        "body": "## Executive Summary\n\n- **Plan around KES 970k in September revenue.** The four-model estimate is KES 966.8k, rounded to KES 970k for planning.\n- **Use KES 900k–1.10m as the working range.** September has only seven complete selling days, so the month-end result remains sensitive to the remaining three weeks.\n- **The base case is 3.7% below August.** Revenue through September 7 was KES 289.1k, 15.0% below the same calendar window in August, while the longer monthly trend still points upward."
+      },
+      {
+        "id": "headline_metrics",
+        "type": "metric-strip",
+        "cardIds": ["forecast_card", "mtd_card", "error_card"]
+      },
+      {
+        "id": "definitions",
+        "type": "markdown",
+        "sourceId": "adeegopos_revenue_forecast",
+        "body": "## What the forecast measures\n\nRevenue is **net posted sales in KES** for the store, including return sales as negative revenue and excluding voided, failed, posting, and inactive sales. Calendar days use the Africa/Nairobi timezone. September 8 is excluded from the observed window because it was incomplete when the snapshot was taken."
+      },
+      {
+        "id": "trend_finding",
+        "type": "markdown",
+        "sourceId": "adeegopos_revenue_forecast",
+        "body": "## Recent growth supports a near-KES 1m month\n\nMonthly revenue increased from KES 645.3k in March to KES 1.00m in August. September's first seven complete days produced KES 289.1k. That opening pace is weaker than August's unusually strong first week, but it remains consistent with a month finishing close to KES 1m when compared with the broader March–August pattern."
+      },
+      {
+        "id": "monthly_chart_block",
+        "type": "chart",
+        "chartId": "monthly_revenue_chart"
+      },
+      {
+        "id": "model_interpretation",
+        "type": "markdown",
+        "sourceId": "adeegopos_revenue_forecast",
+        "body": "## The models converge around the high-KES 900k range\n\nThe four estimates span KES 906.1k to KES 1.05m. The ensemble averages early-month pacing, the six-month linear trend, August adjusted for September's shorter calendar, and a recency-weighted three-month baseline. Their unadjusted average is KES 966.8k. In four historical backtests, the ensemble's mean absolute error was 7.1%, so the rounded KES 900k–1.10m range is more decision-useful than a precise point estimate."
+      },
+      {
+        "id": "model_table_block",
+        "type": "table",
+        "tableId": "model_table"
+      },
+      {
+        "id": "recommended_next_steps",
+        "type": "markdown",
+        "body": "## Recommended next steps\n\n1. Use **KES 970k** as the operating forecast for stock, cash, and staffing decisions.\n2. Treat **KES 900k** as the conservative planning floor and **KES 1.10m** as the upside case.\n3. Refresh the forecast after September 14; two complete weeks will reduce the effect of first-week timing and weekday mix."
+      },
+      {
+        "id": "further_questions",
+        "type": "markdown",
+        "body": "## Further questions\n\n- Are promotions, stockouts, holidays, or planned closures expected later in September?\n- Should the next refresh separate walk-in and delivery revenue or forecast the top-selling items individually?"
+      },
+      {
+        "id": "caveats",
+        "type": "markdown",
+        "sourceId": "adeegopos_revenue_forecast",
+        "body": "## Caveats and assumptions\n\nThe forecast assumes September's remaining days behave broadly like recent months. It does not explicitly model promotions, stock availability, holidays, weather, or operational changes. The database snapshot included sales through September 8 at 10:01 a.m. Nairobi time; the partial September 8 revenue was excluded. The backtest covers only May–August 2026, so uncertainty is material even though the calculation is internally reconciled."
+      }
+    ]
+  },
+  "snapshot": {
+    "version": 1,
+    "generatedAt": "2026-09-08T11:20:31+03:00",
+    "status": "ready",
+    "datasets": {
+      "forecast_summary": [
+        {
+          "forecast": 966776.65,
+          "forecast_vs_august": -0.0369,
+          "month_to_date": 289055,
+          "backtest_error": 0.0714,
+          "range_low": 900000,
+          "range_high": 1100000
+        }
+      ],
+      "monthly_revenue": [
+        { "month": "Jan 2026", "revenue": 693528, "series": "Actual", "status": "Actual" },
+        { "month": "Feb 2026", "revenue": 644347, "series": "Actual", "status": "Actual" },
+        { "month": "Mar 2026", "revenue": 645256, "series": "Actual", "status": "Actual" },
+        { "month": "Apr 2026", "revenue": 646890, "series": "Actual", "status": "Actual" },
+        { "month": "May 2026", "revenue": 784602, "series": "Actual", "status": "Actual" },
+        { "month": "Jun 2026", "revenue": 850484, "series": "Actual", "status": "Actual" },
+        { "month": "Jul 2026", "revenue": 873687, "series": "Actual", "status": "Actual" },
+        { "month": "Aug 2026", "revenue": 1003797, "series": "Actual", "status": "Actual" },
+        { "month": "Aug 2026", "revenue": 1003797, "series": "Forecast", "status": "Forecast anchor" },
+        { "month": "Sep 2026", "revenue": 966776.65, "series": "Forecast", "status": "Forecast" }
+      ],
+      "model_outputs": [
+        { "model": "Six-month linear trend", "forecast": 1054683.8, "basis": "Monthly totals from March–August" },
+        { "model": "August calendar adjustment", "forecast": 971416.45, "basis": "August revenue adjusted from 31 to 30 days" },
+        { "model": "Weighted recent months", "forecast": 934874.83, "basis": "June–August, weighted toward recent months" },
+        { "model": "First-seven-day pacing", "forecast": 906131.52, "basis": "September 1–7 divided by the median March–August first-week share" }
+      ]
+    }
+  },
+  "sources": [
+    {
+      "id": "adeegopos_revenue_forecast",
+      "label": "AdeegoPOS sales forecast analysis",
+      "path": "analysis/revenue_forecast_sep_2026.sql",
+      "query": {
+        "engine": "SQLite",
+        "description": "Reproduces the four-model forecast from monthly inputs extracted by analysis/revenue_forecast_sep_2026.js.",
+        "executed_at": "2026-09-08T11:20:31+03:00",
+        "language": "sql",
+        "filters": [
+          "Observed September window: September 1–7, 2026",
+          "Historical pattern window: March–August 2026",
+          "Timezone: Africa/Nairobi",
+          "Active sales only; voided, failed, posting, and inactive sales excluded",
+          "Return sales included as negative revenue"
+        ],
+        "metric_definitions": [
+          "Net revenue: sum of application-defined net sale amounts after returns and exclusions.",
+          "Forecast: arithmetic mean of first-seven-day pacing, six-month linear trend, prior-month calendar adjustment, and recency-weighted three-month estimates.",
+          "Backtest error: mean absolute percentage error for May–August 2026 using the same ensemble structure."
+        ],
+        "tables_used": ["AdeegoPOS PouchDB sale documents"]
+      }
+    }
+  ]
+}

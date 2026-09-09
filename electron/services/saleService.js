@@ -5,12 +5,18 @@ const {
   getSaleNetCost,
   getSaleNetItemSubtotal,
   getSalePaymentBreakdown,
+  getOpenRegisterSession,
+  normalizePaymentMethod,
+  applyEntityBalanceDelta,
+  assertShiftOwner,
+  buildActorReference,
+  recordLedgerEntry,
   postSale,
   shouldIncludeSaleInMetrics,
   toIsoString,
   toNumber,
 } = require('./postingService');
-const { ensureJournalEntryForSale } = require('./finance/journalService');
+const { ensureJournalEntryForSale, ensureJournalEntryForSalePayment } = require('./finance/journalService');
 const { findAll } = require('./pouchQueryService');
 
 function startOfDay(date = new Date()) {
@@ -150,10 +156,17 @@ function sortSalesDesc(sales = []) {
   return [...sales].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 }
 
-async function createSale(db, saleData, mainWindow) {
+async function createSale(db, saleData, mainWindow, actor = null) {
   try {
-    const result = await postSale(db, saleData, {
+    const securedSaleData = actor ? {
+      ...saleData,
+      storeNo: actor.storeNo,
+      servedBy: actor._id,
+      paid: false,
+    } : saleData;
+    const result = await postSale(db, securedSaleData, {
       mainWindow,
+      actor,
       printReceipt: false,
     });
 
@@ -551,18 +564,110 @@ async function getUnpaidSalesBeforeToday(db, storeNo) {
   }
 }
 
-function updateSalePaidStatus(db, saleId, paidStatus) {
-  return db.get(saleId)
-    .then((sale) => {
-      sale.paid = paidStatus;
-      sale.updatedAt = new Date().toISOString();
-      return db.put(sale);
-    })
-    .then((response) => ({ success: true, sale: { _id: response.id, paid: paidStatus } }))
-    .catch((error) => {
-      console.error('Error updating sale paid status:', error);
-      return { success: false, error: error.message };
-    });
+async function updateSalePaidStatus(db, payload, actor = null) {
+  const saleId = typeof payload === 'string' ? payload : payload?.saleId;
+  const paidStatus = typeof payload === 'object' ? payload.paidStatus : true;
+  try {
+    if (!saleId || paidStatus !== true) {
+      return { success: false, error: 'Payments can only be confirmed; posted confirmations cannot be undone.' };
+    }
+    const sale = await db.get(saleId);
+    if (sale.paid === true) {
+      return { success: true, sale, idempotent: true };
+    }
+    const session = await getOpenRegisterSession(db, sale.storeNo);
+    if (!session) return { success: false, error: 'Open register first before confirming payment.' };
+    if (actor) assertShiftOwner(session, actor);
+
+    const moneyPayments = getSalePaymentBreakdown(sale).filter((payment) => normalizePaymentMethod(payment.method) !== 'CREDIT');
+    if (moneyPayments.length === 0) {
+      return { success: false, error: 'Credit sales are settled through a customer payment transaction, not Mark Paid.' };
+    }
+    let hasMpesa = false;
+    for (const payment of moneyPayments) {
+      const account = payment.accountId ? await db.get(payment.accountId).catch(() => null) : null;
+      const text = `${payment.method || ''} ${account?.name || ''} ${account?.registerTenderType || ''}`.toLowerCase();
+      const accountNumber = String(account?.accountNumber || '');
+      if (normalizePaymentMethod(payment.method) === 'MPESA' || accountNumber === `${sale.storeNo}002` || /mpesa|m-pesa|m pesa|till/.test(text)) hasMpesa = true;
+    }
+    const mpesaReference = String(payload?.mpesaReference || '').trim().toUpperCase();
+    if (hasMpesa && !mpesaReference) {
+      return { success: false, error: 'M-Pesa receipt/reference is required.' };
+    }
+    if (mpesaReference) {
+      const duplicate = await db.find({
+        selector: { type: 'sale-payment', state: 'Active', storeNo: sale.storeNo, mpesaReference },
+        limit: 1,
+      });
+      if (duplicate.docs.length > 0) return { success: false, error: 'This M-Pesa receipt has already been used.' };
+    }
+
+    const now = new Date().toISOString();
+    const confirmationId = `${sale._id}:payment-confirmation`;
+    const actorRef = buildActorReference(actor);
+    const confirmation = {
+      _id: confirmationId,
+      type: 'sale-payment',
+      state: 'Active',
+      status: 'posting',
+      storeNo: sale.storeNo,
+      saleId: sale._id,
+      originRegisterSessionId: sale.registerSessionId,
+      registerSessionId: session._id,
+      paymentBreakdown: moneyPayments,
+      saleType: sale.saleType || 'NEW SALE',
+      mpesaReference: mpesaReference || null,
+      confirmedAt: now,
+      confirmedBy: actorRef,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await db.put(confirmation);
+
+    const sign = sale.saleType === 'RETURN SALE' ? -1 : 1;
+    for (let index = 0; index < moneyPayments.length; index += 1) {
+      const payment = moneyPayments[index];
+      const account = payment.accountId ? await db.get(payment.accountId).catch(() => null) : null;
+      if (!account || account.type !== 'account' || account.state !== 'Active' || account.storeNo !== sale.storeNo) {
+        throw new Error(`Cash or M-Pesa account is missing for ${payment.method}`);
+      }
+      const amount = Math.abs(Number(payment.amount) || 0);
+      const fee = Math.abs(Number(payment.transactionCost) || 0);
+      const delta = Number((sign < 0 ? -(amount + fee) : (amount - fee)).toFixed(2));
+      await applyEntityBalanceDelta(db, 'account', account._id, delta);
+      await recordLedgerEntry(db, {
+        _id: `${confirmationId}:ledger:${index}`,
+        storeNo: sale.storeNo,
+        entityType: 'account',
+        entityId: account._id,
+        bucket: 'account_balance',
+        delta,
+        description: `Payment confirmed for sale ${sale._id}`,
+        sourceDocType: 'sale-payment',
+        sourceDocId: confirmationId,
+        date: now,
+        metadata: { registerSessionId: session._id, paymentMethod: normalizePaymentMethod(payment.method), mpesaReference: mpesaReference || null },
+      });
+    }
+    await ensureJournalEntryForSalePayment(db, confirmation);
+
+    const currentSale = await db.get(sale._id);
+    const updatedSale = {
+      ...currentSale,
+      paid: true,
+      paidAt: now,
+      paidBy: actorRef,
+      paidRegisterSessionId: session._id,
+      updatedAt: now,
+    };
+    await db.put(updatedSale);
+    const currentConfirmation = await db.get(confirmationId);
+    await db.put({ ...currentConfirmation, status: 'posted', updatedAt: now });
+    return { success: true, sale: decorateSale(updatedSale), paymentConfirmation: { ...confirmation, status: 'posted' } };
+  } catch (error) {
+    console.error('Error confirming sale payment:', error);
+    return { success: false, error: error.message };
+  }
 }
 
 module.exports = {

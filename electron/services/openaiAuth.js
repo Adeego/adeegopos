@@ -467,6 +467,7 @@ function convertChatToolsToResponsesTools(tools) {
       name: tool.function.name,
       description: tool.function.description,
       parameters: tool.function.parameters,
+      ...(tool.function.strict !== undefined ? { strict: Boolean(tool.function.strict) } : {}),
     };
   });
 }

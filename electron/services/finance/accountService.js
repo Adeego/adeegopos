@@ -69,25 +69,30 @@ function getAccountById(db, accountId) {
 }
 
 // Update an existing account
-function updateAccount(db, accountData) {
+function isRegisterAccount(account = {}) {
+  const number = String(account.accountNumber || '');
+  return number.endsWith('001') || number.endsWith('002');
+}
+
+async function updateAccount(db, accountData, options = {}) {
   const accountTypeError = validateAccountType(accountData.accountType);
   if (accountTypeError) {
-    return Promise.resolve({ success: false, error: accountTypeError });
+    return { success: false, error: accountTypeError };
   }
-
-  const account = {
-    _id: accountData._id,
-    type: "account",
-    state: "Active",
-    ...accountData,
-  };
-  return db
-    .put(account)
-    .then((response) => ({
-      success: true,
-      account: { _id: response.id, ...account },
-    }))
-    .catch((error) => ({ success: false, error: error.message }));
+  try {
+    const current = await db.get(accountData._id);
+    if (isRegisterAccount(current) && !options.allowRegisterBalanceChange && Number(accountData.balance) !== Number(current.balance)) {
+      return { success: false, error: 'Cash and M-Pesa balances can only change through paid sales, transactions, expenses, or approved shift reconciliation.' };
+    }
+    if (isRegisterAccount(current) && (accountData.accountNumber !== current.accountNumber || accountData.accountType !== current.accountType)) {
+      return { success: false, error: 'Cash and M-Pesa register account identity is locked.' };
+    }
+    const account = { ...current, ...accountData, _id: current._id, _rev: current._rev, type: 'account', state: 'Active' };
+    const response = await db.put(account);
+    return { success: true, account: { ...account, _rev: response.rev } };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 }
 
 // Delete an account
@@ -95,6 +100,7 @@ function archiveAccount(db, accountId) {
   return db
     .get(accountId)
     .then((account) => {
+      if (isRegisterAccount(account)) throw new Error('Cash and M-Pesa register accounts cannot be archived.');
       // Update the state field to "Inactive"
       account.state = "Inactive";
       return db.put(account);
