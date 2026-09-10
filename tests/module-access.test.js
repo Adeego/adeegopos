@@ -29,6 +29,8 @@ test('access levels enforce view, operate, and manage boundaries', () => {
   const seller = staff({ pos: 'operate' });
   assert.equal(hasModuleLevel(seller, MODULE_IDS.POS, 'view'), true);
   assert.equal(canPerformOperation(seller, 'createSale'), true);
+  assert.equal(canPerformOperation(seller, 'getSalePaymentAccounts'), true);
+  assert.equal(canPerformOperation(seller, 'getAllAccounts'), false);
   assert.equal(canPerformOperation(seller, 'updateSalePaidStatus'), false);
   assert.equal(canAccessRoute(seller, '/'), true);
   assert.equal(canAccessRoute(seller, '/cashier/sales'), false);

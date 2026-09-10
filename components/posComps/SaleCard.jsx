@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import Fuse from 'fuse.js';
 import useWsinfoStore from '@/stores/wsinfo';
 import useStaffStore from '@/stores/staffStore';
@@ -122,6 +122,7 @@ function SaleCard() {
   const [paymentBreakdown, setPaymentBreakdown] = useState([]);
   const [cashierAccounts, setCashierAccounts] = useState([]);
   const [cashierAccountsLoaded, setCashierAccountsLoaded] = useState(false);
+  const cashierAccountsRequestRef = useRef(0);
   const [note, setNote] = useState('');
   const [change, setChange] = useState(null)
   const [discount, setDiscount] = useState(0)
@@ -185,24 +186,22 @@ function SaleCard() {
   }, []);
 
   const fetchCashierAccounts = useCallback(async (storeNumber) => {
+    const requestId = ++cashierAccountsRequestRef.current;
     try {
-      const result = await window.electronAPI.realmOperation('getAllAccounts', { storeNo: storeNumber });
+      const result = await window.electronAPI.realmOperation('getSalePaymentAccounts', { storeNo: storeNumber });
+      if (requestId !== cashierAccountsRequestRef.current) return;
       if (result.success) {
-        setCashierAccounts((result.accounts || []).filter((account) => {
-          if (account.accountType !== 'Cashier') return false;
-          const text = `${account.name || ''} ${account.accountNumber || ''}`.toLowerCase();
-          const tender = String(account.registerTenderType || '').toUpperCase();
-          return tender === 'CASH' || tender === 'MPESA' || /001$|002$/.test(String(account.accountNumber || '')) || /cash|drawer|mpesa|m-pesa|till/.test(text);
-        }));
+        setCashierAccounts(result.accounts || []);
       } else {
         console.error('Failed to fetch cashier accounts:', result.error);
         setCashierAccounts([]);
       }
     } catch (error) {
+      if (requestId !== cashierAccountsRequestRef.current) return;
       console.error('Error fetching cashier accounts:', error);
       setCashierAccounts([]);
     } finally {
-      setCashierAccountsLoaded(true);
+      if (requestId === cashierAccountsRequestRef.current) setCashierAccountsLoaded(true);
     }
   }, []);
 
@@ -343,6 +342,12 @@ function SaleCard() {
       fetchCashierAccounts(store.storeNo);
     }
   }, [fetchCashierAccounts, fetchDefaultCustomer, store.storeNo]);
+
+  // Refresh when the sale dialog opens as accounts may have arrived through sync
+  // after the page's initial load.
+  useEffect(() => {
+    if (saleDetail && storeNo) fetchCashierAccounts(storeNo);
+  }, [fetchCashierAccounts, saleDetail, storeNo]);
 
   useEffect(() => {
     if (!storeNo || !cashierAccountsLoaded) {

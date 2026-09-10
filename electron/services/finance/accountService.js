@@ -55,9 +55,68 @@ function getAllAccounts(db, storeNoOrPayload) {
         state: "Active",
         storeNo: storeNo
       },
+      limit: 9999,
     })
     .then((result) => ({ success: true, accounts: result.docs }))
     .catch((error) => ({ success: false, error: error.message }));
+}
+
+function normalizeAccountText(value) {
+  return String(value || '').trim().toLowerCase();
+}
+
+function findRegisterAccount(accounts, storeNo, tenderType) {
+  const suffix = tenderType === 'CASH' ? '001' : '002';
+  const exactAccountNumber = `${storeNo}${suffix}`;
+  const namePattern = tenderType === 'CASH'
+    ? /cash|drawer/
+    : /mpesa|m-pesa|m pesa|till/;
+
+  return accounts.find((account) => String(account.accountNumber || '') === exactAccountNumber)
+    || accounts.find((account) => (
+      String(account.registerTenderType || '').trim().toUpperCase() === tenderType
+    ))
+    || accounts.find((account) => String(account.accountNumber || '').endsWith(suffix))
+    || accounts.find((account) => namePattern.test(normalizeAccountText(account.name)))
+    || null;
+}
+
+// Return only the two accounts needed by New Sale. This operation is intentionally
+// separate from getAllAccounts so POS staff do not need bookkeeping access.
+async function getSalePaymentAccounts(db, storeNoOrPayload) {
+  const storeNo = normalizeStoreNo(storeNoOrPayload);
+  if (!storeNo) {
+    return { success: false, error: 'storeNo is required' };
+  }
+
+  try {
+    const result = await db.find({
+      selector: {
+        type: 'account',
+        state: 'Active',
+        storeNo,
+        accountType: 'Cashier',
+      },
+      limit: 9999,
+    });
+    const cash = findRegisterAccount(result.docs, storeNo, 'CASH');
+    const mpesa = findRegisterAccount(result.docs, storeNo, 'MPESA');
+    const accounts = [cash, mpesa]
+      .filter((account, index, selected) => (
+        account && selected.findIndex((candidate) => candidate?._id === account._id) === index
+      ))
+      .map((account) => ({
+        _id: account._id,
+        name: account.name,
+        accountNumber: account.accountNumber,
+        accountType: account.accountType,
+        registerTenderType: account.registerTenderType,
+      }));
+
+    return { success: true, accounts };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
 }
 
 // Get an account by ID
@@ -112,6 +171,7 @@ function archiveAccount(db, accountId) {
 module.exports = {                                                    
   createAccount,
   getAllAccounts,
+  getSalePaymentAccounts,
   getAccountById,
   updateAccount,
   archiveAccount,

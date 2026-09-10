@@ -396,6 +396,9 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
         return accountService.createAccount(db, args[0]);
       case 'getAllAccounts':
         return accountService.getAllAccounts(db, args[0]);
+      case 'getSalePaymentAccounts':
+        if (!canUseStore(authenticatedStaff, args[0]?.storeNo)) return unauthorized('viewing payment methods for another store');
+        return accountService.getSalePaymentAccounts(db, args[0]);
       case 'getAccountById':
         return accountService.getAccountById(db, args[0]);
       case 'updateAccount':
