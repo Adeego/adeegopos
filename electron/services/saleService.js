@@ -62,21 +62,35 @@ function decorateSale(sale = {}) {
 
 const SALES_HISTORY_INDEX = 'sales-history-index';
 const SALES_HISTORY_DDOC = 'sales-history';
-const indexedDatabases = new WeakSet();
+const UNPAID_SALES_INDEX = 'unpaid-sales-index';
+const UNPAID_SALES_DDOC = 'unpaid-sales';
+const salesIndexPromises = new WeakMap();
 
 async function ensureSalesHistoryIndex(db) {
-  if (indexedDatabases.has(db)) {
-    return;
+  if (!salesIndexPromises.has(db)) {
+    const promise = Promise.all([
+      db.createIndex({
+        index: {
+          fields: ['storeNo', 'type', 'state', 'createdAt'],
+        },
+        ddoc: SALES_HISTORY_DDOC,
+        name: SALES_HISTORY_INDEX,
+      }),
+      db.createIndex({
+        index: {
+          fields: ['storeNo', 'type', 'state', 'paid', 'createdAt'],
+        },
+        ddoc: UNPAID_SALES_DDOC,
+        name: UNPAID_SALES_INDEX,
+      }),
+    ]).catch((error) => {
+      salesIndexPromises.delete(db);
+      throw error;
+    });
+    salesIndexPromises.set(db, promise);
   }
 
-  await db.createIndex({
-    index: {
-      fields: ['storeNo', 'type', 'state', 'createdAt'],
-    },
-    ddoc: SALES_HISTORY_DDOC,
-    name: SALES_HISTORY_INDEX,
-  });
-  indexedDatabases.add(db);
+  await salesIndexPromises.get(db);
 }
 
 async function findSales(db, options = {}) {
@@ -84,6 +98,7 @@ async function findSales(db, options = {}) {
     storeNo,
     state = 'Active',
     status,
+    paid,
     startDate,
     endDate,
   } = options;
@@ -91,11 +106,13 @@ async function findSales(db, options = {}) {
     type: 'sale',
     state,
     ...(status ? { status } : {}),
+    ...(typeof paid === 'boolean' ? { paid } : {}),
     ...(storeNo ? { storeNo } : {}),
   };
   const fromDate = toDateValue(startDate);
   const toDate = toDateValue(endDate);
   const canUseHistoryIndex = Boolean(storeNo);
+  const useUnpaidIndex = paid === false;
 
   if (canUseHistoryIndex) {
     await ensureSalesHistoryIndex(db);
@@ -112,9 +129,12 @@ async function findSales(db, options = {}) {
         { storeNo: 'asc' },
         { type: 'asc' },
         { state: 'asc' },
+        ...(useUnpaidIndex ? [{ paid: 'asc' }] : []),
         { createdAt: 'asc' },
       ],
-      use_index: [SALES_HISTORY_DDOC, SALES_HISTORY_INDEX],
+      use_index: useUnpaidIndex
+        ? [UNPAID_SALES_DDOC, UNPAID_SALES_INDEX]
+        : [SALES_HISTORY_DDOC, SALES_HISTORY_INDEX],
     } : {}),
   });
 
@@ -534,14 +554,13 @@ async function getTodaySalesByPaidStatus(db, storeNo, paidStatus) {
   try {
     const fromDate = startOfDay();
     const toDate = endOfDay();
-    let sales = (await getAllStoreSales(db, storeNo)).filter((sale) =>
-      inDateRange(sale.createdAt, fromDate, toDate)
-    );
-
-    if (paidStatus !== 'all') {
-      const isPaid = paidStatus === 'paid';
-      sales = sales.filter((sale) => sale.paid === isPaid);
-    }
+    const sales = await findSales(db, {
+      storeNo,
+      state: 'Active',
+      startDate: fromDate,
+      endDate: toDate,
+      ...(paidStatus !== 'all' ? { paid: paidStatus === 'paid' } : {}),
+    });
 
     return { success: true, data: sortSalesDesc(sales) };
   } catch (error) {
@@ -553,9 +572,12 @@ async function getTodaySalesByPaidStatus(db, storeNo, paidStatus) {
 async function getUnpaidSalesBeforeToday(db, storeNo) {
   try {
     const beforeToday = startOfDay();
-    const sales = (await getAllStoreSales(db, storeNo)).filter((sale) =>
-      !sale.paid && toDateValue(sale.createdAt) < beforeToday
-    );
+    const sales = await findSales(db, {
+      storeNo,
+      state: 'Active',
+      paid: false,
+      endDate: new Date(beforeToday.getTime() - 1),
+    });
 
     return { success: true, data: sortSalesDesc(sales) };
   } catch (error) {

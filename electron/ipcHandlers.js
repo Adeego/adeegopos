@@ -25,7 +25,7 @@ const reconciliationService = require('./services/reconciliationService')
 const registerSessionService = require('./services/registerSessionService')
 const openaiAuth = require('./services/openaiAuth')
 const reminderService = require('./services/reminderService')
-const { acquireRegisterShift, assertRegisterShiftLock, getSyncStatus, releaseRegisterShift, takeOverRegisterShift, verifyRetainedStaffCredential } = require('./pouchSync')
+const { acquireRegisterShift, assertRegisterShiftLock, getRegisterShiftControl, getSyncStatus, releaseRegisterShift, syncRegisterSessionFromCentral, takeOverRegisterShift, verifyRetainedStaffCredential } = require('./pouchSync')
 const {
   can,
   getStaffRoles,
@@ -495,7 +495,18 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
       case 'transactionMetrics':
         return dashboardService.transactionMetrics(db, args[0]);
       case 'getRegisterSession':
-        return registerSessionService.getRegisterSession(db, args[0], args[1], authenticatedStaff);
+        {
+          if (!canUseStore(authenticatedStaff, args[0])) return unauthorized('viewing a register shift for another store');
+          let status = await registerSessionService.getRegisterSession(db, args[0], args[1], authenticatedStaff);
+          if (!status.success || status.activeSession) return status;
+
+          const centralControl = await getRegisterShiftControl(args[0]).catch(() => null);
+          if (centralControl?.status !== 'open') return status;
+
+          await syncRegisterSessionFromCentral(db, centralControl.sessionId).catch(() => null);
+          status = await registerSessionService.getRegisterSession(db, args[0], args[1], authenticatedStaff);
+          return { ...status, centralControl };
+        }
       case 'openRegisterSession':
         {
           const payload = args[0] || {};
@@ -510,10 +521,21 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
             return { success: false, error: error.message };
           }
           if (!lock.success && lock.control?.sessionId) {
-            const localSession = await db.get(lock.control.sessionId).catch(() => null);
+            let localSession = await db.get(lock.control.sessionId).catch(() => null);
             if (localSession?.status === 'closed') {
               await releaseRegisterShift(payload.storeNo, lock.control.sessionId, localSession.countedBalances).catch(() => null);
               lock = await acquireRegisterShift(payload.storeNo, { id: authenticatedStaff._id, name: `${authenticatedStaff.firstName || ''} ${authenticatedStaff.lastName || ''}`.trim() }).catch((error) => ({ success: false, error: error.message }));
+            } else if (lock.control.cashier?.id === authenticatedStaff._id) {
+              if (!localSession) {
+                await syncRegisterSessionFromCentral(db, lock.control.sessionId).catch(() => null);
+                localSession = await db.get(lock.control.sessionId).catch(() => null);
+              }
+              if (localSession?.status === 'open') {
+                return registerSessionService.getRegisterSession(db, payload.storeNo, null, authenticatedStaff);
+              }
+              if (!localSession) {
+                return registerSessionService.openRegisterSession(db, { ...payload, sessionId: lock.control.sessionId }, authenticatedStaff);
+              }
             }
           }
           if (!lock.success) return lock;

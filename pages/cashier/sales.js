@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect } from "react"
+import React, { useCallback, useState, useEffect, useMemo } from "react"
 import Link from "next/link"
 import { useRouter } from "next/router"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -30,26 +30,9 @@ const getSalePaymentBreakdown = (sale = {}) => {
 
 export default function CashierSales() {
   const [salesData, setSalesData] = useState([])
-  const [filteredSales, setFilteredSales] = useState([])
   const [beforeTodaySales, setBeforeTodaySales] = useState([])
   const [todayRevenue, setTodayRevenue] = useState(0)
   const [numberOfSales, setNumberOfSales] = useState(0)
-  const [salesByPaymentMethod, setSalesByPaymentMethod] = useState({
-    cash: { gross: 0, transactionCost: 0, net: 0 },
-    phone: { gross: 0, transactionCost: 0, net: 0 },
-    till: { gross: 0, transactionCost: 0, net: 0 }
-  })
-  const [creditsPaid, setCreditsPaid] = useState({
-    cash: 0,
-    mpesa: 0,
-    total: 0,
-    grossCash: 0,
-    grossMpesa: 0,
-    grossTotal: 0,
-    transactionCostCash: 0,
-    transactionCostMpesa: 0,
-    transactionCostTotal: 0
-  })
   const [paidFilter, setPaidFilter] = useState('unpaid')
   const [mainTab, setMainTab] = useState('today')
   const [loading, setLoading] = useState(false)
@@ -68,17 +51,6 @@ export default function CashierSales() {
   }, [store])
 
   useEffect(() => {
-    if (!storeNo) return
-    fetchTodaySales()
-    fetchBeforeTodaySales()
-    fetchTransactionMetrics()
-  }, [storeNo])
-
-  useEffect(() => {
-    filterSales()
-  }, [salesData, paidFilter])
-
-  useEffect(() => {
     if (!router.isReady) return
     if (router.query.tab === 'before') {
       setMainTab('before')
@@ -86,16 +58,13 @@ export default function CashierSales() {
     }
   }, [router.isReady, router.query.tab])
 
-  const filterSales = () => {
-    let filtered = [...salesData]
-    if (paidFilter !== 'all') {
-      const isPaid = paidFilter === 'paid'
-      filtered = filtered.filter(sale => sale.paid === isPaid)
-    }
-    setFilteredSales(filtered)
-  }
+  const filteredSales = useMemo(() => {
+    if (paidFilter === 'all') return salesData
+    const isPaid = paidFilter === 'paid'
+    return salesData.filter((sale) => sale.paid === isPaid)
+  }, [salesData, paidFilter])
 
-  const fetchTodaySales = async () => {
+  const fetchTodaySales = useCallback(async () => {
     if (!storeNo) return
     setLoading(true)
     try {
@@ -104,8 +73,11 @@ export default function CashierSales() {
         paidStatus: 'all'
       })
       if (result.success) {
-        setSalesData(result.data || [])
-        calculateMetrics(result.data || [])
+        const sales = result.data || []
+        const paidSales = sales.filter((sale) => sale.paid)
+        setSalesData(sales)
+        setTodayRevenue(paidSales.reduce((sum, sale) => sum + Number(sale.netTotalAmount ?? sale.totalAmount ?? 0), 0))
+        setNumberOfSales(paidSales.length)
       } else {
         console.error('Failed to fetch sales:', result.error)
         toast({
@@ -124,9 +96,9 @@ export default function CashierSales() {
     } finally {
       setLoading(false)
     }
-  }
+  }, [storeNo, toast])
 
-  const fetchBeforeTodaySales = async () => {
+  const fetchBeforeTodaySales = useCallback(async () => {
     if (!storeNo) return
     setLoadingBefore(true)
     try {
@@ -141,73 +113,13 @@ export default function CashierSales() {
     } finally {
       setLoadingBefore(false)
     }
-  }
+  }, [storeNo])
 
-  const calculateMetrics = (sales) => {
-    const paidSales = sales.filter(sale => sale.paid)
-    const revenue = paidSales.reduce((sum, sale) => sum + Number(sale.netTotalAmount ?? sale.totalAmount ?? 0), 0)
-    setTodayRevenue(revenue)
-    setNumberOfSales(paidSales.length)
-    
-    // Calculate sales by payment method
-    const byMethod = paidSales.reduce((acc, sale) => {
-      getSalePaymentBreakdown(sale).forEach((payment) => {
-        const method = payment.method
-        const amount = payment.amount
-        const transactionCost = payment.transactionCost
-        const netAmount = amount - transactionCost
-
-        if (method === 'cash') {
-          acc.cash.gross += amount
-          acc.cash.transactionCost += transactionCost
-          acc.cash.net += netAmount
-        } else if (method === 'phone' || method === 'mpesa' || method === 'm-pesa') {
-          acc.phone.gross += amount
-          acc.phone.transactionCost += transactionCost
-          acc.phone.net += netAmount
-        } else if (method === 'till' || method === 'card' || method === 'bank') {
-          acc.till.gross += amount
-          acc.till.transactionCost += transactionCost
-          acc.till.net += netAmount
-        } else {
-          acc.cash.gross += amount
-          acc.cash.transactionCost += transactionCost
-          acc.cash.net += netAmount
-        }
-      })
-      return acc
-    }, {
-      cash: { gross: 0, transactionCost: 0, net: 0 },
-      phone: { gross: 0, transactionCost: 0, net: 0 },
-      till: { gross: 0, transactionCost: 0, net: 0 }
-    })
-    setSalesByPaymentMethod(byMethod)
-  }
-
-  const fetchTransactionMetrics = async () => {
+  useEffect(() => {
     if (!storeNo) return
-    try {
-      const result = await window.electronAPI.realmOperation('transactionMetrics', storeNo)
-      if (result.success) {
-        const todayData = result.data.today || {}
-        setCreditsPaid({
-          cash: todayData.customerCreditsCashNet || 0,
-          mpesa: todayData.customerCreditsMpesaNet || 0,
-          total: todayData.customerCreditsNet || 0,
-          grossCash: todayData.customerCreditsCash || 0,
-          grossMpesa: todayData.customerCreditsMpesa || 0,
-          grossTotal: todayData.customerCredits || 0,
-          transactionCostCash: todayData.transactionCostsCash || 0,
-          transactionCostMpesa: todayData.transactionCostsMpesa || 0,
-          transactionCostTotal: todayData.transactionCostsTotal || 0
-        })
-      } else {
-        console.error('Failed to fetch transaction metrics:', result.error)
-      }
-    } catch (error) {
-      console.error('Error fetching transaction metrics:', error)
-    }
-  }
+    fetchTodaySales()
+    fetchBeforeTodaySales()
+  }, [storeNo, fetchTodaySales, fetchBeforeTodaySales])
 
   const handleMarkAsPaid = async (sale, isBefore = false) => {
     try {
@@ -251,7 +163,10 @@ export default function CashierSales() {
     setPaidFilter(value)
   }
 
-  const beforeTodayTotal = beforeTodaySales.reduce((sum, sale) => sum + Number(sale.netTotalAmount ?? sale.totalAmount ?? 0), 0)
+  const beforeTodayTotal = useMemo(
+    () => beforeTodaySales.reduce((sum, sale) => sum + Number(sale.netTotalAmount ?? sale.totalAmount ?? 0), 0),
+    [beforeTodaySales]
+  )
   const hasMoneyTender = (sale) => getSalePaymentBreakdown(sale).some((payment) => payment.method !== 'credit')
 
   const SalesTable = ({ sales, showDate = false, isBefore = false }) => (
@@ -336,7 +251,7 @@ export default function CashierSales() {
           </p>
         </div>
         <div className="flex gap-2">
-          <RegisterBalancing todaySales={salesByPaymentMethod} creditsPaid={creditsPaid} defaultOpen={openRegisterBalancing} />
+          <RegisterBalancing defaultOpen={openRegisterBalancing} />
           <Link href="/pos/salesHistory">
             <Button variant="outline">
               <History className="mr-2 h-4 w-4" />

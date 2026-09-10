@@ -32,6 +32,7 @@ export default function RegisterBalancing({ defaultOpen = false }) {
   const [loading, setLoading] = useState(false)
   const [busy, setBusy] = useState(false)
   const [session, setSession] = useState(null)
+  const [centralControl, setCentralControl] = useState(null)
   const [previous, setPrevious] = useState(null)
   const [defaults, setDefaults] = useState({ cash: 0, mpesa: 0 })
   const [setupError, setSetupError] = useState('')
@@ -54,6 +55,7 @@ export default function RegisterBalancing({ defaultOpen = false }) {
       )
       if (!result.success) throw new Error(result.error)
       setSession(result.activeSession || null)
+      setCentralControl(result.centralControl || null)
       setPrevious(result.previousClosedSession || null)
       setDefaults(result.openingDefaults || { cash: 0, mpesa: 0 })
       setSetupError(result.setupError || '')
@@ -62,7 +64,9 @@ export default function RegisterBalancing({ defaultOpen = false }) {
       setNotes(result.activeSession?.notes || '')
     } catch (error) {
       toast({ title: 'Register error', description: error.message, variant: 'destructive' })
-    } finally { setLoading(false) }
+    } finally {
+      setLoading(false)
+    }
   }, [storeNo, toast])
 
   useEffect(() => { if (open) load() }, [open, load])
@@ -72,6 +76,7 @@ export default function RegisterBalancing({ defaultOpen = false }) {
   const counted = useMemo(() => ({ cash: number(cash), mpesa: number(mpesa) }), [cash, mpesa])
   const needsApproval = unpaid.length > 0 || approvalRequired
   const firstShift = !previous
+  const isCentralShiftCashier = actorId(centralControl?.cashier) === actorId(staff)
 
   const openShift = async () => {
     setBusy(true)
@@ -80,8 +85,12 @@ export default function RegisterBalancing({ defaultOpen = false }) {
         storeNo,
         openingBalances: firstShift ? { cash: number(cash), mpesa: number(mpesa) } : undefined,
       })
-      if (!result.success) throw new Error(result.error)
+      if (!result.success) {
+        if (result.control?.status === 'open') await load()
+        throw new Error(result.error)
+      }
       setSession(result.activeSession)
+      setCentralControl(null)
       setCash('0'); setMpesa('0')
       toast({ title: 'Shift opened', description: 'This register is now assigned to you.' })
     } catch (error) {
@@ -103,6 +112,7 @@ export default function RegisterBalancing({ defaultOpen = false }) {
         throw new Error(result.error)
       }
       setSession(null)
+      setCentralControl(null)
       setPrevious(result.closedSession)
       setDefaults(result.closedSession.countedBalances)
       setManagerPhone(''); setManagerPasscode(''); setReasons({})
@@ -119,6 +129,7 @@ export default function RegisterBalancing({ defaultOpen = false }) {
       const result = await window.electronAPI.realmOperation('takeOverRegisterSession', { storeNo, sessionId: session._id, reason: takeoverReason })
       if (!result.success) throw new Error(result.error)
       setSession(result.activeSession)
+      setCentralControl(null)
       setTakeoverReason('')
       toast({ title: 'Shift taken over', description: 'The emergency takeover was recorded in the audit history.' })
     } catch (error) {
@@ -132,7 +143,12 @@ export default function RegisterBalancing({ defaultOpen = false }) {
       <DialogHeader><DialogTitle>Register Shift</DialogTitle><DialogDescription>Cash and M-Pesa only. Every movement is assigned to one cashier and one shift.</DialogDescription></DialogHeader>
       {loading ? <p className="py-8 text-center text-sm text-muted-foreground">Loading shift…</p> : <div className="space-y-4">
         {setupError && <Card className="border-red-200 bg-red-50"><CardContent className="pt-4 text-sm text-red-700">{setupError}</CardContent></Card>}
-        {!session ? <>
+        {!session && centralControl?.status === 'open' ? <Card className="border-amber-200 bg-amber-50"><CardContent className="space-y-3 pt-4 text-sm text-amber-800">
+          <div><p className="text-xs">Active central shift</p><p className="font-semibold">{centralControl.cashier?.name || 'Another cashier'}</p></div>
+          {isCentralShiftCashier
+            ? <><p>Your shift is active centrally but has not reached this device yet.</p><Button onClick={openShift} disabled={busy}><RefreshCw className="mr-2 h-4 w-4" />{busy ? 'Recovering…' : 'Recover my shift'}</Button></>
+            : <p>Wait until this cashier closes the shift.</p>}
+        </CardContent></Card> : !session ? <>
           <Card><CardHeader><CardTitle className="text-base">Open next shift</CardTitle></CardHeader><CardContent className="space-y-4">
             {firstShift ? <><p className="text-sm text-amber-700">First shift only: a POS manager must establish the initial balances.</p>
               <div className="grid gap-3 sm:grid-cols-2"><div><Label>Opening Cash</Label><Input type="number" min="0" value={cash} onChange={(e) => setCash(e.target.value)} /></div><div><Label>Opening M-Pesa</Label><Input type="number" min="0" value={mpesa} onChange={(e) => setMpesa(e.target.value)} /></div></div></>

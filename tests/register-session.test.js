@@ -55,6 +55,32 @@ test('every sale and register-account movement requires an open shift', async ()
   } finally { await db.destroy(); }
 });
 
+test('current shift remains discoverable when legacy sessions are still marked open', async () => {
+  const db = await createDb('legacy-open-sessions');
+  try {
+    await db.bulkDocs(Array.from({ length: 6 }, (_, index) => ({
+      _id: `S1:register-session:legacy-${index}`,
+      type: 'register-session',
+      state: 'Active',
+      storeNo: 'S1',
+      status: 'open',
+      businessDate: `2026-0${index + 1}-01`,
+    })));
+
+    const opened = await registerSessionService.openRegisterSession(
+      db,
+      { storeNo: 'S1', openingBalances: { cash: 75, mpesa: 10 } },
+      cashier
+    );
+    assert.equal(opened.success, true, opened.error);
+
+    const status = await registerSessionService.getRegisterSession(db, 'S1', null, cashier);
+    assert.equal(status.success, true, status.error);
+    assert.equal(status.activeSession?._id, opened.activeSession._id);
+    assert.equal(status.activeSession?.openedBy?.id, cashier._id);
+  } finally { await db.destroy(); }
+});
+
 test('paid-only shift movements, hybrid legs, exception approval and carry-forward are enforced', async () => {
   const db = await createDb('lifecycle');
   try {

@@ -71,6 +71,27 @@ async function acquireRegisterShift(storeNo, actor, requestedSessionId = null) {
   }
 }
 
+async function getRegisterShiftControl(storeNo) {
+  const remote = await getRemoteDb();
+  return remote.get(registerControlId(storeNo)).catch((error) => {
+    if (error?.status === 404 || error?.name === 'not_found') return null;
+    throw error;
+  });
+}
+
+async function syncRegisterSessionFromCentral(db, sessionId) {
+  if (!db || !sessionId) return { success: false, found: false };
+  const remote = await getRemoteDb();
+  const remoteSession = await remote.get(sessionId).catch((error) => {
+    if (error?.status === 404 || error?.name === 'not_found') return null;
+    throw error;
+  });
+  if (!remoteSession) return { success: true, found: false };
+
+  await db.replicate.from(remote, { doc_ids: [sessionId] });
+  return { success: true, found: true };
+}
+
 async function releaseRegisterShift(storeNo, sessionId, closingBalances) {
   const remote = await getRemoteDb();
   const id = registerControlId(storeNo);
@@ -473,7 +494,9 @@ function setupStoreNoListener() {
 module.exports = {
   acquireRegisterShift,
   assertRegisterShiftLock,
+  getRegisterShiftControl,
   releaseRegisterShift,
+  syncRegisterSessionFromCentral,
   takeOverRegisterShift,
   verifyRetainedStaffCredential,
   openPouchDB,

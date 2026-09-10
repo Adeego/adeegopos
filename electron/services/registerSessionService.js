@@ -18,6 +18,7 @@ const REGISTER_ACCOUNTS_INDEX = ['register-accounts', 'register-accounts-index']
 const REGISTER_SESSIONS_INDEX = ['register-sessions', 'register-sessions-index'];
 const REGISTER_SALES_INDEX = ['register-sales', 'register-sales-index'];
 const REGISTER_PAID_SALES_INDEX = ['register-paid-sales', 'register-paid-sales-index'];
+const REGISTER_DATED_SESSIONS_INDEX = ['register-closed-sessions', 'register-closed-sessions-index'];
 const registerIndexPromises = new WeakMap();
 
 function ensureRegisterIndexes(db) {
@@ -25,6 +26,7 @@ function ensureRegisterIndexes(db) {
     registerIndexPromises.set(db, Promise.all([
       db.createIndex({ index: { fields: ['storeNo', 'type', 'state', 'accountType'] }, ddoc: REGISTER_ACCOUNTS_INDEX[0], name: REGISTER_ACCOUNTS_INDEX[1] }),
       db.createIndex({ index: { fields: ['storeNo', 'type', 'state', 'status'] }, ddoc: REGISTER_SESSIONS_INDEX[0], name: REGISTER_SESSIONS_INDEX[1] }),
+      db.createIndex({ index: { fields: ['storeNo', 'type', 'state', 'status', 'openedAt'] }, ddoc: REGISTER_DATED_SESSIONS_INDEX[0], name: REGISTER_DATED_SESSIONS_INDEX[1] }),
       db.createIndex({ index: { fields: ['storeNo', 'type', 'state', 'registerSessionId'] }, ddoc: REGISTER_SALES_INDEX[0], name: REGISTER_SALES_INDEX[1] }),
       db.createIndex({ index: { fields: ['storeNo', 'type', 'state', 'paidRegisterSessionId'] }, ddoc: REGISTER_PAID_SALES_INDEX[0], name: REGISTER_PAID_SALES_INDEX[1] }),
     ]).catch((error) => {
@@ -247,16 +249,6 @@ async function getActiveAccounts(db, storeNo) {
   return result.docs || [];
 }
 
-function sessionSortValue(session = {}) {
-  const date = toDateValue(session.closedAt || session.openedAt || session.createdAt || session.updatedAt);
-  if (date) {
-    return date.getTime();
-  }
-
-  const businessDate = toDateValue(session.businessDate);
-  return businessDate ? businessDate.getTime() : 0;
-}
-
 async function getOpenSession(db, storeNo) {
   const result = await db.find({
     selector: {
@@ -264,9 +256,10 @@ async function getOpenSession(db, storeNo) {
       state: 'Active',
       storeNo,
       status: 'open',
+      openedAt: { $gte: '' },
     },
-    use_index: REGISTER_SESSIONS_INDEX,
-    limit: 9999,
+    use_index: REGISTER_DATED_SESSIONS_INDEX,
+    limit: 2,
   });
 
   const openSessions = (result.docs || []).filter((session) => session.openedAt);
@@ -284,13 +277,20 @@ async function getPreviousClosedSession(db, storeNo) {
       state: 'Active',
       storeNo,
       status: 'closed',
+      openedAt: { $gte: '' },
     },
-    use_index: REGISTER_SESSIONS_INDEX,
-    limit: 9999,
+    sort: [
+      { storeNo: 'desc' },
+      { type: 'desc' },
+      { state: 'desc' },
+      { status: 'desc' },
+      { openedAt: 'desc' },
+    ],
+    use_index: REGISTER_DATED_SESSIONS_INDEX,
+    limit: 1,
   });
 
-  return (result.docs || [])
-    .sort((a, b) => sessionSortValue(b) - sessionSortValue(a))[0] || null;
+  return result.docs?.[0] || null;
 }
 
 async function getRequestedSession(db, storeNo, ref) {
@@ -583,9 +583,17 @@ function redactLiveBalances(session, actor) {
 
 async function buildRegisterStatus(db, context, activeSession, requestedSession = null, actor = null) {
   const responseOptions = { blindActive: Boolean(actor) };
-  const activeSessionResponse = redactLiveBalances(await toSessionResponse(db, context, activeSession, responseOptions), actor);
-  const previousClosedSessionResponse = await toSessionResponse(db, context, context.previousClosedSession);
-  const requestedSessionResponse = redactLiveBalances(await toSessionResponse(db, context, requestedSession, responseOptions), actor);
+  const [activeResponse, previousClosedSessionResponse, requestedResponse] = await Promise.all([
+    toSessionResponse(db, context, activeSession, responseOptions),
+    toSessionResponse(db, context, context.previousClosedSession),
+    requestedSession && requestedSession._id !== activeSession?._id
+      ? toSessionResponse(db, context, requestedSession, responseOptions)
+      : Promise.resolve(null),
+  ]);
+  const activeSessionResponse = redactLiveBalances(activeResponse, actor);
+  const requestedSessionResponse = requestedSession?._id === activeSession?._id
+    ? activeSessionResponse
+    : redactLiveBalances(requestedResponse, actor);
 
   return {
     success: true,
@@ -675,8 +683,10 @@ async function openRegisterSession(db, payload = {}, actor = null) {
     const now = new Date().toISOString();
     const sessionId = payload.sessionId || `${context.storeNo}:register-session:${uuidv4()}`;
     if (!context.previousClosedSession) {
-      await setInitialRegisterBalance(db, { account: context.linkedAccounts.cashAccount, balance: openingBalances.cash, sessionId, sourceKey: 'cash', storeNo: context.storeNo, actor, now });
-      await setInitialRegisterBalance(db, { account: context.linkedAccounts.mpesaAccount, balance: openingBalances.mpesa, sessionId, sourceKey: 'mpesa', storeNo: context.storeNo, actor, now });
+      await Promise.all([
+        setInitialRegisterBalance(db, { account: context.linkedAccounts.cashAccount, balance: openingBalances.cash, sessionId, sourceKey: 'cash', storeNo: context.storeNo, actor, now }),
+        setInitialRegisterBalance(db, { account: context.linkedAccounts.mpesaAccount, balance: openingBalances.mpesa, sessionId, sourceKey: 'mpesa', storeNo: context.storeNo, actor, now }),
+      ]);
     }
     const sessionDoc = {
       _id: sessionId,
@@ -706,8 +716,7 @@ async function openRegisterSession(db, payload = {}, actor = null) {
 
     await db.put(sessionDoc);
 
-    const refreshedContext = await loadRegisterContext(db, context.storeNo);
-    return buildRegisterStatus(db, refreshedContext, sessionDoc, null, actor);
+    return buildRegisterStatus(db, context, sessionDoc, null, actor);
   } catch (error) {
     return { success: false, error: error.message };
   }
@@ -789,10 +798,12 @@ async function closeRegisterSession(db, payload = {}, actor = null, approvalActo
 
     const countedBalances = normalizeCountedBalances(payload.countedBalances, activeSession.countedBalances);
     if (countedBalances.cash < 0 || countedBalances.mpesa < 0) return { success: false, error: 'Closing balances cannot be negative.' };
-    const movements = await getSessionAccountMovements(db, context.storeNo, activeSession, context.linkedAccounts);
+    const [movements, unresolved] = await Promise.all([
+      getSessionAccountMovements(db, context.storeNo, activeSession, context.linkedAccounts),
+      getUnpaidDeclarations(db, context.storeNo, activeSession),
+    ]);
     const expectedBalances = buildExpectedBalances(activeSession.openingBalances, movements);
     const variances = buildVariances(countedBalances, expectedBalances);
-    const unresolved = await getUnpaidDeclarations(db, context.storeNo, activeSession);
     const declarationsById = new Map((payload.unpaidDeclarations || []).map((entry) => [entry.saleId, String(entry.reason || '').trim()]));
     const unpaidDeclarations = unresolved.map((sale) => ({ ...sale, reason: declarationsById.get(sale.saleId) || '' }));
     if (unpaidDeclarations.some((entry) => !entry.reason)) {
@@ -808,10 +819,12 @@ async function closeRegisterSession(db, payload = {}, actor = null, approvalActo
     }
 
     const now = new Date().toISOString();
-    const adjustments = [];
+    let adjustments = [];
     if (hasVariance) {
-      adjustments.push(await reconcileRegisterAccount(db, { account: context.linkedAccounts.cashAccount, actualBalance: countedBalances.cash, session: activeSession, actor, approvedBy: approvalActor, sourceKey: 'cash', now }));
-      adjustments.push(await reconcileRegisterAccount(db, { account: context.linkedAccounts.mpesaAccount, actualBalance: countedBalances.mpesa, session: activeSession, actor, approvedBy: approvalActor, sourceKey: 'mpesa', now }));
+      adjustments = await Promise.all([
+        reconcileRegisterAccount(db, { account: context.linkedAccounts.cashAccount, actualBalance: countedBalances.cash, session: activeSession, actor, approvedBy: approvalActor, sourceKey: 'cash', now }),
+        reconcileRegisterAccount(db, { account: context.linkedAccounts.mpesaAccount, actualBalance: countedBalances.mpesa, session: activeSession, actor, approvedBy: approvalActor, sourceKey: 'mpesa', now }),
+      ]);
     }
     const updatedSession = {
       ...activeSession, status: 'closed', expectedBalances, countedBalances, variances,
@@ -822,8 +835,12 @@ async function closeRegisterSession(db, payload = {}, actor = null, approvalActo
       closedBy: buildActorReference(actor), updatedAt: now,
     };
     const closedSession = await putSession(db, updatedSession);
-    const refreshedContext = await loadRegisterContext(db, context.storeNo);
-    const status = await buildRegisterStatus(db, refreshedContext, null, closedSession);
+    const closedContext = {
+      ...context,
+      previousClosedSession: closedSession,
+      openingDefaults: buildOpeningDefaults(closedSession, context.linkedAccounts),
+    };
+    const status = await buildRegisterStatus(db, closedContext, null, closedSession);
     return { ...status, activeSession: null, closedSession: status.session };
   } catch (error) {
     return { success: false, error: error.message };
