@@ -64,6 +64,8 @@ const SALES_HISTORY_INDEX = 'sales-history-index';
 const SALES_HISTORY_DDOC = 'sales-history';
 const UNPAID_SALES_INDEX = 'unpaid-sales-index';
 const UNPAID_SALES_DDOC = 'unpaid-sales';
+const SHIFT_SALES_INDEX = 'shift-sales-index';
+const SHIFT_SALES_DDOC = 'shift-sales';
 const salesIndexPromises = new WeakMap();
 
 async function ensureSalesHistoryIndex(db) {
@@ -82,6 +84,13 @@ async function ensureSalesHistoryIndex(db) {
         },
         ddoc: UNPAID_SALES_DDOC,
         name: UNPAID_SALES_INDEX,
+      }),
+      db.createIndex({
+        index: {
+          fields: ['storeNo', 'type', 'state', 'registerSessionId'],
+        },
+        ddoc: SHIFT_SALES_DDOC,
+        name: SHIFT_SALES_INDEX,
       }),
     ]).catch((error) => {
       salesIndexPromises.delete(db);
@@ -188,6 +197,7 @@ async function createSale(db, saleData, mainWindow, actor = null) {
       mainWindow,
       actor,
       printReceipt: false,
+      requireShiftOwner: false,
     });
 
     if (!result.success) {
@@ -569,6 +579,30 @@ async function getTodaySalesByPaidStatus(db, storeNo, paidStatus) {
   }
 }
 
+async function getShiftSales(db, storeNo, registerSessionId) {
+  try {
+    if (!storeNo || !registerSessionId) {
+      return { success: false, error: 'storeNo and registerSessionId are required' };
+    }
+
+    await ensureSalesHistoryIndex(db);
+    const result = await findAll(db, {
+      selector: {
+        type: 'sale',
+        state: 'Active',
+        storeNo,
+        registerSessionId,
+      },
+      use_index: [SHIFT_SALES_DDOC, SHIFT_SALES_INDEX],
+    });
+
+    return { success: true, data: sortSalesDesc(result.docs.map(decorateSale)) };
+  } catch (error) {
+    console.error('Error getting shift sales:', error);
+    return { success: false, error: error.message };
+  }
+}
+
 async function getUnpaidSalesBeforeToday(db, storeNo) {
   try {
     const beforeToday = startOfDay();
@@ -582,6 +616,39 @@ async function getUnpaidSalesBeforeToday(db, storeNo) {
     return { success: true, data: sortSalesDesc(sales) };
   } catch (error) {
     console.error('Error getting unpaid sales before today:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function getPendingSalesByMonth(db, storeNo, referenceDate = new Date()) {
+  try {
+    if (!storeNo) return { success: false, error: 'storeNo is required' };
+
+    const reference = toDateValue(referenceDate) || new Date();
+    const currentMonthStart = new Date(reference.getFullYear(), reference.getMonth(), 1);
+    const nextMonthStart = new Date(reference.getFullYear(), reference.getMonth() + 1, 1);
+    const lastMonthStart = new Date(reference.getFullYear(), reference.getMonth() - 1, 1);
+    const sales = await findSales(db, {
+      storeNo,
+      state: 'Active',
+      paid: false,
+      startDate: lastMonthStart,
+      endDate: new Date(nextMonthStart.getTime() - 1),
+    });
+
+    return {
+      success: true,
+      data: {
+        currentMonth: sortSalesDesc(sales.filter((sale) => toDateValue(sale.createdAt) >= currentMonthStart)),
+        lastMonth: sortSalesDesc(sales.filter((sale) => toDateValue(sale.createdAt) < currentMonthStart)),
+        ranges: {
+          currentMonth: { start: currentMonthStart.toISOString(), end: new Date(nextMonthStart.getTime() - 1).toISOString() },
+          lastMonth: { start: lastMonthStart.toISOString(), end: new Date(currentMonthStart.getTime() - 1).toISOString() },
+        },
+      },
+    };
+  } catch (error) {
+    console.error('Error getting pending monthly sales:', error);
     return { success: false, error: error.message };
   }
 }
@@ -605,25 +672,6 @@ async function updateSalePaidStatus(db, payload, actor = null) {
     if (moneyPayments.length === 0) {
       return { success: false, error: 'Credit sales are settled through a customer payment transaction, not Mark Paid.' };
     }
-    let hasMpesa = false;
-    for (const payment of moneyPayments) {
-      const account = payment.accountId ? await db.get(payment.accountId).catch(() => null) : null;
-      const text = `${payment.method || ''} ${account?.name || ''} ${account?.registerTenderType || ''}`.toLowerCase();
-      const accountNumber = String(account?.accountNumber || '');
-      if (normalizePaymentMethod(payment.method) === 'MPESA' || accountNumber === `${sale.storeNo}002` || /mpesa|m-pesa|m pesa|till/.test(text)) hasMpesa = true;
-    }
-    const mpesaReference = String(payload?.mpesaReference || '').trim().toUpperCase();
-    if (hasMpesa && !mpesaReference) {
-      return { success: false, error: 'M-Pesa receipt/reference is required.' };
-    }
-    if (mpesaReference) {
-      const duplicate = await db.find({
-        selector: { type: 'sale-payment', state: 'Active', storeNo: sale.storeNo, mpesaReference },
-        limit: 1,
-      });
-      if (duplicate.docs.length > 0) return { success: false, error: 'This M-Pesa receipt has already been used.' };
-    }
-
     const now = new Date().toISOString();
     const confirmationId = `${sale._id}:payment-confirmation`;
     const actorRef = buildActorReference(actor);
@@ -638,7 +686,6 @@ async function updateSalePaidStatus(db, payload, actor = null) {
       registerSessionId: session._id,
       paymentBreakdown: moneyPayments,
       saleType: sale.saleType || 'NEW SALE',
-      mpesaReference: mpesaReference || null,
       confirmedAt: now,
       confirmedBy: actorRef,
       createdAt: now,
@@ -668,7 +715,7 @@ async function updateSalePaidStatus(db, payload, actor = null) {
         sourceDocType: 'sale-payment',
         sourceDocId: confirmationId,
         date: now,
-        metadata: { registerSessionId: session._id, paymentMethod: normalizePaymentMethod(payment.method), mpesaReference: mpesaReference || null },
+        metadata: { registerSessionId: session._id, paymentMethod: normalizePaymentMethod(payment.method) },
       });
     }
     await ensureJournalEntryForSalePayment(db, confirmation);
@@ -708,7 +755,9 @@ module.exports = {
   getSaleById,
   archiveSale,
   getCashierSales,
+  getShiftSales,
   getTodaySalesByPaidStatus,
   getUnpaidSalesBeforeToday,
+  getPendingSalesByMonth,
   updateSalePaidStatus,
 };

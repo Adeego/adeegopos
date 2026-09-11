@@ -6,6 +6,27 @@ const { getOpenRegisterSession } = require('../postingService');
 
 // In-memory conversation histories keyed by session ID
 const conversations = new Map();
+const ASSISTANT_MODELS = new Set(['gpt-5.6-sol', 'gpt-5.6-terra', 'gpt-5.6-luna']);
+const REASONING_EFFORTS = new Set(['none', 'low', 'medium', 'high', 'xhigh', 'max']);
+
+function resolveAssistantSettings(options = {}) {
+  return {
+    model: ASSISTANT_MODELS.has(options.model) ? options.model : getOpenAIModel(),
+    reasoningEffort: REASONING_EFFORTS.has(options.reasoningEffort) ? options.reasoningEffort : 'none',
+  };
+}
+
+function discardImageData(message) {
+  if (!Array.isArray(message?.content)) return;
+
+  const hadImage = message.content.some((part) => part?.type === 'input_image');
+  if (!hadImage) return;
+
+  message.content = [
+    ...message.content.filter((part) => part?.type !== 'input_image'),
+    { type: 'input_text', text: '[The attached image was analyzed and is no longer retained.]' },
+  ];
+}
 
 // Shopping period detection (reused from aiAnalysisService pattern)
 function getShoppingPeriod() {
@@ -232,8 +253,10 @@ function trimToolResult(toolName, result) {
 }
 
 // Main chat function — handles a single user message through the agent loop
-async function chat(sessionId, userMessage, db, storeNo, channel = 'in-app', callbacks = {}, storeContext = {}) {
+async function chat(sessionId, userMessage, db, storeNo, channel = 'in-app', callbacks = {}, storeContext = {}, options = {}) {
   const { onChunk, onToolCall, onComplete, onError } = callbacks;
+  const { model, reasoningEffort } = resolveAssistantSettings(options);
+  let currentUserMessage = null;
 
   try {
     const resolvedStoreNo = await resolveStoreNo(db, storeNo, storeContext);
@@ -260,7 +283,8 @@ async function chat(sessionId, userMessage, db, storeNo, channel = 'in-app', cal
     upsertRuntimeContext(messages, runtimeContext);
 
     // Add user message
-    messages.push({ role: 'user', content: userMessage });
+    currentUserMessage = { role: 'user', content: userMessage };
+    messages.push(currentUserMessage);
 
     // Agent loop — keep going until we get a text response (no more tool calls)
     let loopCount = 0;
@@ -271,7 +295,8 @@ async function chat(sessionId, userMessage, db, storeNo, channel = 'in-app', cal
 
       const openai = await getOpenAIClient();
       const response = await openai.chat.completions.create({
-        model: getOpenAIModel(),
+        model,
+        reasoning_effort: reasoningEffort,
         messages: messages,
         tools: toolDefinitions,
         tool_choice: 'auto',
@@ -331,6 +356,9 @@ async function chat(sessionId, userMessage, db, storeNo, channel = 'in-app', cal
     console.error('[AI Assistant] Error:', error.message);
     if (onError) onError(error.message);
     throw error;
+  } finally {
+    // Avoid retaining and resending large base64 images on later text turns.
+    discardImageData(currentUserMessage);
   }
 }
 

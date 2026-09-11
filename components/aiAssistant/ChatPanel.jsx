@@ -1,12 +1,30 @@
 import { useState, useRef, useEffect } from 'react';
-import { X, Send, Trash2, Bot, Loader2, KeyRound } from 'lucide-react';
+import { X, Send, Trash2, Bot, Loader2, KeyRound, LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import ChatMessage from './ChatMessage';
 import ToolCallIndicator from './ToolCallIndicator';
 import useWsinfoStore from '@/stores/wsinfo';
 import { v4 as uuidv4 } from 'uuid';
+
+const MODEL_OPTIONS = [
+  { value: 'gpt-5.6-sol', label: 'GPT-5.6 Sol' },
+  { value: 'gpt-5.6-terra', label: 'GPT-5.6 Terra' },
+  { value: 'gpt-5.6-luna', label: 'GPT-5.6 Luna' },
+];
+
+const EFFORT_OPTIONS = [
+  { value: 'none', label: 'None' },
+  { value: 'low', label: 'Low' },
+  { value: 'medium', label: 'Medium' },
+  { value: 'high', label: 'High' },
+  { value: 'xhigh', label: 'Extra high' },
+  { value: 'max', label: 'Maximum' },
+];
+
+const AI_SETTINGS_KEY = 'adeego-ai-settings';
 
 export default function ChatPanel({ open, onClose }) {
   const [messages, setMessages] = useState([]);
@@ -15,10 +33,45 @@ export default function ChatPanel({ open, onClose }) {
   const [activeTool, setActiveTool] = useState(null);
   const [authStatus, setAuthStatus] = useState(null);
   const [authBusy, setAuthBusy] = useState(false);
+  const [model, setModel] = useState('gpt-5.6-terra');
+  const [reasoningEffort, setReasoningEffort] = useState('none');
   const [sessionId] = useState(() => `app-${uuidv4()}`);
   const scrollRef = useRef(null);
   const inputRef = useRef(null);
   const wsinfo = useWsinfoStore((state) => state.wsinfo);
+
+  useEffect(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(AI_SETTINGS_KEY) || '{}');
+      if (MODEL_OPTIONS.some((option) => option.value === saved.model)) setModel(saved.model);
+      if (EFFORT_OPTIONS.some((option) => option.value === saved.reasoningEffort)) {
+        setReasoningEffort(saved.reasoningEffort);
+      }
+    } catch (error) {
+      // Ignore unavailable storage or malformed settings and keep safe defaults.
+    }
+  }, []);
+
+  const saveAiSettings = (nextModel, nextEffort) => {
+    try {
+      window.localStorage.setItem(AI_SETTINGS_KEY, JSON.stringify({
+        model: nextModel,
+        reasoningEffort: nextEffort,
+      }));
+    } catch (error) {
+      // The active selection still works even when local storage is unavailable.
+    }
+  };
+
+  const changeModel = (value) => {
+    setModel(value);
+    saveAiSettings(value, reasoningEffort);
+  };
+
+  const changeReasoningEffort = (value) => {
+    setReasoningEffort(value);
+    saveAiSettings(model, value);
+  };
 
   // Auto-scroll to bottom on new messages
   useEffect(() => {
@@ -53,6 +106,25 @@ export default function ChatPanel({ open, onClose }) {
       setMessages(prev => [...prev, {
         role: 'assistant',
         content: `OpenAI sign-in failed: ${error.message || error}`,
+      }]);
+    } finally {
+      setAuthBusy(false);
+    }
+  };
+
+  const signOutOfOpenAI = async () => {
+    if (authBusy || isLoading || typeof window === 'undefined' || !window.electronAPI?.openAIAuthLogout) return;
+    setAuthBusy(true);
+    try {
+      const status = await window.electronAPI.openAIAuthLogout();
+      await window.electronAPI.aiAssistantClear?.(sessionId);
+      setAuthStatus(status);
+      setMessages([]);
+      setActiveTool(null);
+    } catch (error) {
+      setMessages(prev => [...prev, {
+        role: 'assistant',
+        content: `OpenAI sign-out failed: ${error.message || error}`,
       }]);
     } finally {
       setAuthBusy(false);
@@ -115,7 +187,8 @@ export default function ChatPanel({ open, onClose }) {
             role: 'assistant', 
             content: `Sorry, something went wrong: ${error}` 
           }]);
-        }
+        },
+        { model, reasoningEffort }
       );
     }
   };
@@ -161,18 +234,67 @@ export default function ChatPanel({ open, onClose }) {
         </div>
       </div>
 
-      {authStatus && !authStatus.configured && (
+      {authStatus && (
         <div className="border-b px-3 py-2 bg-background">
-          <Button
-            size="sm"
-            variant="outline"
-            className="w-full gap-2"
-            onClick={signInWithOpenAI}
-            disabled={authBusy}
-          >
-            {authBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
-            {authBusy ? 'Signing in...' : 'Sign in with OpenAI'}
-          </Button>
+          {authStatus.configured ? (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
+                  <span className="h-2 w-2 flex-shrink-0 rounded-full bg-emerald-500" aria-hidden="true" />
+                  <span className="truncate">Signed in with OpenAI</span>
+                </div>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-8 flex-shrink-0 gap-1.5 text-xs"
+                  onClick={signOutOfOpenAI}
+                  disabled={authBusy || isLoading}
+                >
+                  {authBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogOut className="h-3.5 w-3.5" />}
+                  {authBusy ? 'Signing out...' : 'Sign out'}
+                </Button>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="mb-1 block text-[11px] font-medium text-muted-foreground">Model</label>
+                  <Select value={model} onValueChange={changeModel} disabled={isLoading}>
+                    <SelectTrigger className="h-8 text-xs" aria-label="AI model">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {MODEL_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-[11px] font-medium text-muted-foreground">Reasoning effort</label>
+                  <Select value={reasoningEffort} onValueChange={changeReasoningEffort} disabled={isLoading}>
+                    <SelectTrigger className="h-8 text-xs" aria-label="Reasoning effort">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {EFFORT_OPTIONS.map((option) => (
+                        <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full gap-2"
+              onClick={signInWithOpenAI}
+              disabled={authBusy}
+            >
+              {authBusy ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
+              {authBusy ? 'Signing in...' : 'Sign in with OpenAI'}
+            </Button>
+          )}
         </div>
       )}
 

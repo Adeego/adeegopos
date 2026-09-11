@@ -188,16 +188,27 @@ async function submitAudit(db, auditId, payload, actor) {
       });
     }
 
+    const liveProducts = new Map();
+    for (const item of audit.items || []) {
+      const product = await db.get(item.productId);
+      if (product.type !== 'product' || product.state !== 'Active' || String(product.storeNo) !== String(audit.storeNo)) {
+        throw new Error(`${item.productName} is no longer an active product in this store`);
+      }
+      liveProducts.set(item.productId, product);
+    }
+
     const items = audit.items.map((item) => {
       const entry = entries.get(item.productId);
-      const physicalCount = entry ? entry.physicalCount : roundQuantity(item.systemStock);
-      const variance = roundQuantity(toNumber(item.systemStock) - physicalCount);
+      const submissionStock = roundQuantity(liveProducts.get(item.productId).stock);
+      const physicalCount = entry ? entry.physicalCount : submissionStock;
+      const variance = roundQuantity(submissionStock - physicalCount);
       if (variance !== 0 && (!entry.reason || !entry.resolution)) throw new Error(`${item.productName}: reason and resolution are required`);
       return {
         ...item,
+        submissionStock,
         physicalCount,
         variance,
-        adjustmentDelta: roundQuantity(physicalCount - toNumber(item.systemStock)),
+        adjustmentDelta: roundQuantity(physicalCount - submissionStock),
         shrinkageValue: roundQuantity(variance * toNumber(item.buyPrice)),
         reason: variance === 0 ? '' : entry.reason,
         resolution: variance === 0 ? '' : entry.resolution,
@@ -254,11 +265,19 @@ async function approveAudit(db, auditId, approver) {
 
     const prepared = [];
     for (const item of audit.items || []) {
-      const delta = roundQuantity(item.adjustmentDelta);
-      if (!delta) continue;
       const product = await db.get(item.productId);
       if (product.type !== 'product' || product.state !== 'Active' || String(product.storeNo) !== String(audit.storeNo)) throw new Error(`${item.productName} is no longer an active product in this store`);
-      prepared.push({ item, product, updatedProduct: applyStockDeltaToProduct(product, delta).updatedProduct, delta });
+      const hasSubmissionSnapshot = item.submissionStock !== null && item.submissionStock !== undefined;
+      // Audits submitted before count-time snapshots were introduced used the
+      // morning stock as their baseline. Rebase those pending records once so
+      // legitimate sales made during the day are not deducted a second time.
+      const delta = hasSubmissionSnapshot
+        ? roundQuantity(item.adjustmentDelta)
+        : roundQuantity(toNumber(item.physicalCount) - toNumber(product.stock));
+      const updatedProduct = applyStockDeltaToProduct(product, delta).updatedProduct;
+      const needsProductWrite = delta !== 0
+        || JSON.stringify(updatedProduct.batches || []) !== JSON.stringify(product.batches || []);
+      prepared.push({ item, product, updatedProduct, delta, needsProductWrite });
     }
 
     lockedAudit = await putWithRevision(db, {
@@ -267,10 +286,12 @@ async function approveAudit(db, auditId, approver) {
       updatedAt: new Date().toISOString(),
     });
     for (const entry of prepared) {
+      if (!entry.needsProductWrite) continue;
       const result = await db.put(entry.updatedProduct);
       appliedEntries.push({ original: entry.product, delta: entry.delta, writtenRev: result.rev });
     }
     for (const entry of prepared) {
+      if (!entry.delta) continue;
       movements.push(await recordStockMovement(db, {
         storeNo: audit.storeNo,
         productId: entry.item.productId,
@@ -283,8 +304,23 @@ async function approveAudit(db, auditId, approver) {
     }
 
     const movementByProduct = new Map(movements.map((movement) => [movement.productId, movement._id]));
+    const approvalByProduct = new Map(prepared.map((entry) => [entry.item.productId, entry]));
     const now = new Date().toISOString();
     const actor = buildActorReference(approver);
+    const completedItems = audit.items.map((item) => {
+      const approval = approvalByProduct.get(item.productId);
+      const submissionStock = item.submissionStock ?? approval?.product?.stock ?? item.systemStock;
+      const adjustmentDelta = approval?.delta ?? item.adjustmentDelta ?? 0;
+      const variance = roundQuantity(-adjustmentDelta);
+      return {
+        ...item,
+        submissionStock: roundQuantity(submissionStock),
+        variance,
+        adjustmentDelta,
+        shrinkageValue: roundQuantity(variance * toNumber(item.buyPrice)),
+        stockMovementId: movementByProduct.get(item.productId) || null,
+      };
+    });
     const completed = {
       ...lockedAudit,
       status: 'completed',
@@ -294,7 +330,8 @@ async function approveAudit(db, auditId, approver) {
       completedAt: now,
       updatedAt: now,
       reviewHistory: [...(audit.reviewHistory || []), { action: 'approved', actor, at: now }],
-      items: audit.items.map((item) => ({ ...item, stockMovementId: movementByProduct.get(item.productId) || null })),
+      items: completedItems,
+      summary: calculateSummary(completedItems),
     };
     await db.put(completed);
     return { success: true, audit: completed };

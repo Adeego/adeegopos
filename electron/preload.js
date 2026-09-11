@@ -47,7 +47,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.send('aiAnalysis-start', metrics);
     },
     // AI Assistant
-    aiAssistantChat: (sessionId, message, storeNo, storeContext, onChunk, onToolCall, onDone, onError) => {
+    aiAssistantChat: (sessionId, message, storeNo, storeContext, onChunk, onToolCall, onDone, onError, settings = {}) => {
       if (typeof storeContext === 'function') {
         onError = onDone;
         onDone = onToolCall;
@@ -76,7 +76,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
       ipcRenderer.on('ai-assistant-tool', toolHandler);
       ipcRenderer.on('ai-assistant-done', doneHandler);
       ipcRenderer.on('ai-assistant-error', errorHandler);
-      ipcRenderer.send('ai-assistant-chat', { sessionId, message, storeNo, storeContext });
+      ipcRenderer.send('ai-assistant-chat', { sessionId, message, storeNo, storeContext, settings });
     },
     aiAssistantClear: (sessionId) => ipcRenderer.invoke('ai-assistant-clear', sessionId),
 

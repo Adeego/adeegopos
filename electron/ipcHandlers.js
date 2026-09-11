@@ -235,7 +235,7 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
   });
 
   // AI Assistant chat
-  ipcMain.on('ai-assistant-chat', async (event, { sessionId, message, storeContext }) => {
+  ipcMain.on('ai-assistant-chat', async (event, { sessionId, message, storeContext, settings }) => {
     const authenticatedStaff = await getAuthenticatedStaff();
     if (!can(authenticatedStaff, 'assistant:use')) {
       event.reply('ai-assistant-error', { error: 'Your module access does not include the AI assistant' });
@@ -247,7 +247,7 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
       onToolCall: (toolName) => event.reply('ai-assistant-tool', { toolName }),
       onComplete: () => event.reply('ai-assistant-done', { done: true }),
       onError: (error) => event.reply('ai-assistant-error', { error }),
-    }, { ...(storeContext || {}), storeNo: effectiveStoreNo }).catch(error => {
+    }, { ...(storeContext || {}), storeNo: effectiveStoreNo }, settings || {}).catch(error => {
       event.reply('ai-assistant-error', { error: error.message });
     });
   });
@@ -364,10 +364,16 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
         return saleService.archiveSale(db, args[0]);
       case 'getCashierSales':
         return saleService.getCashierSales(db, args[0].storeNo, args[0].staffId);
+      case 'getShiftSales':
+        if (!canUseStore(authenticatedStaff, args[0]?.storeNo)) return unauthorized('viewing sales for another store');
+        return saleService.getShiftSales(db, args[0].storeNo, args[0].registerSessionId);
       case 'getTodaySalesByPaidStatus':
         return saleService.getTodaySalesByPaidStatus(db, args[0].storeNo, args[0].paidStatus);
       case 'getUnpaidSalesBeforeToday':
         return saleService.getUnpaidSalesBeforeToday(db, args[0]);
+      case 'getPendingSalesByMonth':
+        if (!canUseStore(authenticatedStaff, args[0]?.storeNo)) return unauthorized('viewing pending sales for another store');
+        return saleService.getPendingSalesByMonth(db, args[0].storeNo, args[0].referenceDate);
       case 'updateSalePaidStatus':
         return saleService.updateSalePaidStatus(db, args[0], authenticatedStaff);
       case 'createSupplier':
@@ -509,6 +515,12 @@ function setupIpcHandlers(ipcMain, db, mainWindow) {
           await syncRegisterSessionFromCentral(db, centralControl.sessionId).catch(() => null);
           status = await registerSessionService.getRegisterSession(db, args[0], args[1], authenticatedStaff);
           return { ...status, centralControl };
+        }
+      case 'getRegisterSessionHistory':
+        {
+          const payload = args[0] || {};
+          if (!canUseStore(authenticatedStaff, payload.storeNo)) return unauthorized('viewing shift history for another store');
+          return registerSessionService.getRegisterSessionHistory(db, payload);
         }
       case 'openRegisterSession':
         {

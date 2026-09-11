@@ -24,7 +24,7 @@ const withTimeout = (promise, milliseconds) => Promise.race([
   new Promise((_, reject) => setTimeout(() => reject(new Error('Register loading timed out. Check database sync and try again.')), milliseconds)),
 ])
 
-export default function RegisterBalancing({ defaultOpen = false }) {
+export default function RegisterBalancing({ defaultOpen = false, onShiftChange }) {
   const { toast } = useToast()
   const staff = useStaffStore((state) => state.staff)
   const storeNo = useWsinfoStore((state) => state.wsinfo?.storeNo || '')
@@ -92,6 +92,7 @@ export default function RegisterBalancing({ defaultOpen = false }) {
       setSession(result.activeSession)
       setCentralControl(null)
       setCash('0'); setMpesa('0')
+      onShiftChange?.(result.activeSession)
       toast({ title: 'Shift opened', description: 'This register is now assigned to you.' })
     } catch (error) {
       toast({ title: 'Unable to open shift', description: error.message, variant: 'destructive' })
@@ -117,6 +118,7 @@ export default function RegisterBalancing({ defaultOpen = false }) {
       setDefaults(result.closedSession.countedBalances)
       setManagerPhone(''); setManagerPasscode(''); setReasons({})
       setApprovalRequired(false)
+      onShiftChange?.(null)
       toast({ title: 'Shift closed', description: result.warning || 'Closing balances are locked and will open the next shift.' })
     } catch (error) {
       toast({ title: 'Unable to close shift', description: error.message, variant: 'destructive' })
@@ -131,6 +133,7 @@ export default function RegisterBalancing({ defaultOpen = false }) {
       setSession(result.activeSession)
       setCentralControl(null)
       setTakeoverReason('')
+      onShiftChange?.(result.activeSession)
       toast({ title: 'Shift taken over', description: 'The emergency takeover was recorded in the audit history.' })
     } catch (error) {
       toast({ title: 'Unable to take over shift', description: error.message, variant: 'destructive' })

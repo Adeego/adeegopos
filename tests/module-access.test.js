@@ -37,10 +37,16 @@ test('access levels enforce view, operate, and manage boundaries', () => {
 
   const cashier = staff({ pos: 'manage' });
   assert.equal(canPerformOperation(cashier, 'updateSalePaidStatus'), true);
+  assert.equal(canPerformOperation(cashier, 'getShiftSales'), true);
+  assert.equal(canPerformOperation(cashier, 'getPendingSalesByMonth'), true);
   assert.equal(canPerformOperation(cashier, 'closeRegisterSession'), true);
+  assert.equal(canPerformOperation(cashier, 'getRegisterSessionHistory'), true);
+  assert.equal(canAccessRoute(cashier, '/cashier/shifts'), true);
 
   const approver = staff({ bookkeeping: 'manage' });
   assert.equal(canAccessRoute(approver, '/cashier/sales'), true);
+  assert.equal(canPerformOperation(approver, 'getShiftSales'), true);
+  assert.equal(canPerformOperation(approver, 'getPendingSalesByMonth'), true);
   assert.equal(canPerformOperation(approver, 'openRegisterSession'), false);
 
   const stockOperator = staff({ inventory: 'operate' });

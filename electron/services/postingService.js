@@ -425,7 +425,10 @@ async function attachOpenRegisterSessionToSale(db, sale, options = {}) {
 
   // Every sale belongs to a shift, including credit and unconfirmed sales. This
   // keeps stock, revenue and unpaid declarations attributable to one cashier.
-  return attachOpenRegisterSession(db, sale, { ...options, requireShiftOwner: true });
+  // Interactive sale creation may be performed by another POS operator, while
+  // workflows such as payment confirmation remain restricted to the cashier.
+  const requireShiftOwner = options.requireShiftOwner !== false;
+  return attachOpenRegisterSession(db, sale, { ...options, requireShiftOwner });
 }
 
 async function attachOpenRegisterSessionForAccount(db, doc, accountId, options = {}) {
@@ -520,6 +523,15 @@ function normalizeStockBatches(product = {}) {
       addedAt: product.createdAt || new Date().toISOString(),
       source: 'legacy-stock-balance',
     });
+  } else if (batchTotal > stock) {
+    let remainingStock = stock;
+    return sortBatchesByExpiry(activeBatches).reduce((normalized, batch) => {
+      if (remainingStock <= 0) return normalized;
+      const quantity = Number(Math.min(toNumber(batch.quantity), remainingStock).toFixed(2));
+      remainingStock = Number((remainingStock - quantity).toFixed(2));
+      if (quantity > 0) normalized.push({ ...batch, quantity });
+      return normalized;
+    }, []);
   }
 
   return activeBatches;

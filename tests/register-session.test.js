@@ -81,6 +81,43 @@ test('current shift remains discoverable when legacy sessions are still marked o
   } finally { await db.destroy(); }
 });
 
+test('POS staff can create sales during the cashier shift but cannot confirm payment', async () => {
+  const db = await createDb('shared-sale-entry');
+  try {
+    const opened = await registerSessionService.openRegisterSession(
+      db,
+      { storeNo: 'S1', openingBalances: { cash: 75, mpesa: 10 } },
+      cashier
+    );
+    assert.equal(opened.success, true, opened.error);
+
+    const created = await saleService.createSale(
+      db,
+      salePayload({ _id: 'S1:sale:created-by-operator' }),
+      null,
+      otherCashier
+    );
+    assert.equal(created.success, true, created.error);
+    assert.equal(created.sale.servedBy, otherCashier._id);
+    assert.equal(created.sale.registerSessionId, opened.activeSession._id);
+
+    const unauthorizedConfirmation = await saleService.updateSalePaidStatus(
+      db,
+      { saleId: created.sale._id, paidStatus: true },
+      otherCashier
+    );
+    assert.match(unauthorizedConfirmation.error, /another cashier/i);
+
+    const cashierConfirmation = await saleService.updateSalePaidStatus(
+      db,
+      { saleId: created.sale._id, paidStatus: true },
+      cashier
+    );
+    assert.equal(cashierConfirmation.success, true, cashierConfirmation.error);
+    assert.equal(cashierConfirmation.sale.paidBy.id, cashier._id);
+  } finally { await db.destroy(); }
+});
+
 test('paid-only shift movements, hybrid legs, exception approval and carry-forward are enforced', async () => {
   const db = await createDb('lifecycle');
   try {
@@ -93,8 +130,6 @@ test('paid-only shift movements, hybrid legs, exception approval and carry-forwa
     assert.equal(cashierView.activeSession.linkedAccounts.cash.balance, null);
     assert.equal(cashierView.activeSession.linkedAccounts.mpesa.balance, null);
     assert.equal((await db.get('S1:cash')).balance, 100);
-    assert.match((await saleService.createSale(db, salePayload({ _id: 'S1:sale:wrong' }), null, otherCashier)).error, /another cashier/i);
-
     const unpaid = await saleService.createSale(db, salePayload({ _id: 'S1:sale:unpaid' }), null, cashier);
     assert.equal(unpaid.success, true, unpaid.error);
     assert.equal((await db.get('S1:cash')).balance, 100);
@@ -108,7 +143,7 @@ test('paid-only shift movements, hybrid legs, exception approval and carry-forwa
       paymentBreakdown: [{ method: 'Cash Drawer', accountId: 'S1:cash', amount: 20 }, { method: 'M-Pesa Till', accountId: 'S1:mpesa', amount: 30 }, { method: 'CREDIT', amount: 10 }],
     }), null, cashier);
     assert.equal(hybrid.success, true, hybrid.error);
-    const hybridPaid = await saleService.updateSalePaidStatus(db, { saleId: hybrid.sale._id, paidStatus: true, mpesaReference: 'HYBRID123' }, cashier);
+    const hybridPaid = await saleService.updateSalePaidStatus(db, { saleId: hybrid.sale._id, paidStatus: true }, cashier);
     assert.equal(hybridPaid.success, true, hybridPaid.error);
     await expenseService.createExpense(db, { _id: 'S1:expense:cash', storeNo: 'S1', description: 'Ops', amount: 10, account: 'Cash Drawer', accountId: 'S1:cash', expenseType: 'Operations', expenseTypeId: 'S1:expenseType:ops' });
     await transactionService.createTransaction(db, { _id: 'S1:tx:mpesa-bank', storeNo: 'S1', description: 'Till transfer', source: 'account', destination: 'account', from: 'S1:mpesa', to: 'S1:bank', transType: 'withdraw', amount: 5, transactionCost: 1 });
@@ -124,6 +159,13 @@ test('paid-only shift movements, hybrid legs, exception approval and carry-forwa
     assert.equal(closed.success, true, closed.error);
     assert.equal(closed.closedSession.transfer, null);
     assert.equal((await db.get('S1:cash')).balance, 158);
+    const history = await registerSessionService.getRegisterSessionHistory(db, { storeNo: 'S1' });
+    assert.equal(history.success, true, history.error);
+    assert.equal(history.sessions.length, 1);
+    assert.equal(history.sessions[0]._id, sessionId);
+    assert.equal(history.sessions[0].variances.cash, -2);
+    assert.equal(history.sessions[0].unpaidDeclarations[0].reason, declaration[0].reason);
+    assert.equal(history.sessions[0].exceptionApprovedBy.id, manager._id);
     const next = await registerSessionService.openRegisterSession(db, { storeNo: 'S1', openingBalances: { cash: 999, mpesa: 999 } }, cashier);
     assert.equal(next.activeSession.openingBalances.cash, 158);
     assert.equal(next.activeSession.openingBalances.mpesa, 44);
@@ -142,12 +184,12 @@ test('emergency takeover changes the assigned cashier and keeps an audit trail',
     assert.equal(result.activeSession.originalOpenedBy.id, cashier._id);
     assert.equal(result.activeSession.takeoverHistory.length, 1);
     assert.equal(result.activeSession.expectedBalances, null);
-    assert.match((await saleService.createSale(db, salePayload({ _id: 'S1:sale:former-owner' }), null, cashier)).error, /another cashier/i);
+    assert.equal((await saleService.createSale(db, salePayload({ _id: 'S1:sale:former-owner' }), null, cashier)).success, true);
     assert.equal((await saleService.createSale(db, salePayload({ _id: 'S1:sale:new-owner' }), null, manager)).success, true);
   } finally { await db.destroy(); }
 });
 
-test('late M-Pesa payment belongs to the receiving shift and receipt references are unique', async () => {
+test('late M-Pesa payments confirm without a reference and belong to the receiving shift', async () => {
   const db = await createDb('late-payment');
   try {
     const first = await registerSessionService.openRegisterSession(db, { storeNo: 'S1', openingBalances: { cash: 100, mpesa: 20 } }, cashier);
@@ -155,12 +197,12 @@ test('late M-Pesa payment belongs to the receiving shift and receipt references 
     const closed = await registerSessionService.closeRegisterSession(db, { storeNo: 'S1', sessionId: first.activeSession._id, countedBalances: { cash: 100, mpesa: 20 }, unpaidDeclarations: [{ saleId: lateSale.sale._id, reason: 'M-Pesa confirmation pending' }] }, cashier, manager);
     assert.equal(closed.success, true, closed.error);
     const second = await registerSessionService.openRegisterSession(db, { storeNo: 'S1' }, cashier);
-    const paid = await saleService.updateSalePaidStatus(db, { saleId: lateSale.sale._id, paidStatus: true, mpesaReference: 'QWE123XYZ' }, cashier);
+    const paid = await saleService.updateSalePaidStatus(db, { saleId: lateSale.sale._id, paidStatus: true }, cashier);
     assert.equal(paid.success, true, paid.error);
     assert.equal(paid.sale.paidRegisterSessionId, second.activeSession._id);
     const another = await saleService.createSale(db, salePayload({ _id: 'S1:sale:another', amount: 10, paymentMethod: 'M-Pesa Till', accountId: 'S1:mpesa' }), null, cashier);
-    const duplicate = await saleService.updateSalePaidStatus(db, { saleId: another.sale._id, paidStatus: true, mpesaReference: 'qwe123xyz' }, cashier);
-    assert.match(duplicate.error, /already been used/i);
-    assert.equal((await registerSessionService.getRegisterSession(db, 'S1')).activeSession.expectedBalances.mpesa, 60);
+    const anotherPaid = await saleService.updateSalePaidStatus(db, { saleId: another.sale._id, paidStatus: true }, cashier);
+    assert.equal(anotherPaid.success, true, anotherPaid.error);
+    assert.equal((await registerSessionService.getRegisterSession(db, 'S1')).activeSession.expectedBalances.mpesa, 70);
   } finally { await db.destroy(); }
 });

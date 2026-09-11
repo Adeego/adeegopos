@@ -3,6 +3,45 @@ const { chat, clearConversation } = require('./index');
 
 let bot = null;
 let currentStoreNo = '';
+const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+const SUPPORTED_IMAGE_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+
+function stripBotMention(text, botUsername) {
+  const value = String(text || '');
+  if (!botUsername) return value.trim();
+  return value.replace(new RegExp(`@${botUsername}`, 'gi'), '').trim();
+}
+
+function sessionIdFor(ctx) {
+  return `telegram-${ctx.from.id}`;
+}
+
+function selectPhotoVariant(photos = []) {
+  return [...photos]
+    .filter((photo) => photo?.file_id && (!photo.file_size || photo.file_size <= MAX_IMAGE_BYTES))
+    .sort((a, b) => ((a.width || 0) * (a.height || 0)) - ((b.width || 0) * (b.height || 0)))
+    .pop() || null;
+}
+
+async function downloadTelegramImage(ctx, fileId, token, expectedMimeType) {
+  const file = await ctx.api.getFile(fileId);
+  if (!file.file_path) throw new Error('Telegram did not provide an image download path');
+
+  const response = await fetch(`https://api.telegram.org/file/bot${token}/${file.file_path}`);
+  if (!response.ok) throw new Error(`Telegram image download failed (${response.status})`);
+
+  const contentLength = Number(response.headers.get('content-length') || 0);
+  if (contentLength > MAX_IMAGE_BYTES) throw new Error('IMAGE_TOO_LARGE');
+
+  const bytes = Buffer.from(await response.arrayBuffer());
+  if (bytes.length > MAX_IMAGE_BYTES) throw new Error('IMAGE_TOO_LARGE');
+
+  const responseMimeType = String(response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+  const mimeType = SUPPORTED_IMAGE_TYPES.has(responseMimeType) ? responseMimeType : expectedMimeType;
+  if (!SUPPORTED_IMAGE_TYPES.has(mimeType)) throw new Error('UNSUPPORTED_IMAGE_TYPE');
+
+  return `data:${mimeType};base64,${bytes.toString('base64')}`;
+}
 
 function updateTelegramBotStoreNo(storeNo) {
   currentStoreNo = storeNo;
@@ -36,6 +75,8 @@ function startTelegramBot(db, storeNo) {
 
   // Middleware: check if user is allowed
   bot.use(async (ctx, next) => {
+    if (ctx.from?.is_bot) return;
+
     const userId = String(ctx.from?.id || '');
     if (!allowedIds.includes(userId)) {
       console.log(`[Telegram Bot] Unauthorized user: ${userId}`);
@@ -47,7 +88,7 @@ function startTelegramBot(db, storeNo) {
   // /start command
   bot.command('start', async (ctx) => {
     await ctx.reply(
-      '🏪 *Adeego AI* is ready!\n\nAsk me anything about your store — sales, stock, debts, expenses, and more.\n\nType /clear to start a new conversation.',
+      '🏪 *Adeego AI* is ready!\n\nAsk me anything about your store — sales, stock, debts, expenses, and more. You can also send a photo or image file for analysis.\n\nType /clear to start a new conversation.',
       { parse_mode: 'Markdown' }
     );
   });
@@ -59,54 +100,90 @@ function startTelegramBot(db, storeNo) {
     await ctx.reply('🔄 Conversation cleared. Ask me anything!');
   });
 
-  // Handle all text messages
-  bot.on('message:text', async (ctx) => {
-    const chatType = ctx.chat?.type; // 'private', 'group', or 'supergroup'
-    const botUsername = bot.botInfo?.username || '';
-
-    // In group chats, only respond if bot is @mentioned or replied to
-    if (chatType === 'group' || chatType === 'supergroup') {
-      const isMentioned = botUsername && ctx.message.text.toLowerCase().includes(`@${botUsername.toLowerCase()}`);
-      const isReplyToBot = ctx.message.reply_to_message?.from?.id === bot.botInfo?.id;
-      if (!isMentioned && !isReplyToBot) return;
-    }
-
-    const sessionId = `telegram-${ctx.from.id}`;
-    // Strip @botusername mention from the message so the AI gets a clean prompt
-    let userMessage = ctx.message.text;
-    if (botUsername) {
-      userMessage = userMessage.replace(new RegExp(`@${botUsername}`, 'gi'), '').trim();
-    }
-
-    // Show typing indicator (non-fatal if network hiccups)
+  async function respond(ctx, userMessage) {
     await ctx.replyWithChatAction('typing').catch(() => {});
 
     try {
-      const response = String(await chat(sessionId, userMessage, db, currentStoreNo, 'telegram') || '').trim();
+      const response = String(await chat(sessionIdFor(ctx), userMessage, db, currentStoreNo, 'telegram') || '').trim();
       if (!response) {
         await ctx.reply('I did not receive a response. Please try again.');
         return;
       }
 
       // Telegram has a 4096 char limit per message
-      if (response.length > 4000) {
-        const chunks = splitMessage(response, 4000);
-        for (const chunk of chunks) {
-          await ctx.reply(chunk, { parse_mode: 'Markdown' }).catch(async () => {
-            // Fallback to plain text if markdown fails
-            await ctx.reply(chunk).catch(() => {});
-          });
-        }
-      } else {
-        await ctx.reply(response, { parse_mode: 'Markdown' }).catch(async () => {
-          await ctx.reply(response).catch(() => {});
+      const chunks = response.length > 4000 ? splitMessage(response, 4000) : [response];
+      for (const chunk of chunks) {
+        await ctx.reply(chunk, { parse_mode: 'Markdown' }).catch(async () => {
+          // Fallback to plain text if markdown fails
+          await ctx.reply(chunk).catch(() => {});
         });
       }
     } catch (error) {
       console.error('[Telegram Bot] Error:', error.message);
-      await ctx.reply('❌ Sorry, something went wrong. Please try again.');
+      const message = error.message === 'IMAGE_TOO_LARGE'
+        ? '❌ That image is too large. Please send an image smaller than 5 MB.'
+        : error.message === 'UNSUPPORTED_IMAGE_TYPE'
+          ? '❌ Please send a JPEG, PNG, WebP, or GIF image.'
+          : '❌ Sorry, something went wrong. Please try again.';
+      await ctx.reply(message);
     }
+  }
+
+  // Handle all text messages
+  bot.on('message:text', async (ctx) => {
+    const botUsername = bot.botInfo?.username || '';
+    const userMessage = stripBotMention(ctx.message.text, botUsername);
+    if (userMessage) await respond(ctx, userMessage);
   });
+
+  // Handle photos sent normally through Telegram.
+  bot.on('message:photo', async (ctx) => {
+    const photo = selectPhotoVariant(ctx.message.photo);
+    if (!photo) {
+      await ctx.reply('❌ That image is too large. Please send an image smaller than 5 MB.');
+      return;
+    }
+
+    await handleImageMessage(ctx, photo.file_id, 'image/jpeg');
+  });
+
+  // Handle images sent as uncompressed files.
+  bot.on('message:document', async (ctx) => {
+    const document = ctx.message.document;
+    const mimeType = String(document.mime_type || '').toLowerCase();
+    if (!mimeType.startsWith('image/')) return;
+    if (!SUPPORTED_IMAGE_TYPES.has(mimeType)) {
+      await ctx.reply('❌ Please send a JPEG, PNG, WebP, or GIF image.');
+      return;
+    }
+    if (document.file_size && document.file_size > MAX_IMAGE_BYTES) {
+      await ctx.reply('❌ That image is too large. Please send an image smaller than 5 MB.');
+      return;
+    }
+
+    await handleImageMessage(ctx, document.file_id, mimeType);
+  });
+
+  async function handleImageMessage(ctx, fileId, mimeType) {
+    try {
+      const imageUrl = await downloadTelegramImage(ctx, fileId, token, mimeType);
+      const prompt = stripBotMention(ctx.message.caption, bot.botInfo?.username || '') ||
+        'Describe this image and explain anything relevant to my store.';
+
+      await respond(ctx, [
+        { type: 'input_text', text: prompt },
+        { type: 'input_image', image_url: imageUrl, detail: 'auto' },
+      ]);
+    } catch (error) {
+      console.error('[Telegram Bot] Image error:', error.message);
+      const message = error.message === 'IMAGE_TOO_LARGE'
+        ? '❌ That image is too large. Please send an image smaller than 5 MB.'
+        : error.message === 'UNSUPPORTED_IMAGE_TYPE'
+          ? '❌ Please send a JPEG, PNG, WebP, or GIF image.'
+          : '❌ I could not download that image. Please try again.';
+      await ctx.reply(message);
+    }
+  }
 
   // Start polling
   bot.start({

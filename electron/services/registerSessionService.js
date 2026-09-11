@@ -623,6 +623,72 @@ async function getRegisterSession(db, storeNoInput, requestedRef = null, actor =
   }
 }
 
+function toClosedSessionHistoryItem(session = {}) {
+  const openingBalances = normalizeCountedBalances(session.openingBalances, session.openingBalances);
+  const expectedBalances = normalizeCountedBalances(session.expectedBalances, session.expectedBalances);
+  const countedBalances = normalizeCountedBalances(session.countedBalances, session.countedBalances);
+  const variances = session.variances
+    ? normalizeCountedBalances(session.variances, session.variances)
+    : buildVariances(countedBalances, expectedBalances);
+  const movements = {
+    cash: roundCurrency(expectedBalances.cash - openingBalances.cash),
+    mpesa: roundCurrency(expectedBalances.mpesa - openingBalances.mpesa),
+    total: roundCurrency(expectedBalances.total - openingBalances.total),
+  };
+  const openedAt = toDateValue(session.openedAt || session.createdAt);
+  const closedAt = toDateValue(session.closedAt || session.updatedAt);
+
+  return {
+    _id: session._id,
+    businessDate: session.businessDate || toBusinessDateString(session.openedAt || session.createdAt),
+    status: session.status,
+    openedAt: session.openedAt || session.createdAt || null,
+    closedAt: session.closedAt || session.updatedAt || null,
+    durationMinutes: openedAt && closedAt ? Math.max(0, Math.round((closedAt - openedAt) / 60000)) : null,
+    openedBy: session.openedBy || null,
+    originalOpenedBy: session.originalOpenedBy || null,
+    closedBy: session.closedBy || null,
+    exceptionApprovedBy: session.exceptionApprovedBy || null,
+    openingBalances,
+    movements,
+    expectedBalances,
+    countedBalances,
+    variances,
+    closeSummary: session.closeSummary || null,
+    unpaidDeclarations: Array.isArray(session.unpaidDeclarations) ? session.unpaidDeclarations : [],
+    takeoverHistory: Array.isArray(session.takeoverHistory) ? session.takeoverHistory : [],
+    adjustments: Array.isArray(session.adjustments) ? session.adjustments : [],
+    linkedAccountIds: session.linkedAccountIds || {},
+    notes: session.notes || '',
+  };
+}
+
+function closedSessionSortValue(session = {}) {
+  const timestamp = toDateValue(
+    session.closedAt || session.updatedAt || session.openedAt || session.createdAt,
+  );
+  return timestamp ? timestamp.getTime() : 0;
+}
+
+async function getRegisterSessionHistory(db, payload = {}) {
+  try {
+    const storeNo = normalizeStoreNo(payload.storeNo);
+    if (!storeNo) throw new Error('storeNo is required');
+    await ensureRegisterIndexes(db);
+    const result = await findAll(db, {
+      selector: { type: 'register-session', state: 'Active', storeNo, status: 'closed' },
+      use_index: REGISTER_SESSIONS_INDEX,
+    });
+    const sessions = (result.docs || [])
+      .sort((a, b) => closedSessionSortValue(b) - closedSessionSortValue(a))
+      .slice(0, 1000)
+      .map(toClosedSessionHistoryItem);
+    return { success: true, sessions, total: sessions.length };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
 async function setInitialRegisterBalance(db, { account, balance, sessionId, sourceKey, storeNo, actor, now }) {
   const delta = roundCurrency(balance - toNumber(account.balance));
   if (!delta) return null;
@@ -878,6 +944,7 @@ async function takeOverRegisterSession(db, payload = {}, actor = null) {
 module.exports = {
   closeRegisterSession,
   getRegisterSession,
+  getRegisterSessionHistory,
   openRegisterSession,
   takeOverRegisterSession,
 };

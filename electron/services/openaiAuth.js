@@ -12,7 +12,7 @@ const OPENAI_OAUTH_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann';
 const OPENAI_OAUTH_PORT = Number(process.env.OPENAI_OAUTH_PORT || 1455);
 const OPENAI_OAUTH_SCOPE = 'openid profile email offline_access api.connectors.read api.connectors.invoke';
 const OPENAI_OAUTH_ORIGINATOR = process.env.OPENAI_OAUTH_ORIGINATOR || 'codex_cli_rs';
-const DEFAULT_OPENAI_MODEL = 'gpt-5.4-mini';
+const DEFAULT_OPENAI_MODEL = 'gpt-5.6-terra';
 
 let cachedClient = null;
 let cachedClientKey = null;
@@ -721,6 +721,8 @@ async function createCodexChatCompletion(params, auth) {
   if (params.max_completion_tokens) body.max_output_tokens = params.max_completion_tokens;
   if (params.temperature !== undefined) body.temperature = params.temperature;
   if (params.top_p !== undefined) body.top_p = params.top_p;
+  const reasoningEffort = params.reasoning_effort || params.reasoning?.effort;
+  if (reasoningEffort) body.reasoning = { effort: reasoningEffort };
 
   const events = await postCodexStream(`${OPENAI_CODEX_BASE_URL}/responses`, body, auth);
   const failedEvent = events.find((event) => event.error || event.type === 'response.failed');

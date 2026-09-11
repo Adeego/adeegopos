@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 
 const stockAudit = require('../electron/services/stockAuditService');
 const { renderAuditSheet } = require('../electron/services/printerService');
+const { applyStockDeltaToProduct } = require('../electron/services/postingService');
 
 const clone = (value) => JSON.parse(JSON.stringify(value));
 
@@ -148,6 +149,54 @@ test('approval requires a separate reviewer and applies delta to current stock',
   assert.equal(repeated.success, true);
   assert.equal(repeated.alreadyCompleted, true);
   assert.equal((await db.get('S1:product:milk')).stock, 23);
+});
+
+test('submission rebases the count against live stock after sales made since printing', async () => {
+  const now = localDate(2026, 9, 8, 9);
+  const db = new MemoryDb([product(), sale('sale-1', localDate(2026, 9, 7, 10), 'NEW SALE', 1)]);
+  const created = await stockAudit.createAudit(db, 'S1', operator, now);
+  const current = await db.get('S1:product:milk');
+  current.stock = 15;
+  current.batches[0].quantity = 15;
+  await db.put(current);
+
+  const submitted = await stockAudit.submitAudit(db, created.audit._id, {
+    discrepancies: [{ productId: 'S1:product:milk', physicalCount: 15, reason: 'Printed sheet was stale', resolution: 'Compared with live stock' }],
+  }, operator);
+  assert.equal(submitted.success, true);
+  assert.equal(submitted.audit.items[0].systemStock, 20);
+  assert.equal(submitted.audit.items[0].submissionStock, 15);
+  assert.equal(submitted.audit.items[0].variance, 0);
+  assert.equal(submitted.audit.items[0].adjustmentDelta, 0);
+
+  const approved = await stockAudit.approveAudit(db, created.audit._id, manager);
+  assert.equal(approved.success, true);
+  assert.equal((await db.get('S1:product:milk')).stock, 15);
+});
+
+test('approval safely rebases pending audits created before submission snapshots existed', async () => {
+  const db = new MemoryDb([product({ stock: 2, batches: [{ batchId: 'batch-1', quantity: 36 }] }), {
+    _id: 'S1:stock-audit:2026-09-10', type: 'stock-audit', version: 2, storeNo: 'S1', auditDate: '2026-09-10',
+    status: 'pending_approval', createdAt: '2026-09-11T05:28:01.573Z', submittedAt: '2026-09-11T14:46:19.404Z',
+    submittedBy: { id: operator._id, name: 'Opal Counter' }, reviewHistory: [],
+    items: [{ productId: 'S1:product:milk', productName: 'Milk', systemStock: 7, physicalCount: 2, variance: 5, adjustmentDelta: -5, buyPrice: 50, reason: 'Counted later', resolution: 'Reviewed' }],
+    summary: { totalProducts: 1, discrepancyCount: 1, totalShrinkageUnits: 5, totalShrinkageValue: 250, shrinkageRate: 100, accuracyRate: 0 },
+  }]);
+
+  const approved = await stockAudit.approveAudit(db, 'S1:stock-audit:2026-09-10', manager);
+  assert.equal(approved.success, true);
+  const updatedProduct = await db.get('S1:product:milk');
+  assert.equal(updatedProduct.stock, 2);
+  assert.equal(updatedProduct.batches.reduce((sum, batch) => sum + batch.quantity, 0), 2);
+  assert.equal(approved.audit.items[0].submissionStock, 2);
+  assert.equal(approved.audit.items[0].adjustmentDelta, 0);
+  assert.equal(approved.audit.summary.discrepancyCount, 0);
+});
+
+test('stock updates trim legacy batch totals to the canonical product stock', () => {
+  const result = applyStockDeltaToProduct(product({ stock: 2, batches: [{ batchId: 'old', quantity: 36 }] }), -1);
+  assert.equal(result.updatedProduct.stock, 1);
+  assert.equal(result.updatedProduct.batches.reduce((sum, batch) => sum + batch.quantity, 0), 1);
 });
 
 test('rejection requires a reason, preserves review history, and reopens the same audit', async () => {
